@@ -1,0 +1,48 @@
+version: 1
+worker_limit: 3
+shared_contract_owner: tech-lead
+
+owners:
+  tech-lead:
+    paths:
+      - spec/
+      - docs/tech-lead/
+      - packages/contracts/
+      - tools/
+      - .github/
+      - apps/web/shell/
+  worker-a:
+    paths:
+      - apps/agent/
+      - packages/device-adapters/
+      - packages/recovery/
+      - apps/web/device/
+      - apps/web/recovery/
+  worker-b:
+    paths:
+      - packages/device-model/
+      - packages/health/
+      - packages/security/
+      - packages/policy/
+      - packages/actions/
+      - packages/learning/
+      - packages/integrations/arena/
+      - apps/web/security/
+      - apps/web/actions/
+  worker-c:
+    paths:
+      - packages/identity/
+      - packages/audit/
+      - packages/workloads/
+      - packages/vendors/
+      - packages/procurement/
+      - packages/software/
+      - packages/maintenance/
+      - packages/integrations/aurum/
+      - apps/web/workloads/
+      - apps/web/commerce/
+
+rules:
+  - workers_may_not_modify_other_worker_paths
+  - shared_contract_changes_require_tech_lead
+  - max_one_active_item_per_worker_by_default
