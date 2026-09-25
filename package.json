@@ -1,0 +1,10 @@
+{
+  "name": "@payswapdotorg/fleetos",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "bun@1.2.21",
+  "scripts": {
+    "check:architecture": "node tools/check-architecture.mjs",
+    "check": "bun run check:architecture"
+  }
+}
