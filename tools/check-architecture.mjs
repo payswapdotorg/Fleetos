@@ -9,6 +9,8 @@ const required = [
   "spec/MODULE-DEPENDENCY-MAP.md",
   "spec/WORK-ITEM-DEPENDENCY-GRAPH.md",
   "spec/work-items/WORK-ITEM-CATALOG.md",
+  "spec/worker-ownership.yaml",
+  "spec/ADR/TEMPLATE.md",
   "docs/tech-lead/LLM-ARCHITECT-HANDOFF.md",
   "docs/tech-lead/worker-model.md",
   "docs/tech-lead/worker-runbook.md",
@@ -35,6 +37,14 @@ for (const phrase of [
 ]) {
   if (!lock.includes(phrase)) {
     console.error("ARCHITECTURE CHECK FAILED: missing lock phrase:", phrase);
+    process.exit(1);
+  }
+}
+
+const ownership = fs.readFileSync("spec/worker-ownership.yaml", "utf8");
+for (const phrase of ["worker_limit: 3", "shared_contract_owner: tech-lead", "worker-a:", "worker-b:", "worker-c:"]) {
+  if (!ownership.includes(phrase)) {
+    console.error("ARCHITECTURE CHECK FAILED: ownership file missing:", phrase);
     process.exit(1);
   }
 }
