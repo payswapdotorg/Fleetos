@@ -1,4 +1,4 @@
-# FleetOS LLM Tech Lead Handoff
+FleetOS LLM Tech Lead Handoff
 
 Mission:
 Implement the frozen FleetOS architecture end to end with three concurrent workers and minimal drift.
@@ -12,14 +12,13 @@ observe -> model -> diagnose -> plan -> authorize -> act -> verify -> learn
 The SaaS is independently valuable and can be installed on fleets not procured through Fleet.
 
 Ecosystem:
-- ADCOS: connectivity outcome/orchestration.
-- Arena: capability learning/evaluation/certification.
-- Aurum Chat: organizational communication/intelligence.
-
+ADCOS = connectivity outcome/orchestration
+Arena = capability learning/evaluation/certification
+Aurum Chat = organizational communication/intelligence
 These are external integrations, not semantic dependencies.
 
 Repository state:
-This repo began empty and is now an architecture-first implementation skeleton. There is no legacy application code to preserve.
+The repo began empty and is now an architecture-first implementation skeleton. There is no legacy application code to preserve.
 
 Authoritative files:
 AGENTS.md
@@ -30,9 +29,19 @@ spec/WORK-ITEM-DEPENDENCY-GRAPH.md
 spec/work-items/WORK-ITEM-CATALOG.md
 
 First move:
-Complete W001, W002 and W003 in the Tech Lead lane. Then activate exactly three disjoint Wave 1 items.
+Complete W001, W002 and W003 in the Tech Lead lane. Then activate exactly three Wave 1 items:
+A -> W010
+B -> W011
+C -> W012
+This is intentional: all three worker lanes start immediately after the contract harness is frozen.
 
 Maintain spec/PROJECT-STATE.md as the live checkpoint.
+
+Worker boundaries:
+A owns device edge/platform/recovery.
+B owns intelligence/security/actions/learning.
+C owns workload/commerce and the small foundation bootstrap assigned in W012.
+The Tech Lead owns cross-worker integration and shared contracts.
 
 Priorities:
 1. Preserve Device Twin and Intent semantics.
@@ -50,7 +59,7 @@ Reference deployment:
 A reasonable first SaaS target is Vercel + PostgreSQL + Redis-compatible queues/cache + object storage. Device agents and LAN/printer connectors run outside the web runtime.
 
 Required order:
-Wave 0 -> Wave 1 -> Wave 2 -> Wave 3 -> Wave 4 -> W050 -> W060 -> W070/W071 -> W080
+Wave 0 -> Wave 1 -> Wave 2 -> Wave 3 -> Wave 4 -> Wave 5 adapters -> W051 convergence -> Wave 6 surfaces -> W061 journey convergence -> W070/W071/W072 -> W080
 
 Maximum active worker items: 3.
 
