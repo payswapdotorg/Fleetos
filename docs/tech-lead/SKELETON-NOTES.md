@@ -154,3 +154,140 @@ rework.
 - **`spec/PROJECT-STATE.md` updated** to STATUS `W001 IMPLEMENTED (pending TL
   acceptance)`, implementation wave 0 complete pending acceptance, next Tech
   Lead actions: W002.
+
+## W002 — contracts now real (frozen for Wave 1)
+
+W002 filled the `@fleetos/contracts` package with the real FleetOS shared
+contract surface. The placeholder exports from W001 (`MODULE_NAME`,
+`MODULE_VERSION`) are preserved in `src/index.ts` for backward compatibility
+with the 21 baseline tests, but the package now exports the full public API:
+
+- `src/ids.ts` — 14 branded IDs (TenantId, DeviceId, ObservationId, EventId,
+  IntentId, ActionId, CommandId, UserId, VendorId, WorkloadId, PolicyId,
+  AuditRecordId, CorrelationId, CausationId, IdempotencyKey) + `brand<T,B>()`
+  helper + `isBranded()` type guard + `asXxx()` constructors. Branded IDs are
+  template-literal types with NO runtime cost — a `TenantId` is structurally
+  a string at runtime but nominally distinct from a `DeviceId` at the type
+  level. This is the structural basis for tenant isolation: every envelope,
+  command, intent, and audit record carries a branded `TenantId`, and the
+  compiler rejects cross-tenant assignment at the type level.
+- `src/tenant.ts` — `TenantScoped` base shape, `TenantRef` validation helper
+  (`validateTenantRef()`), `isValidTenantId()` predicate. Tenant isolation is
+  structural: every envelope below is tenant-scoped.
+- `src/events.ts` — `EventEnvelope<P>` with tenant scope, correlation/
+  causation ids, schema version; `makeEnvelope()` pure constructor stamps
+  correlation/causation rules (root command => fresh correlation; events
+  caused by commands inherit correlation + use command id as causation;
+  events caused by events inherit correlation + use source event id as
+  causation); `validateEnvelope()` invariant validator; `serializeEnvelope()`
+  deterministic serializer.
+- `src/commands.ts` — `CommandEnvelope<P>` with idempotency key
+  (duplicate-suppression contract: same key => same logical effect once);
+  `makeCommand()` constructor; `validateCommand()` invariant validator.
+- `src/intents.ts` — the nine durable Fleet Intents (verbatim from
+  `spec/ARCHITECTURE.md` § Intent model) as a discriminated union on the
+  `kind` field; `IntentEnvelope<P>`; `IntentStatus` lifecycle
+  (REQUESTED -> AUTHORIZED -> DISPATCHED -> EXECUTING -> VERIFIED -> COMPLETED
+  plus terminal REJECTED | FAILED | CANCELLED); `INTENT_TRANSITIONS` table;
+  `canTransition()` predicate.
+- `src/device.ts` — `DeviceLifecycleState` (verbatim from
+  `spec/ARCHITECTURE.md` § Device lifecycle: ENROLL -> OBSERVE -> ASSESS ->
+  DIAGNOSE -> PLAN -> AUTHORIZE -> EXECUTE -> VERIFY -> LEARN);
+  `DEVICE_LIFECYCLE_TRANSITIONS` strict-linear-progression table;
+  `AdapterCapabilities` flags type (the eleven capabilities from
+  `spec/ARCHITECTURE.md` § Device adapters); `DESTRUCTIVE_CAPABILITIES`
+  (enforce, remediate, lock, locate, wipe, reboot, update);
+  `assertSupported()` capability gate — unsupported destructive behavior
+  may NEVER be emulated (per `spec/ARCHITECTURE-LOCK.md` item 16).
+- `src/observations.ts` — `Observation`, `ObservationBatch` (check-in
+  contract from device agents); `ObservationKind` open string union;
+  `validateObservationBatch()` invariant validator.
+- `src/policy.ts` — `GuardianDecisionType` (ALLOW | WARN | REQUIRE_APPROVAL
+  | BLOCK verbatim from `spec/ARCHITECTURE.md` § Contract Guardian);
+  `GuardianDecision` result shape with rule refs and evidence refs;
+  `makeGuardianDecision()` constructor; `isBlockingDecision()` predicate.
+- `src/errors.ts` — `FleetError` discriminated union (DomainError,
+  PolicyError, AuthorizationError, AdapterError, ConflictError,
+  ValidationError) with stable machine `code`, human `message`, tenant +
+  correlation ids; `ApiError` wire shape for HTTP surfaces; `toApiError()`
+  translator with HTTP-status mapping (400/403/409/422/502).
+- `src/versioning.ts` — `Versioned<T>` wrapper; `assertVersion()` guard
+  (consumer must explicitly list every version it understands; unknown
+  versions are rejected, not silently misinterpreted); `makeVersioned()`
+  constructor; `MIN_SCHEMA_VERSION = 1`.
+
+### Tests
+
+Tests live in `packages/contracts/test/*.test.ts` (not `src/`):
+
+- `ids.test.ts` — branded id roundtrips, type-guard behavior, zero-cost
+  runtime identity.
+- `events.test.ts` — envelope invariants (tenant-scoped, correlation
+  present, version >= 1, ISO timestamps), correlation/causation rules for
+  command-cause and event-cause, deterministic serialization, frozen-record
+  invariants.
+- `intents.test.ts` — legal happy-path transitions, illegal skip-state
+  transitions, REQUESTED -> REJECTED, pre-VERIFIED -> CANCELLED, post-
+  DISPATCH -> FAILED, terminal states have no outgoing transitions, the
+  nine intent kinds.
+- `device.test.ts` — lifecycle order (nine states), linear progression
+  invariant, LEARN terminal, capability assertion (supported/unsupported/
+  destructive-authorized/destructive-unauthorized — with explicit test that
+  unsupported destructive capability returns `unsupported` first, NOT
+  `destructive_unauthorized`).
+- `policy.test.ts` — Guardian decision types, blocking predicates,
+  frozen-record invariants.
+- `errors.test.ts` — error taxonomy shape for all six subclasses,
+  `toApiError()` HTTP status mapping for all six kinds.
+- `versioning.test.ts` — version guard (below-one, unknown-to-consumer,
+  known-version happy path, consumer-must-list-explicitly).
+
+### Test results
+
+`bun test` runs 89 tests across 28 files (21 baseline placeholder tests +
+68 new contracts tests), 0 failures, 224 `expect()` calls.
+
+### Cross-lane import verification
+
+The ownership gate (`tools/check-ownership.mjs`) was sanity-checked against
+two temporary files:
+
+1. A file in `packages/recovery/` (worker-a) importing from
+   `@fleetos/health` (worker-b) — correctly FAILED with
+   `CROSS_LANE_IMPORT: ... only @fleetos/contracts may cross lanes`.
+2. A file in `packages/recovery/` (worker-a) importing from
+   `@fleetos/contracts` (tech-lead, the shared seam) — correctly PASSED.
+
+Both temp files were removed after verification.
+
+### Frozen spec files
+
+No frozen spec file was modified in W002. The two confirmed ownership path
+claims from W001 (`apps/web/` -> tech-lead, `packages/integrations/adcos/`
+-> worker-a, per ADR-0001) are unchanged. The only files modified outside
+`packages/contracts/` are:
+
+- `docs/tech-lead/SKELETON-NOTES.md` (this section).
+- `spec/PROJECT-STATE.md` (status update to W002 done).
+- `tsconfig.json` (root — added `packages/*/test/**/*.ts` to the include
+  list so root typecheck covers test files).
+- `packages/contracts/tsconfig.json` (added `test/**/*.ts` to include list
+  for the package-level typecheck).
+- `types/bun-test.d.ts` (relaxed `toBe(expected: T)` to `toBe(expected:
+  unknown)` to match Jest/Vitest semantics — branded-id equality tests
+  otherwise fail to compile).
+
+### Known limitations carried forward
+
+- `types/bun-test.d.ts` remains a minimal ambient shim. When `@types/bun`
+  is added in a later wave (W003 or a Tech-Lead ADR), this file should be
+  deleted and replaced with the canonical package.
+- The cross-lane import-boundary check covers static `import ... from "..."`
+  statements only. Dynamic `import("...")` expressions are not checked.
+- The intent payload shapes (`MaintainDeviceIntentPayload`,
+  `SecurityRemediationIntentPayload`, etc.) are intentionally minimal
+  placeholders — they will be refined by the owning work items (W040
+  Recovery, W031 Security Doctor, W042 Maintenance, W032 Procurement,
+  W041 Fleet Actions, W050A ADCOS) when those work items are authorized.
+  Workers will extend the payloads via additive optional fields (no
+  breaking change) within schemaVersion 1.

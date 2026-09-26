@@ -20,7 +20,7 @@ declare module "bun:test" {
   }
 
   export interface Expect<T> {
-    toBe(expected: T): void;
+    toBe(expected: unknown): void;
     toEqual(expected: unknown): void;
     toStrictEqual(expected: unknown): void;
     toBeTruthy(): void;
