@@ -10,12 +10,14 @@ owners:
       - packages/contracts/
       - tools/
       - .github/
+      - apps/web/
       - apps/web/shell/
   worker-a:
     paths:
       - apps/agent/
       - packages/device-adapters/
       - packages/recovery/
+      - packages/integrations/adcos/
       - apps/web/device/
       - apps/web/recovery/
   worker-b:

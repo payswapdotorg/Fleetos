@@ -1,5 +1,18 @@
-# FleetOS Web
+# @fleetos/web
 
-Future control-tower application.
+Control-plane web app placeholder (NO Next.js scaffolding yet — later wave). Consumes public domain contracts only; must not access adapter/provider implementations directly.
 
-The web app consumes public domain contracts only. It must not access adapter/provider implementations directly.
+## Ownership
+
+Lane: `tech-lead` (per `spec/worker-ownership.yaml`).
+
+## Frozen spec source
+
+apps/web/README.md; spec/ARCHITECTURE.md § Storage; spec/ARCHITECTURE-LOCK.md item 19.
+
+## W001 state
+
+Placeholder package established by W001. The `src/index.ts` file exports only
+`MODULE_NAME` and `MODULE_VERSION`. Real domain types, event schemas and contracts
+arrive with the owning work item. Do not import internals across module boundaries
+(see `tools/check-ownership.mjs`).

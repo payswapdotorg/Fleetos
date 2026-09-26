@@ -1,0 +1,141 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "@payswapdotorg/fleetos",
+      "devDependencies": {
+        "typescript": "^5.6.0",
+      },
+    },
+    "apps/agent": {
+      "name": "@fleetos/agent",
+      "version": "0.1.0",
+    },
+    "apps/web": {
+      "name": "@fleetos/web",
+      "version": "0.1.0",
+    },
+    "packages/actions": {
+      "name": "@fleetos/actions",
+      "version": "0.1.0",
+    },
+    "packages/audit": {
+      "name": "@fleetos/audit",
+      "version": "0.1.0",
+    },
+    "packages/contracts": {
+      "name": "@fleetos/contracts",
+      "version": "0.1.0",
+    },
+    "packages/device-adapters": {
+      "name": "@fleetos/device-adapters",
+      "version": "0.1.0",
+    },
+    "packages/device-model": {
+      "name": "@fleetos/device-model",
+      "version": "0.1.0",
+    },
+    "packages/health": {
+      "name": "@fleetos/health",
+      "version": "0.1.0",
+    },
+    "packages/identity": {
+      "name": "@fleetos/identity",
+      "version": "0.1.0",
+    },
+    "packages/integrations/adcos": {
+      "name": "@fleetos/integration-adcos",
+      "version": "0.1.0",
+    },
+    "packages/integrations/arena": {
+      "name": "@fleetos/integration-arena",
+      "version": "0.1.0",
+    },
+    "packages/integrations/aurum": {
+      "name": "@fleetos/integration-aurum",
+      "version": "0.1.0",
+    },
+    "packages/learning": {
+      "name": "@fleetos/learning",
+      "version": "0.1.0",
+    },
+    "packages/maintenance": {
+      "name": "@fleetos/maintenance",
+      "version": "0.1.0",
+    },
+    "packages/policy": {
+      "name": "@fleetos/policy",
+      "version": "0.1.0",
+    },
+    "packages/procurement": {
+      "name": "@fleetos/procurement",
+      "version": "0.1.0",
+    },
+    "packages/recovery": {
+      "name": "@fleetos/recovery",
+      "version": "0.1.0",
+    },
+    "packages/security": {
+      "name": "@fleetos/security",
+      "version": "0.1.0",
+    },
+    "packages/software": {
+      "name": "@fleetos/software",
+      "version": "0.1.0",
+    },
+    "packages/vendors": {
+      "name": "@fleetos/vendors",
+      "version": "0.1.0",
+    },
+    "packages/workloads": {
+      "name": "@fleetos/workloads",
+      "version": "0.1.0",
+    },
+  },
+  "packages": {
+    "@fleetos/actions": ["@fleetos/actions@workspace:packages/actions"],
+
+    "@fleetos/agent": ["@fleetos/agent@workspace:apps/agent"],
+
+    "@fleetos/audit": ["@fleetos/audit@workspace:packages/audit"],
+
+    "@fleetos/contracts": ["@fleetos/contracts@workspace:packages/contracts"],
+
+    "@fleetos/device-adapters": ["@fleetos/device-adapters@workspace:packages/device-adapters"],
+
+    "@fleetos/device-model": ["@fleetos/device-model@workspace:packages/device-model"],
+
+    "@fleetos/health": ["@fleetos/health@workspace:packages/health"],
+
+    "@fleetos/identity": ["@fleetos/identity@workspace:packages/identity"],
+
+    "@fleetos/integration-adcos": ["@fleetos/integration-adcos@workspace:packages/integrations/adcos"],
+
+    "@fleetos/integration-arena": ["@fleetos/integration-arena@workspace:packages/integrations/arena"],
+
+    "@fleetos/integration-aurum": ["@fleetos/integration-aurum@workspace:packages/integrations/aurum"],
+
+    "@fleetos/learning": ["@fleetos/learning@workspace:packages/learning"],
+
+    "@fleetos/maintenance": ["@fleetos/maintenance@workspace:packages/maintenance"],
+
+    "@fleetos/policy": ["@fleetos/policy@workspace:packages/policy"],
+
+    "@fleetos/procurement": ["@fleetos/procurement@workspace:packages/procurement"],
+
+    "@fleetos/recovery": ["@fleetos/recovery@workspace:packages/recovery"],
+
+    "@fleetos/security": ["@fleetos/security@workspace:packages/security"],
+
+    "@fleetos/software": ["@fleetos/software@workspace:packages/software"],
+
+    "@fleetos/vendors": ["@fleetos/vendors@workspace:packages/vendors"],
+
+    "@fleetos/web": ["@fleetos/web@workspace:apps/web"],
+
+    "@fleetos/workloads": ["@fleetos/workloads@workspace:packages/workloads"],
+
+    "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+  }
+}
