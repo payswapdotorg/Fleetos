@@ -23,6 +23,10 @@
     "packages/audit": {
       "name": "@fleetos/audit",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+      },
     },
     "packages/contracts": {
       "name": "@fleetos/contracts",
@@ -46,6 +50,9 @@
     "packages/identity": {
       "name": "@fleetos/identity",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
     },
     "packages/integrations/adcos": {
       "name": "@fleetos/integration-adcos",

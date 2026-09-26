@@ -576,3 +576,183 @@ form that keeps every baseline test green.
   later infrastructure wave.
 - Back-pressure drain is manual (`drain(n)`); an automatic drain
   scheduler is a deployment concern, not a library concern.
+
+## W012 — Lane C: tenant/auth/audit foundations
+
+Implemented by W012 (worker-c) on branch `work/w012`, base
+`integration/wave0` @ `e9d1e71` (the W011 acceptance commit — the branch had
+advanced past the W003 commit named in the work order; the required harness
+artifacts `tools/check-contracts.mjs` and
+`packages/contracts/src/testing.ts` are present, and the W011 lane-B code
+does not intersect lane C). Deliverables D1-D4 landed in two packages:
+
+- `@fleetos/identity` (`packages/identity/`) — D1 tenant isolation
+  primitives, D2 actor identity, D4 scoped authorization primitives.
+- `@fleetos/audit` (`packages/audit/`) — D3 append-only hash-chained audit.
+
+Module maps and error codes are documented in each package's source headers
+and `src/index.ts`. Test suite: 125 new tests across 8 files; full suite
+after W012: 371 pass, 0 fail (246 baseline + 125 new). All gates green
+(`bun run check` — architecture + ownership + skeleton + contracts snapshot
+150 exports unchanged; `bun run typecheck`; `bun test`).
+
+### D1 — Tenant isolation primitives
+
+`TenantContext` (identity/tenant-context.ts) is the mandatory FIRST
+parameter of every store operation in this lane. Two guards back the type
+system at runtime: `requireTenantContext` rejects context-free access (the
+harness deliberately bypasses the types with `undefined as never` to prove
+the guard), and `assertTenantIsolation` rejects cross-tenant access (acting
+context tenant vs resource tenant). Both throw `TenantIsolationError`,
+which carries an `AuthorizationError`-shaped `FleetError` projection (403
+via `toApiError`).
+
+`TenantScopedStore` (identity/tenant-store.ts) keys every read/write by the
+TenantId on the acting context; the in-memory reference implementation
+partitions by tenant and exposes NO API that names another tenant —
+cross-tenant reads are impossible by construction, not by discipline.
+
+`runTenantIsolationSuite` (identity/isolation.ts) is the reusable isolation
+test harness: seven machine-named checks (own-tenant roundtrip, cross-tenant
+read miss, same-key partition, context-free rejection, invalid-context
+rejection, scoped enumeration, scoped remove). Same-lane packages
+(workloads/vendors/procurement/software/maintenance — later work items)
+consume it via import; cross-lane lanes reuse it conceptually (the ownership
+gate forbids importing @fleetos/identity from other lanes). The identity
+test suite proves the harness DETECTS violations via two negative controls:
+a tenant-ignoring store fails four checks; a guard-ignoring store fails the
+two context checks.
+
+### D2 — Actor identity
+
+Principals (identity/principal.ts): `UserPrincipal`, `ServicePrincipal`,
+`AgentPrincipal` — a tenant-bound discriminated union with stable
+`principalId` grammars (`usr:`, `svc:`, `agt:`). `PrincipalRef` is the
+compact projection role assignments, grants, and audit actor references key
+on.
+
+Credentials (identity/credential.ts): SHAPES only, per the work order —
+`OpaqueToken` branded value type with a canonical `fst_[a-z0-9]{24,128}`
+grammar (a lookup key, never parsed), `IssuedCredential` (token, tenant
+binding, principal, injected issued-at/expiry, issuer), and the injected
+`TokenValidator`/`TokenIssuer` seams. No crypto runtime dependency, no
+real auth server: the reference `createInMemoryTokenRegistry` validates in
+a fixed deterministic order (malformed -> unknown -> revoked ->
+not_yet_valid -> expired -> tenant_mismatch -> invalid_now), every
+timestamp injected. The default token generator is a deterministic counter
+(inject a generator for entropy or test determinism).
+
+Roles (identity/roles.ts): `RoleDefinition` (sorted-unique permission set),
+`RoleAssignment` (principal -> role within a tenant, optional time-box),
+and `resolvePermissions` — the deterministic fold at an injected `at`.
+Fail-closed policy throughout: malformed expiry, and unparseable `at`,
+never widen permissions; deviations are disclosed in `skipped`, never
+thrown.
+
+### D3 — Append-only audit
+
+`AuditRecord` (audit/record.ts) answers who/what/when/where/outcome with
+correlation to the frozen contracts: `relatedEventIds` (EventEnvelope ids),
+`correlationId`/`causationId`, and an optional `guardianDecision`
+(populated from W031 onward — the frozen contracts require every
+consequential action to carry a GuardianDecision in its audit record; the
+field is optional because the Guardian itself does not exist yet).
+
+Hash chain: each record carries the prior record's hash (genesis sentinel
+for #1) and its own content hash over canonical JSON (recursively sorted
+keys — key insertion order can never change a digest). The hash function is
+INJECTED (`HashFn`); the reference implementation is FNV-1a 32-bit
+(deterministic, non-cryptographic; production injects SHA-256 at the
+storage boundary). `verifyAuditChain` is a PURE walk (exported for
+hand-built chains in tests) that reports the FIRST failure with
+machine-stable kinds: `tenant_mismatch` (spliced foreign record),
+`sequence_gap` (removed/reordered), `chain_break` (re-hashed forgery breaks
+the next record's prior link), `hash_mismatch` (content tampering).
+
+`AuditLog` (audit/log.ts) exposes EXACTLY append / records / head / verify
+/ size — NO update, NO delete, NO truncation API AT ALL (a type-level test
+asserts the key set both directions). Chains are per-tenant (own sequence,
+own genesis); every operation takes the `TenantContext` from
+`@fleetos/identity` as its first parameter. The sink adapter
+(audit/sink-adapter.ts) adapts the log to lane-local audit seams
+structurally (device-model's W011 `AuditSink` shape: { tenantId, action,
+subject, occurredAt, correlationId, causationId?, details }) — no
+cross-lane import occurs; the returned object satisfies any structurally
+identical seam. The seam's `subject` is preserved in `details.subject`.
+
+### D4 — Scoped authorization primitives
+
+`ResourceScope` (identity/authorization.ts): tenant-wide / device-scoped /
+workload-scoped, all carrying branded ids from the frozen contracts;
+`scopeCovers` is the pure coverage lattice (tenant covers device+workload
+of the same tenant; device covers only the same device; workload only the
+same workload).
+
+`checkPermission` (principal, scope, action) -> deterministic allow/deny
+WITH machine-stable sorted reasons. Fixed evaluation order: tenant_mismatch
+-> invalid_evaluation_time (fail-closed) -> unknown_action ->
+missing_permission -> consequential_requires_explicit_grant -> allow.
+Consequential actions (ActionDescriptor flag; ARCHITECTURE-LOCK item 4)
+require an EXPLICIT GRANT (scoped, time-boxed, injected-time evaluated) on
+top of the role permission — a role alone never authorizes a consequential
+action. This is the PRIMITIVE layer only; the Contract Guardian evaluation
+strategy is W031 and was deliberately not built. Deny decisions project to
+`AuthorizationError`-shaped FleetErrors (403) via `toAuthorizationFleetError`.
+
+### Judgment calls
+
+- **Same-lane import audit -> identity**: `@fleetos/audit` imports
+  `TenantContext` + the guards from `@fleetos/identity` (both packages are
+  worker-c paths; the ownership gate permits same-lane imports). This keeps
+  ONE canonical TenantContext concept for the whole lane rather than a
+  structurally-duplicated audit-local context type. Cross-lane consumers
+  are unaffected (they cannot import either package; the sink adapter is
+  the structural bridge).
+- **Audit actor reference is structural, not imported**: `AuditActorRef`
+  (kind/principalId/tenantId + a `system` kind for control-plane
+  emissions) is structurally satisfied by identity's `PrincipalRef`/`Principal`
+  — a principal projects onto an audit actor with zero conversion, while
+  audit stays importable by later lane-C packages without dragging the
+  principal union in.
+- **Synthetic sentinels for context-free errors**: the frozen
+  `FleetErrorBase` convention is "system errors use a synthetic tnt_system
+  tenant id" and "a fresh correlation id is stamped". `tnt_system` does not
+  satisfy the canonical tenant grammar (6 chars after the prefix; grammar
+  requires 8) — used only in ERROR PROJECTIONS for context-free violations,
+  never as a store key. A random fresh correlation id would violate the
+  determinism rule, so the fixed sentinel `cor_system` is used (disclosed
+  here for TL review).
+- **Failure-closed time handling everywhere**: unparseable `at`/`now`/
+  `expiresAt` values never widen authorization or token validity (deny /
+  expired / invalid_now respectively). Deterministic and safe by default.
+- **makeUserId does not exist in the frozen testing surface**: the work
+  order's illustrative fixture list names `makeUserId`, but
+  `@fleetos/contracts/testing` ships no such builder (contracts are frozen;
+  no change requested). Tests construct deterministic UserIds via
+  `asUserId` from the frozen contracts instead.
+- **Revocation is permanent and immediate** in the reference token
+  registry (recorded, never time-traveled); production semantics belong to
+  the injected validator seam.
+- **Reason arrays are globally sorted-unique** in authorization decisions
+  (role:* and explicit_grant:* interleaved), making the reason contract
+  deterministic and diff-stable.
+
+### Known limitations
+
+- The in-memory `AuditLog`/`TenantScopedStore`/token registry are reference
+  seams; the PostgreSQL-backed implementations (ARCHITECTURE.md § Storage)
+  are a later infrastructure wave.
+- Hash-chain verification detects content tampering, chain corruption,
+  sequence gaps, and foreign-record splices; it cannot detect a CONSISTENT
+  full-chain rewrite by an attacker who can also re-anchor the head (no
+  external anchoring exists yet). `AuditLog.head()` exposes the head hash
+  for future external anchoring (periodic pinning to object storage).
+- Truncation of the chain TAIL is not detectable by the walk alone (a
+  verified prefix is indistinguishable from a complete chain); the same
+  external anchoring closes this.
+- The FNV-1a reference hash is non-cryptographic (32-bit); acceptable for
+  the in-memory reference deployment and tests only — production MUST
+  inject a cryptographic hash.
+- The scope model covers tenant/device/workload per the work order; further
+  scope kinds (e.g. data-classification scopes) belong to W031 and later
+  policy waves, added as new union arms.
