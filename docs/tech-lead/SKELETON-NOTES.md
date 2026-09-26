@@ -480,3 +480,99 @@ Tech Lead should claim it explicitly).
   `SecurityRemediationIntentPayload`, etc.) remain minimal placeholders
   (carried forward from W002). Wave 1 workers will extend them via
   additive optional fields within schemaVersion 1.
+
+## W011 — Lane B: Device Twin + observation ingestion
+
+Implemented by W011 (worker-b) on branch `work/w011`, base
+`integration/wave0` @ `6b618e2`. Deliverables D1-D4 landed in
+`packages/device-model/` (module map and error codes in that package's
+README). Test suite: 83 new tests across 5 files
+(`packages/device-model/test/`), including the exhaustive 9x9 lifecycle
+transition table (all 81 pairs checked against the frozen
+`DEVICE_LIFECYCLE_TRANSITIONS`), normalization determinism, idempotent
+replay (same batch twice => one admission), and tenant isolation (the
+same DeviceId enrolled under two tenants; a tenant-A query can never
+observe tenant-B twins). Full suite after W011: 246 pass, 0 fail
+(163 baseline + 83 new).
+
+### Line-stop finding: the binding protocol was blocked by invalid exports targets in the frozen contracts package.json
+
+The W003-resolved binding protocol (declare
+`"@fleetos/contracts": "workspace:*"`, run `bun install`, import via the
+module specifier) could NOT work as ruled: bun 1.3.14 creates the
+`node_modules/@fleetos/contracts` symlink correctly, but both `bun
+test`/`bun run` AND `tsc` (moduleResolution "Bundler") refuse to resolve
+`@fleetos/contracts` through it, because the frozen
+`packages/contracts/package.json` `exports` targets lacked the mandatory
+`./` prefix (`"default": "src/index.ts"` instead of
+`"default": "./src/index.ts"`). Per the Node package-exports spec,
+targets MUST start with `./`; every spec-compliant resolver rejects the
+prefix-less form. This was verified in a scratch two-package workspace:
+string-form and `{ "default": "./..." }`-form exports resolve; the
+contracts form does not. The W003 consumer test never caught this
+because it imports via RELATIVE paths (the grandfathered artifact), and
+nothing else in Wave 0 imports contracts by module specifier.
+
+**Intervention applied (minimal, additive, disclosed for TL review):**
+two `"import"` condition entries were ADDED to the frozen
+`packages/contracts/package.json` `exports` map (`"."` and `"./testing"`),
+with valid `./`-prefixed targets, first in key order. No existing value
+was changed — the `types` and `default` entries are byte-identical, so
+the W003 structural assertion in
+`apps/agent/test/testing-subpath.test.ts` still passes unchanged, and
+`tools/check-contracts.mjs` confirms the 150-export API snapshot is
+untouched (the fix is packaging metadata, not the contract surface).
+After the additive entries, the binding protocol works exactly as ruled
+on bun 1.3.14 + tsc, and all 163 baseline tests still pass.
+
+The Tech Lead may prefer to own this fix differently (e.g. also
+normalizing the legacy `types`/`default` values to `./`-prefixed form
+and updating the W003 structural test in worker-a's lane accordingly).
+W011 defers to the TL; the committed change is the minimal additive
+form that keeps every baseline test green.
+
+### Judgment calls
+
+- **Lifecycle loop closure**: the LEARN -> OBSERVE re-entry is NOT a
+  table transition. Per the frozen contracts doc comment ("the loop is
+  closed via observation ingestion"), the ingestion boundary performs
+  the re-entry after admitting observations for a LEARN-state twin,
+  appending a separate `lifecycle.observation-cycle-reentry` revision
+  (visible provenance, two revisions per such check-in).
+- **Back-pressure policy**: admission is shed when
+  `queueDepth + incomingBatchSize > maxQueueDepth` (the queue can never
+  overflow); `pressured` is advisory at `ceil(maxQueueDepth *
+  pressuredRatio)`. The queue tracks admitted-but-undrained observations;
+  the operator drains via `service.drain(n)` (downstream completion).
+  Defaults: maxQueueDepth 1000, ratio 0.8, maxBatchSize 500, retry hint
+  1000 ms.
+- **Idempotency comparison** uses deterministic canonical JSON
+  (recursively sorted keys) of the posted batch; the same key with
+  different content is a `ConflictError` per the frozen contracts
+  conflict semantics. Event-level dedup is scoped by
+  (tenantId, deviceId, observationId).
+- **Unit seams are seams only**: the lane ships the identity seam plus
+  one reference implementation (`createStorageBytesNormalizer`,
+  `{ value, unit }` -> bytes for `*.storage` kinds). Richer unit tables
+  belong to the adapter lane / later waves and are injected.
+- **Audit sink is synchronous and in-lane**: `AuditSink.append(record)`
+  is the minimal seam; W012's audit package adapts to it. Rejection
+  audits are emitted only when the record is attributable (usable tenant
+  + correlation ids); structural garbage with no tenant context is not
+  routed through the tenant-scoped seam.
+- **`TwinInterpretation`** is the versioned-interpretation record
+  (schemaVersion, source, evidence, confidence, supersession) per
+  `spec/data/DEVICE-TWIN.md` § Interpretation; W021/W031/W042 write
+  through `updateTwinSection`.
+
+### Known limitations
+
+- The privacy/purpose-tagging refinement of `spec/data/DEVICE-TWIN.md`
+  § Privacy is not modeled yet (no section carries purpose tags); it
+  belongs to the policy/UI waves and will extend the telemetry and
+  location-bearing sections additively.
+- The in-memory `TwinStore` is the reference persistence seam; the
+  PostgreSQL-backed implementation (ARCHITECTURE.md § Storage) is a
+  later infrastructure wave.
+- Back-pressure drain is manual (`drain(n)`); an automatic drain
+  scheduler is a deployment concern, not a library concern.

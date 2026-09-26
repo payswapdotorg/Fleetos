@@ -35,6 +35,9 @@
     "packages/device-model": {
       "name": "@fleetos/device-model",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
     },
     "packages/health": {
       "name": "@fleetos/health",
