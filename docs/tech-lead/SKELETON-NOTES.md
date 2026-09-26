@@ -291,3 +291,192 @@ claims from W001 (`apps/web/` -> tech-lead, `packages/integrations/adcos/`
   W041 Fleet Actions, W050A ADCOS) when those work items are authorized.
   Workers will extend the payloads via additive optional fields (no
   breaking change) within schemaVersion 1.
+
+## W003 — Contract-test harness (frozen for Wave 1)
+
+W003 established the architecture/contract test harness that lets Wave
+1's three parallel workers (W010 [A], W011 [B], W012 [C]) build without
+drift. The harness has four pieces:
+
+### 1. Public-contract gate — `tools/check-contracts.mjs` + golden snapshot
+
+- **Workspace contract gate.** For every `@fleetos/*` workspace package:
+  `src/index.ts` MUST export `MODULE_NAME` and `MODULE_VERSION`;
+  `package.json` `name` MUST start with `@fleetos/` and match the
+  directory scope (with an exception for `packages/integrations/*`
+  sub-directories whose name uses a different convention, e.g.
+  `adcos/` -> `@fleetos/integration-adcos`); the package MUST resolve
+  from the root `workspaces` glob list.
+- **Golden snapshot.** `tools/contracts-api.snapshot.json` is a sorted,
+  deterministic list of every exported name (and its syntactic kind:
+  `const`/`function`/`interface`/`type`/`class`/`enum`/`re-export`)
+  reachable from `packages/contracts/src/index.ts` (recursively following
+  `export * from "./..."` re-exports). The snapshot currently captures
+  **150 exports** across 10 modules (`ids`, `tenant`, `events`,
+  `commands`, `intents`, `device`, `observations`, `policy`, `errors`,
+  `versioning`). The breakdown by kind: 47 const, 37 function, 31
+  interface, 35 type.
+- **Compare vs regen.** Default mode COMPARES the freshly-computed API
+  against the committed snapshot; any added/removed/renamed/kind-changed
+  export FAILS with a precise diff. `--regen` rewrites the snapshot
+  deliberately. Wired into `bun run check` via the new
+  `check:contracts` script (D1 + D4).
+- **Subpath NOT snapshotted.** The `@fleetos/contracts/testing` subpath
+  is intentionally NOT in the snapshot — testing fixtures are not part
+  of the public contracts surface and should not pollute the contract
+  drift signal. Wave 1 may snapshot the testing subpath separately if
+  needed.
+
+### 2. Fixture strategy — `@fleetos/contracts/testing` subpath
+
+- **Module.** `packages/contracts/src/testing.ts` exposes 22 public
+  functions (10 ID builders + `makeTimestamp` + 6 envelope/command/intent
+  builders + `makeAllIntents` + 2 adapter-capabilities builders + 2
+  guardian-decision builders + 2 fleet-error builders + 1 observation-
+  batch builder) + the `SeededRng` class + 3 constants
+  (`FIXTURE_TIME_ANCHOR`, `TESTING_MODULE_NAME`, `TESTING_MODULE_VERSION`).
+- **Subpath export.** `packages/contracts/package.json` `exports` now
+  has `"./testing"` -> `"src/testing.ts"`. Wave 1 workers import via
+  `import { ... } from "@fleetos/contracts/testing"`.
+- **Determinism.** All builders are seeded (number or string). The PRNG
+  is a tiny xorshift32 seeded either by a uint32 directly or by an
+  FNV-1a hash of a string seed. No `Math.random()`, `Date.now()`,
+  `crypto.randomBytes()`, or any other clock/entropy source is consulted.
+  Timestamps are injected via `makeTimestamp(seed)`, which derives a
+  seeded offset in `[0, 86_400_000)` ms (one day) from the fixed
+  `FIXTURE_TIME_ANCHOR = "2026-01-01T00:00:00Z"`.
+- **Valid by construction.** Every envelope/command/intent/batch
+  produced by a builder satisfies the corresponding W002 invariant
+  validator (`validateEnvelope`, `validateCommand`,
+  `validateObservationBatch`, `validateTenantRef`). The W003 testing
+  tests (`packages/contracts/test/testing.test.ts`) re-use the W002
+  validators to assert this.
+- **Tenant isolation.** A `tenantId` flows through every builder. A
+  fixture produced with tenant A references only tenant A — there is no
+  path by which tenant B's identifier appears in the fixture. Cross-
+  tenant fixtures require explicit `tenantId` overrides on each builder
+  call. Documented in `docs/tech-lead/FIXTURES.md`.
+
+### 3. Import-boundary hardening — `tools/check-ownership.mjs`
+
+- **Three new forms.** The W001 scanner caught only static
+  `import ... from "..."`. W003 extends it to also catch:
+  - `import type { X } from "@fleetos/y"` (static, type-only)
+  - `await import("@fleetos/y")` (dynamic ES module import)
+  - `require("@fleetos/y")` (CommonJS require)
+- **Violation messages.** Each violation now reports the form (static /
+  dynamic-import / require) and the line number, e.g.
+  `CROSS_LANE_IMPORT: packages/foo/src/x.ts:42 (lane: worker-a) dynamic-import("@fleetos/bar") from packages/bar/ (lane: worker-b) — only @fleetos/contracts may cross lanes`.
+- **Shared seam preserved.** `@fleetos/contracts` (including its
+  subpaths like `@fleetos/contracts/testing`) remains the only package
+  that may be imported across lanes. The W003 hardening does NOT
+  change this rule — it only tightens enforcement.
+- **Test harness.** `tools/check-ownership.test.mjs` is a standalone
+  node script (no test framework) that verifies the regexes catch all
+  three forms and produce correct line numbers. Run via
+  `node tools/check-ownership.test.mjs`. NOT wired into `bun run check`
+  (it's a tool test, not a contract test).
+
+### 4. CI sanity — `tools/check-architecture.mjs`
+
+- **YAML structural check.** `tools/check-architecture.mjs` now asserts
+  the CI workflow (`.github/workflows/ci.yml`) has the required shape:
+  top-level `name: CI`, `on:` with `push:` and `pull_request:`
+  triggers, `branches: [main]`, `jobs:` block running `bun install`,
+  `bun run check`, `bun run typecheck`, `bun test`. Also asserts the
+  workflow uses `oven-sh/setup-bun`. This catches accidental corruption
+  of the workflow file (e.g. a bad merge that drops the `check:contracts`
+  step).
+- **CI workflow itself unchanged.** Per the W003 work order,
+  `.github/workflows/ci.yml` is byte-clean on this base — no repair
+  needed. The `bun run check` step now automatically includes
+  `check:contracts` because the `check` script was updated to chain it.
+
+### Tests
+
+W003 added two new test files:
+
+- `packages/contracts/test/testing.test.ts` — 59 tests covering the
+  PRNG, timestamps, every ID builder, every envelope/command/intent
+  builder (including all nine intent kinds), adapter-capabilities
+  builders, guardian-decision builders (all four types), fleet-error
+  builders (all six kinds), observation-batch builder, determinism
+  (same seed => same value, byte-for-byte), and tenant-isolation
+  rules.
+- `apps/agent/test/testing-subpath.test.ts` — 15 tests proving the
+  testing subpath is importable from another lane's test dir (worker-a's
+  `apps/agent/test/`). Uses relative imports because bun 1.3.14 does
+  NOT auto-symlink workspace packages into `node_modules` (see Line-
+  stop finding below). Also structurally verifies the `./testing`
+  subpath is configured in `packages/contracts/package.json` exports.
+
+Total: `bun test` now runs 163 tests across 31 files (89 baseline + 59
+testing + 15 consumer), 0 failures, 1860 `expect()` calls.
+
+The standalone `tools/check-ownership.test.mjs` runs 12 tests (not part
+of `bun test`; it's a node script).
+
+### Frozen spec files
+
+No frozen spec file was modified in W003. The only files modified
+outside `tools/`, `packages/contracts/`, `docs/tech-lead/`, and
+`spec/PROJECT-STATE.md` are:
+
+- `package.json` (root — added `check:contracts` script and chained it
+  into `check`).
+- `tsconfig.json` (root — UNCHANGED; the W003 work order's allowed-
+  paths list does not include root `tsconfig.json`, so the consumer
+  test in `apps/agent/test/` is NOT typechecked by root `tsc`. This is
+  consistent with W001's no-`@fleetos/*`-path-mapping rule; the
+  consumer test runs via `bun test` only).
+
+### Line-stop finding: bun workspace resolution gap
+
+The W001 SKELETON-NOTES claim:
+
+> "**`@fleetos/*` path mapping is intentionally NOT used.** Per the work
+> order, packages import each other by workspace package name only
+> (e.g., `import { x } from "@fleetos/contracts"`). Bun's workspace
+> resolution handles the rest. No `paths` entry is needed in
+> `tsconfig.base.json`."
+
+is INCORRECT for cross-package imports. Bun 1.3.14 does NOT auto-symlink
+workspace packages into `node_modules` for private packages, even when
+the consuming package declares `@fleetos/contracts: workspace:*` as a
+dependency. Cross-package `@fleetos/contracts` imports from
+`apps/agent/test/` fail with `Cannot find module '@fleetos/contracts'`.
+
+This is a pre-existing infrastructure gap (W001 design), NOT a W003
+regression. The W003 consumer test in `apps/agent/test/` works around
+the gap by importing via relative paths (`../../../packages/contracts/
+src/testing`). The `@fleetos/contracts/testing` subpath IS correctly
+configured in `packages/contracts/package.json` `exports` — the gap is
+in bun's resolution, not in the contracts package configuration.
+
+**Recommended Tech-Lead fix before Wave 1:** either (a) add
+`@fleetos/contracts: workspace:*` to every consuming package's
+`package.json` and verify bun creates the symlink in `node_modules`;
+OR (b) add a `paths` mapping to `tsconfig.base.json` for `@fleetos/*`
+and a corresponding `node_modules/@fleetos/contracts` symlink (or
+bunfig.toml resolution config). Option (b) requires modifying
+`tsconfig.base.json` (currently unclaimed in the ownership yaml — the
+Tech Lead should claim it explicitly).
+
+### Known limitations carried forward (post-W003)
+
+- `types/bun-test.d.ts` remains a minimal ambient shim. The W003
+  testing tests use only the matchers declared in the shim
+  (`toBe`, `toEqual`, `toBeTruthy`, `toContain`, `toMatch`). When
+  `@types/bun` is added in a later wave, this file should be deleted
+  and replaced with the canonical package, and the testing tests can
+  use the full matcher API (`toBeGreaterThan`, etc.).
+- The bun workspace resolution gap (see Line-stop finding above) means
+  Wave 1 contract tests in worker lanes must import the testing module
+  via relative paths until the Tech Lead resolves the gap. The
+  `@fleetos/contracts/testing` subpath is correctly configured but
+  not resolvable via `import { ... } from "@fleetos/contracts/testing"`
+  from outside the contracts package.
+- The intent payload shapes (`MaintainDeviceIntentPayload`,
+  `SecurityRemediationIntentPayload`, etc.) remain minimal placeholders
+  (carried forward from W002). Wave 1 workers will extend them via
+  additive optional fields within schemaVersion 1.

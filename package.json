@@ -12,7 +12,8 @@
     "check:architecture": "node tools/check-architecture.mjs",
     "check:ownership": "node tools/check-ownership.mjs",
     "check:skeleton": "node tools/verify-skeleton.mjs",
-    "check": "bun run check:architecture && bun run check:ownership && bun run check:skeleton",
+    "check:contracts": "node tools/check-contracts.mjs",
+    "check": "bun run check:architecture && bun run check:ownership && bun run check:skeleton && bun run check:contracts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test"
   },

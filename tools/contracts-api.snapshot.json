@@ -1,0 +1,757 @@
+{
+  "$schema": "fleetos-contracts-snapshot/v1",
+  "packageName": "@fleetos/contracts",
+  "packageVersion": "0.1.0",
+  "exports": [
+    {
+      "name": "ALLOW",
+      "kind": "const",
+      "from": "src/policy.ts"
+    },
+    {
+      "name": "ALL_ADAPTER_CAPABILITIES",
+      "kind": "const",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "ALL_GUARDIAN_DECISION_TYPES",
+      "kind": "const",
+      "from": "src/policy.ts"
+    },
+    {
+      "name": "ALL_INTENT_KINDS",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "ASSESS",
+      "kind": "const",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "AUTHORIZE",
+      "kind": "const",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "AUTHORIZED",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "ActionId",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "AdapterCapabilities",
+      "kind": "interface",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "AdapterError",
+      "kind": "interface",
+      "from": "src/errors.ts"
+    },
+    {
+      "name": "ApiError",
+      "kind": "interface",
+      "from": "src/errors.ts"
+    },
+    {
+      "name": "AuditRecordId",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "AuthorizationError",
+      "kind": "interface",
+      "from": "src/errors.ts"
+    },
+    {
+      "name": "BLOCK",
+      "kind": "const",
+      "from": "src/policy.ts"
+    },
+    {
+      "name": "BLOCKING_DECISION_TYPES",
+      "kind": "const",
+      "from": "src/policy.ts"
+    },
+    {
+      "name": "BrandTag",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "Branded",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "CANCELLED",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "COMPLETED",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "CONNECTIVITY_INTENT_KIND",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "CapabilityAssertion",
+      "kind": "type",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "CausationId",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "CommandEnvelope",
+      "kind": "interface",
+      "from": "src/commands.ts"
+    },
+    {
+      "name": "CommandId",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "CommandType",
+      "kind": "type",
+      "from": "src/commands.ts"
+    },
+    {
+      "name": "CommandValidation",
+      "kind": "type",
+      "from": "src/commands.ts"
+    },
+    {
+      "name": "ConflictError",
+      "kind": "interface",
+      "from": "src/errors.ts"
+    },
+    {
+      "name": "ConnectivityIntentPayload",
+      "kind": "interface",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "CorrelationId",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "DESTRUCTIVE_CAPABILITIES",
+      "kind": "const",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "DEVICE_LIFECYCLE_ORDER",
+      "kind": "const",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "DEVICE_LIFECYCLE_TRANSITIONS",
+      "kind": "const",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "DIAGNOSE",
+      "kind": "const",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "DISPATCHED",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "DeviceId",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "DeviceLifecycleState",
+      "kind": "type",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "DomainError",
+      "kind": "interface",
+      "from": "src/errors.ts"
+    },
+    {
+      "name": "ENROLL",
+      "kind": "const",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "EXECUTE",
+      "kind": "const",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "EXECUTING",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "EnvelopeValidation",
+      "kind": "type",
+      "from": "src/events.ts"
+    },
+    {
+      "name": "EventCause",
+      "kind": "type",
+      "from": "src/events.ts"
+    },
+    {
+      "name": "EventEnvelope",
+      "kind": "interface",
+      "from": "src/events.ts"
+    },
+    {
+      "name": "EventId",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "EventSubject",
+      "kind": "type",
+      "from": "src/events.ts"
+    },
+    {
+      "name": "EventType",
+      "kind": "type",
+      "from": "src/events.ts"
+    },
+    {
+      "name": "EvidenceRef",
+      "kind": "interface",
+      "from": "src/policy.ts"
+    },
+    {
+      "name": "FAILED",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "FLEET_ACTION_INTENT_KIND",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "FleetActionIntentPayload",
+      "kind": "interface",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "FleetError",
+      "kind": "type",
+      "from": "src/errors.ts"
+    },
+    {
+      "name": "FleetErrorBase",
+      "kind": "interface",
+      "from": "src/errors.ts"
+    },
+    {
+      "name": "FleetErrorCode",
+      "kind": "type",
+      "from": "src/errors.ts"
+    },
+    {
+      "name": "FleetIntent",
+      "kind": "type",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "GuardianDecision",
+      "kind": "interface",
+      "from": "src/policy.ts"
+    },
+    {
+      "name": "GuardianDecisionType",
+      "kind": "type",
+      "from": "src/policy.ts"
+    },
+    {
+      "name": "INTENT_TRANSITIONS",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "IdempotencyKey",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "IntentEnvelope",
+      "kind": "interface",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "IntentId",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "IntentKind",
+      "kind": "type",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "IntentStatus",
+      "kind": "type",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "LEARN",
+      "kind": "const",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "MAINTAIN_DEVICE_INTENT_KIND",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "MIN_SCHEMA_VERSION",
+      "kind": "const",
+      "from": "src/versioning.ts"
+    },
+    {
+      "name": "MODULE_NAME",
+      "kind": "const",
+      "from": "src/index.ts"
+    },
+    {
+      "name": "MODULE_VERSION",
+      "kind": "const",
+      "from": "src/index.ts"
+    },
+    {
+      "name": "MaintainDeviceIntentPayload",
+      "kind": "interface",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "MakeCommandInput",
+      "kind": "interface",
+      "from": "src/commands.ts"
+    },
+    {
+      "name": "MakeEnvelopeInput",
+      "kind": "interface",
+      "from": "src/events.ts"
+    },
+    {
+      "name": "NON_TERMINAL_INTENT_STATUSES",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "OBSERVE",
+      "kind": "const",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "Observation",
+      "kind": "interface",
+      "from": "src/observations.ts"
+    },
+    {
+      "name": "ObservationBatch",
+      "kind": "interface",
+      "from": "src/observations.ts"
+    },
+    {
+      "name": "ObservationBatchValidation",
+      "kind": "type",
+      "from": "src/observations.ts"
+    },
+    {
+      "name": "ObservationId",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "ObservationKind",
+      "kind": "type",
+      "from": "src/observations.ts"
+    },
+    {
+      "name": "PLAN",
+      "kind": "const",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "PRINT_INTENT_KIND",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "PROCUREMENT_INTENT_KIND",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "PolicyError",
+      "kind": "interface",
+      "from": "src/errors.ts"
+    },
+    {
+      "name": "PolicyId",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "PrintIntentPayload",
+      "kind": "interface",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "ProcurementIntentPayload",
+      "kind": "interface",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "RECOVERY_INTENT_KIND",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "REJECTED",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "REPLACEMENT_INTENT_KIND",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "REQUESTED",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "REQUIRE_APPROVAL",
+      "kind": "const",
+      "from": "src/policy.ts"
+    },
+    {
+      "name": "RecoveryIntentPayload",
+      "kind": "interface",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "ReplacementIntentPayload",
+      "kind": "interface",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "RuleRef",
+      "kind": "interface",
+      "from": "src/policy.ts"
+    },
+    {
+      "name": "SECURITY_REMEDIATION_INTENT_KIND",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "SOFTWARE_SUBSCRIPTION_INTENT_KIND",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "SecurityRemediationIntentPayload",
+      "kind": "interface",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "SoftwareSubscriptionIntentPayload",
+      "kind": "interface",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "TENANT_ID_MAX_LENGTH",
+      "kind": "const",
+      "from": "src/tenant.ts"
+    },
+    {
+      "name": "TENANT_ID_MIN_LENGTH",
+      "kind": "const",
+      "from": "src/tenant.ts"
+    },
+    {
+      "name": "TENANT_ID_PATTERN",
+      "kind": "const",
+      "from": "src/tenant.ts"
+    },
+    {
+      "name": "TERMINAL_INTENT_STATUSES",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "TenantId",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "TenantRefValidation",
+      "kind": "type",
+      "from": "src/tenant.ts"
+    },
+    {
+      "name": "TenantScoped",
+      "kind": "interface",
+      "from": "src/tenant.ts"
+    },
+    {
+      "name": "UserId",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "VERIFIED",
+      "kind": "const",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "VERIFY",
+      "kind": "const",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "ValidationError",
+      "kind": "interface",
+      "from": "src/errors.ts"
+    },
+    {
+      "name": "ValidationFailure",
+      "kind": "interface",
+      "from": "src/errors.ts"
+    },
+    {
+      "name": "VendorId",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "VersionAssertion",
+      "kind": "type",
+      "from": "src/versioning.ts"
+    },
+    {
+      "name": "Versioned",
+      "kind": "interface",
+      "from": "src/versioning.ts"
+    },
+    {
+      "name": "WARN",
+      "kind": "const",
+      "from": "src/policy.ts"
+    },
+    {
+      "name": "WorkloadId",
+      "kind": "type",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asActionId",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asAuditRecordId",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asCausationId",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asCommandId",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asCorrelationId",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asDeviceId",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asEventId",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asIdempotencyKey",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asIntentId",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asObservationId",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asPolicyId",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asTenantId",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asUserId",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asVendorId",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "asWorkloadId",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "assertSupported",
+      "kind": "function",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "assertVersion",
+      "kind": "function",
+      "from": "src/versioning.ts"
+    },
+    {
+      "name": "brand",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "canTransition",
+      "kind": "function",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "canTransitionDevice",
+      "kind": "function",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "isBlockingDecision",
+      "kind": "function",
+      "from": "src/policy.ts"
+    },
+    {
+      "name": "isBranded",
+      "kind": "function",
+      "from": "src/ids.ts"
+    },
+    {
+      "name": "isDestructive",
+      "kind": "function",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "isSupported",
+      "kind": "function",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "isTerminalIntentStatus",
+      "kind": "function",
+      "from": "src/intents.ts"
+    },
+    {
+      "name": "isValidTenantId",
+      "kind": "function",
+      "from": "src/tenant.ts"
+    },
+    {
+      "name": "lifecycleIndex",
+      "kind": "function",
+      "from": "src/device.ts"
+    },
+    {
+      "name": "makeCommand",
+      "kind": "function",
+      "from": "src/commands.ts"
+    },
+    {
+      "name": "makeEnvelope",
+      "kind": "function",
+      "from": "src/events.ts"
+    },
+    {
+      "name": "makeGuardianDecision",
+      "kind": "function",
+      "from": "src/policy.ts"
+    },
+    {
+      "name": "makeVersioned",
+      "kind": "function",
+      "from": "src/versioning.ts"
+    },
+    {
+      "name": "serializeEnvelope",
+      "kind": "function",
+      "from": "src/events.ts"
+    },
+    {
+      "name": "toApiError",
+      "kind": "function",
+      "from": "src/errors.ts"
+    },
+    {
+      "name": "validateCommand",
+      "kind": "function",
+      "from": "src/commands.ts"
+    },
+    {
+      "name": "validateEnvelope",
+      "kind": "function",
+      "from": "src/events.ts"
+    },
+    {
+      "name": "validateObservationBatch",
+      "kind": "function",
+      "from": "src/observations.ts"
+    },
+    {
+      "name": "validateTenantRef",
+      "kind": "function",
+      "from": "src/tenant.ts"
+    }
+  ]
+}
