@@ -4,6 +4,10 @@
   "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "dependencies": {
+    "@fleetos/contracts": "workspace:*",
+    "@fleetos/device-model": "workspace:*"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test"

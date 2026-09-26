@@ -756,3 +756,197 @@ strategy is W031 and was deliberately not built. Deny decisions project to
 - The scope model covers tenant/device/workload per the work order; further
   scope kinds (e.g. data-classification scopes) belong to W031 and later
   policy waves, added as new union arms.
+
+## W021 — Lane B: health + diagnosis engine
+
+Implemented by W021 (worker-b) on branch `work/w021`, base
+`integration/wave0` @ `6234c0e` (the W012 acceptance commit — Wave 1
+complete). Deliverables D1-D5 landed in `packages/health/` (module map,
+determinism conventions, and error codes in that package's README).
+Test suite: 101 new tests across 6 files (`packages/health/test/`);
+full suite after W021: 472 pass, 0 fail (371 baseline + 101 new). All
+gates green (`bun run check` — architecture + ownership + skeleton +
+contracts snapshot 150 exports unchanged; `bun run typecheck`;
+`bun test`).
+
+### D1 — Signal model (`src/signals.ts`)
+
+Seven typed signal kinds (battery.capacity, storage.usage, memory.usage,
+cpu.usage, temperature.core, crash.event, boot.time), each with a fixed
+canonical unit and a documented source-observation payload shape
+(`SIGNAL_KIND_SPECIFICATIONS` is the frozen spec table). Derivation from
+canonical `Observation` values (the frozen contracts shape) is pure and
+versioned (`SIGNAL_MODEL_VERSION`); output order is the deterministic
+total order (observedAt, sourceObservationId, canonical kind order).
+Payload tolerance follows the frozen contracts rule ("modules consuming
+observations MUST tolerate unknown kinds"): unmapped kinds, shape misses,
+and out-of-range values are SKIPS with enumerable machine reasons —
+never errors, never silent coercion. A `device.health` payload may yield
+several signals from one observation (fixed extraction order:
+memory, cpu, temperature, crash, boot). Confidence is an explicit rule:
+direct payload reads 1.0, computed values (the storage used/total ratio)
+0.9. Rolling windows are injected (`(asOf - windowMs, asOf]`); an
+ISO-looking-but-unparseable `observedAt` (e.g. `T25:61`) skips with
+`observed_at_not_parseable` rather than rejecting the run. The Device
+Twin adapter `deriveSignalsFromTwin` derives from the W011 twin's
+bounded telemetry window with the twin's authoritative scope — the
+"health depends on devices" module edge realized as a same-lane
+workspace import.
+
+### D2 — Baselines (`src/baselines.ts`)
+
+`StatisticalSummary` with NEAREST-RANK percentiles (p50/p90/p95/p99 —
+always an observed sample, never interpolated; the convention is
+documented and tested against hand-computed samples) and POPULATION
+stddev. `buildDeviceBaseline` enforces scope by REJECTION (a
+foreign-tenant or foreign-device signal in the input is a caller bug,
+error `tenant_mismatch` / `device_mismatch` — never silent filtering);
+signals of other kinds are legal superset input. `buildModelBaselines`
+groups by (resolved hardware model, signal kind) through an INJECTED
+`DeviceModelResolver` seam (device identity is the device-model lane's;
+`createTwinModelResolver` is the twin-derived reference resolver) and
+reports unresolved devices — a model baseline never silently mixes
+unknown models. All windows are anchored at an injected `asOf`; the same
+inputs always produce the same baseline record. Versioned
+(`BASELINE_MODEL_VERSION`).
+
+### D3 — Anomaly detection (`src/anomalies.ts`)
+
+Seven explicit rules in three families (versioned
+`ANOMALY_RULES_VERSION`, thresholds overridable per run with frozen
+`DEFAULT_ANOMALY_THRESHOLDS`): threshold rules (battery.low <= 20/10
+percent, storage.near_full >= 0.90/0.95 ratio, temperature.high >=
+75/85 C) evaluate the LATEST in-window sample; deviation rules
+(memory.pressure, cpu.spike, boot.slow) compare it against the device's
+own baseline by z-score (WARNING >= 2, CRITICAL >= 3) with an explicit
+`MIN_BASELINE_SAMPLES = 8` guard and a documented zero-stddev epsilon
+path (`CONSTANT_BASELINE_Z = 1e6`, finite so `detail` stays
+JSON-serializable); the window-count rule (crash.burst >= 3/5 events in
+the trailing window) counts the in-window signals itself. Every anomaly
+carries severity, evidence correlated to the SOURCE OBSERVATION ids
+(subject_reading / window_event roles), rule context in `detail`, and a
+deterministic id (`anom_` + FNV-1a of the identity tuple — re-running
+detection reproduces identical ids). Non-firing evaluations are reported
+in `skipped` with machine reasons (no_signal_in_window, no_baseline,
+insufficient_baseline_samples, below_threshold). No ML anywhere: every
+decision is an explicit, enumerable, testable rule.
+
+### D4 — Diagnosis hypotheses + treatment recommendations (`src/diagnosis.ts`)
+
+Versioned `DiagnosisHypothesis`: candidate cause + evidence links (anomaly
+id, rule, severity, transitive observation ids) + confidence
+`min(0.99, Σ weight × severityFactor)` (WARNING 0.6 / CRITICAL 1.0 —
+explicit, deterministic, never certainty). Versioned
+`TreatmentRecommendation`: a draft `HealthIntentProposal` linked to a
+Fleet Intent kind from the frozen contracts (MaintainDeviceIntent,
+ReplacementIntent, RecoveryIntent — the closed proposable set). The
+proposal carries ONLY a payload: NO intent id, NO lifecycle state, NO
+dispatch — turning a proposal into a durable Fleet Intent is the
+PLAN/AUTHORIZE stage under the deterministic policy layer (W031). This
+is asserted by tests (the proposal-only boundary invariant).
+
+The seven-cause `CAUSE_LIBRARY` (versioned): battery_aging,
+cpu_overload, disk_near_full, hardware_failing, memory_pressure,
+recurring_crashes, thermal_stress — each with weighted evidence rules
+and a treatment template; multi-evidence causes (crash.burst +
+boot.slow) produce COMPETING hypotheses at different confidences from
+the same anomaly set, which is exactly what a diagnosis engine should
+propose.
+
+Versioned-interpretation discipline (`spec/ARCHITECTURE-LOCK.md` item 3,
+`spec/data/DEVICE-TWIN.md` § Interpretation): the per-device
+`DiagnosisLedger` is an append-only journal of hypothesis /
+recommendation / dismissal entries. Re-diagnosis appends NEW records
+(`interpretationVersion = prior + 1` for the (device, cause) lineage,
+`supersedes` pointing at the prior record); dismissal appends a
+dismissal entry. An existing record is NEVER rewritten — ledger
+operations return new frozen ledgers, and tests assert version-1 bytes
+stay untouched after re-diagnosis. `resolveActiveInterpretations` folds
+the journal into the ACTIVE view (per-cause latest non-superseded,
+non-dismissed hypothesis; recommendations additionally require their
+hypothesis to be active). Dismissal guards: unknown hypothesis,
+already-dismissed, and already-superseded are DomainErrors; a dismissed
+cause MAY be re-opened by fresh evidence (a new hypothesis supersedes
+the dismissed one — the dismissal stays in the journal as historical
+fact).
+
+Audit emission follows W011's injected-sink pattern
+(`src/audit-seam.ts`): `HealthAuditRecord` / `HealthAuditSink` are
+structurally compatible with W012's audit sink-adapter (the record shape
+mirrors device-model's W011 seam), and emission covers the consequential
+interpretations only — `health.diagnosis.proposed` (per hypothesis),
+`health.treatment.proposed` (per recommendation),
+`health.diagnosis.dismissed`. Derived data (signals, baselines,
+anomalies) does not audit: it is deterministic and recomputable from the
+immutable observation history.
+
+### D5 — Tests + determinism invariants
+
+101 new tests across 6 files: `signals.test.ts` (extractors, skips,
+windows, atomic validation, twin adapter, ordering),
+`baselines.test.ts` (hand-computed nearest-rank/population-stddev
+samples, window selection, scope rejection, model grouping, twin-derived
+resolver), `anomalies.test.ts` (every rule x severity ladder, latest-
+sample semantics, baseline guards, zero-stddev path, evidence
+correlation, threshold overrides), `diagnosis.test.ts` (confidence
+computation, competing hypotheses, proposal-only boundary, audit
+emission, ledger supersession/dismissal/re-open, guard errors),
+`contract-conformance.test.ts` (fixtures from `@fleetos/contracts/
+testing`: makeTenantId, makeDeviceId, makeObservationId,
+makeCorrelationId, makeTimestamp, makeObservationBatch, makeIntent,
+makeAllIntents + frozen validators; end-to-end pipeline with the W011
+device-model lane: enroll -> twin -> record observations -> signals ->
+model baselines -> device baseline -> anomalies -> diagnosis -> audit),
+and `invariants.test.ts` (byte-identical end-to-end determinism across
+runs AND input permutations; tenant isolation by rejection at every
+stage; versioned-interpretation immutability — frozen records, append-
+only ledgers, version-1 bytes untouched after re-diagnosis; the
+proposal-only boundary).
+
+### Judgment calls
+
+- **Audit granularity**: one audit record per consequential
+  interpretation (per hypothesis, per recommendation, per dismissal)
+  rather than one per diagnose() run — precise evidence for the W031
+  policy layer, still deterministic.
+- **Dismissal semantics**: a dismissal closes the CURRENT lineage entry;
+  a later diagnose() run with fresh evidence may re-open the cause at
+  the next interpretationVersion (superseding the dismissed record).
+  The dismissal remains in the journal as historical fact. This keeps
+  the ledger append-only while allowing genuine re-diagnosis.
+- **Supersedes recorded on the NEW record** (not by editing the old
+  one's status): the old record's supersession is DERIVED
+  (`hypothesisStatus`), so no record is ever rewritten — a stricter
+  reading of "new version never mutates old" than the twin's
+  in-place-section pattern requires.
+- **Signal payload shapes are health-lane canonical**: the frozen
+  contracts leave observation payloads `unknown`; v1 documents one
+  canonical shape per signal kind (e.g. `device.storage` +
+  `{ usedBytes, totalBytes }`). Adapter-lane payloads that differ are
+  skips, not errors — richer unit normalization belongs to the adapter
+  seam (W011's pattern) and can be injected upstream.
+- **Confidence numbers are explicit constants** (severity factors 0.6/1.0,
+  computed-read 0.9, cap 0.99), not learned or tuned — every value is
+  asserted by tests.
+- **Deviation rules compare a device against ITS OWN baseline only**;
+  model baselines are fleet context (anomaly detection accepts only
+  device-scope baselines — a model baseline never silently substitutes).
+- **bun.lock committed**: adding `@fleetos/contracts` +
+  `@fleetos/device-model` workspace deps to the health package.json
+  updates the lockfile (same as W012's accepted pattern).
+
+### Known limitations
+
+- The signal model covers seven kinds; connectivity/location/peripheral
+  signals are future model versions (connectivity semantics are partly
+  ADCOS's, W050A).
+- Anomaly detection evaluates the latest sample per kind per run; a
+  sustained-deviation-across-multiple-samples rule (trend rules) is a
+  future rule-family addition (versioned as ANOMALY_RULES_VERSION 2).
+- The cause library is static and English-labeled; localization and
+  tenant-specific cause weighting belong to later waves (learning, W050B).
+- The ledger is an in-memory value object; durable persistence is the
+  infrastructure wave (the twin's maintenance section is the intended
+  durable home via W011's `TwinInterpretation` + `updateTwinSection`).
+- Hypothesis confidence does not yet decay with evidence age; time-weighted
+  confidence is a learning-wave refinement.
