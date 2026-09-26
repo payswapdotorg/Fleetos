@@ -11,8 +11,9 @@
   "scripts": {
     "check:architecture": "node tools/check-architecture.mjs",
     "check:ownership": "node tools/check-ownership.mjs",
+    "check:contracts": "node tools/check-contracts.mjs",
     "check:skeleton": "node tools/verify-skeleton.mjs",
-    "check": "bun run check:architecture && bun run check:ownership && bun run check:skeleton",
+    "check": "bun run check:architecture && bun run check:ownership && bun run check:contracts && bun run check:skeleton",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test"
   },

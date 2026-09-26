@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 // FleetOS ownership + import-boundary gate.
 //
-// Implements D3 of W001:
+// Implements D3 of W001 (and the W003 hardening that extends it):
 //   1. Parse spec/worker-ownership.yaml into owner -> path-prefixes.
 //   2. Verify EVERY package directory is claimed by exactly one owner lane
 //      (unclaimed or doubly-claimed package dirs FAIL).
 //   3. Import-boundary rule: scan each src .ts/.tsx file; map its owning
-//      lane by path prefix; for every `import ... from "@fleetos/x"` or
-//      relative import that resolves into another lane's package directory,
-//      FAIL unless the imported package is @fleetos/contracts (the shared
-//      seam) or the import is within the same lane. Cross-lane imports of
-//      anything other than the shared seam are violations.
+//      lane by path prefix; for every cross-lane import (static `import
+//      ... from "..."`, dynamic `import("...")`, CommonJS `require(...)`,
+//      or `import type ... from "..."`) that resolves into another lane's
+//      package directory, FAIL unless the imported package is
+//      @fleetos/contracts (the shared seam) or the import is within the
+//      same lane. Cross-lane imports of anything other than the shared
+//      seam are violations.
 //   4. Print "FleetOS ownership checks passed." on success; exit 1 with a
 //      precise violation list on failure.
 //
@@ -18,6 +20,13 @@
 // owning lane is the lane whose claimed path is the longest prefix of D.
 // This allows `apps/web/` to be claimed by tech-lead while `apps/web/device/`
 // remains claimed by worker-a (the longer prefix wins).
+//
+// W003 hardening: the original W001 scanner caught only static
+// `import ... from "..."` statements. It now also catches:
+//   - dynamic `import("...")` expressions (e.g. `await import("@fleetos/x")`)
+//   - CommonJS `require("...")` calls (e.g. `require("@fleetos/x")`)
+//   - `import type ... from "..."` (already matched by the original regex
+//     but now explicitly tagged in the report so callers can see the form)
 //
 // No external dependencies. Node.js only.
 import fs from "node:fs";
@@ -180,7 +189,144 @@ for (const { rel } of packageDirs) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Check #3: import-boundary rule
+// 5. Import-specifier extraction (W001 static + W003 dynamic/require/type)
+// ---------------------------------------------------------------------------
+
+/**
+ * Strip block comments (`slash-star ... star-slash`) and line comments
+ * (`slash-slash ...`) from TypeScript source so the import-parsing regexes
+ * don't match import-like text inside comments.
+ *
+ * String literals are preserved (we don't strip inside strings); this
+ * approximation is fine for our purposes.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function stripComments(text) {
+  let out = "";
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    const next = text[i + 1];
+    if (c === "/" && next === "*") {
+      // Skip to the closing star-slash.
+      i += 2;
+      while (i < text.length && !(text[i] === "*" && text[i + 1] === "/")) i++;
+      i += 2;
+      out += " ";
+      continue;
+    }
+    if (c === "/" && next === "/") {
+      // Skip to end of line.
+      i += 2;
+      while (i < text.length && text[i] !== "\n") i++;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * Extract every import specifier from a TypeScript source file, classifying
+ * each by its syntactic form.
+ *
+ * Forms recognized (W001 baseline + W003 extensions):
+ *
+ *   - "static-import":  `import x from "spec"`, `import { x } from "spec"`,
+ *                       `import * as x from "spec"`, `import "spec"`.
+ *                       This regex also matches `import type ... from "spec"`
+ *                       (the `type` token is captured by the optional middle
+ *                       group) — so `import type` is correctly caught here,
+ *                       but is then re-tagged as "import-type" below.
+ *
+ *   - "dynamic-import": `import("spec")` or `await import("spec")`.
+ *                       W003 extension. Matches both bare and awaited forms.
+ *
+ *   - "require":        `require("spec")`. W003 extension. Catches CommonJS
+ *                       interop (e.g. via `createRequire` or in `.cjs`-style
+ *                       modules).
+ *
+ *   - "import-type":    `import type ... from "spec"`. W003 explicit tag.
+ *                       Already matched by the "static-import" regex above;
+ *                       we post-process to tag these so the violation report
+ *                       can distinguish them.
+ *
+ * The returned array preserves source order. Each entry carries the spec
+ * string, the 1-indexed line number (approximate — line where the regex
+ * match started), and the form tag. Callers filter on form if needed.
+ *
+ * Notes:
+ *   - Comment stripping is intentionally simple (line comments and block
+ *     comments are stripped before matching). String literals are NOT
+ *     stripped, but in practice TypeScript source rarely contains
+ *     `import("...")` strings outside actual import expressions.
+ *   - The static-import regex is anchored to the start of a line (after
+ *     trimming leading whitespace). Dynamic import and require are NOT
+ *     anchored — they may appear anywhere in an expression.
+ *
+ * @param {string} text the TypeScript source
+ * @returns {Array<{ spec: string, form: "static-import" | "dynamic-import" | "require" | "import-type", line: number }>}
+ */
+export function extractImportSpecifiers(text) {
+  const stripped = stripComments(text);
+  const out = [];
+
+  // Helper to compute the 1-indexed line number of a regex match.
+  function lineOf(matchIndex) {
+    let line = 1;
+    for (let i = 0; i < matchIndex && i < stripped.length; i++) {
+      if (stripped[i] === "\n") line++;
+    }
+    return line;
+  }
+
+  // 1. Static imports (also catches `import type ... from "..."`).
+  //    Regex explanation:
+  //      ^\s*                  - optional leading whitespace, line-anchored
+  //      import                - keyword
+  //      \s+                   - required whitespace after `import`
+  //      (?:[\s\S]*?\s+from\s+)?  - optional middle (e.g. `type { X }` or `{ a, b }` or `* as n`)
+  //                                  followed by `from`
+  //      ["']([^"']+)["']      - the quoted specifier (captured)
+  //    The optional-middle group makes the regex match both bare `import "spec"`
+  //    and `import x from "spec"` and `import type X from "spec"`.
+  const staticRegex = /^\s*import\s+(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/gm;
+  let m;
+  while ((m = staticRegex.exec(stripped)) !== null) {
+    // Inspect the matched text to see if this is an `import type ... from`.
+    const matchText = stripped.slice(m.index, m.index + m[0].length);
+    const isTypeOnly = /^\s*import\s+type\b/.test(matchText);
+    out.push({
+      spec: m[1],
+      form: isTypeOnly ? "import-type" : "static-import",
+      line: lineOf(m.index),
+    });
+  }
+
+  // 2. Dynamic import("...") — anywhere in the source (not line-anchored).
+  //    Matches both `import("spec")` and `await import("spec")`.
+  //    Avoids false-positives inside `import.meta.url` (no parens after import).
+  const dynamicRegex = /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
+  while ((m = dynamicRegex.exec(stripped)) !== null) {
+    out.push({ spec: m[1], form: "dynamic-import", line: lineOf(m.index) });
+  }
+
+  // 3. CommonJS require("...") — anywhere in the source.
+  //    Matches `require("spec")` and `require('spec')` and `await require("spec")`.
+  //    Does NOT match `require.resolve(...)` (different function).
+  const requireRegex = /\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
+  while ((m = requireRegex.exec(stripped)) !== null) {
+    out.push({ spec: m[1], form: "require", line: lineOf(m.index) });
+  }
+
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// 6. Check #3: per-file import-boundary rule
 // ---------------------------------------------------------------------------
 
 /**
@@ -248,12 +394,6 @@ function walkTsFiles(rootRel) {
 
 const tsFiles = [...walkTsFiles("packages"), ...walkTsFiles("apps")];
 
-// Regex to capture the module specifier of an import statement.
-// Handles: import x from "spec"; import "spec"; import type x from "spec";
-//          import { x } from "spec"; import * as x from "spec";
-// Does NOT handle dynamic import() — that's a runtime concern, not a static boundary.
-const importRegex = /^\s*import\s+(?:[\s\S]*?\s+from\s+)?["']([^"']+)["']/gm;
-
 for (const file of tsFiles) {
   const fileLaneName = fileLane(file);
   if (!fileLaneName) {
@@ -270,10 +410,8 @@ for (const file of tsFiles) {
     continue;
   }
 
-  let m;
-  importRegex.lastIndex = 0;
-  while ((m = importRegex.exec(text)) !== null) {
-    const spec = m[1];
+  const specs = extractImportSpecifiers(text);
+  for (const { spec, form, line } of specs) {
     let importedPkgRel = null;
     let importedPkgName = null;
 
@@ -284,7 +422,9 @@ for (const file of tsFiles) {
       importedPkgRel = pkgNameToRel[baseName];
       if (!importedPkgRel) {
         // Unknown @fleetos/* — not in workspace. Could be a future package or a typo.
-        violations.push(`UNKNOWN_IMPORT: ${file} imports "${spec}" — no workspace package with this name exists`);
+        violations.push(
+          `UNKNOWN_IMPORT: ${file}:${line} (${form}) imports "${spec}" — no workspace package with this name exists`,
+        );
         continue;
       }
     } else if (spec.startsWith("./") || spec.startsWith("../")) {
@@ -322,14 +462,14 @@ for (const file of tsFiles) {
 
     if (importedLane !== fileLaneName) {
       violations.push(
-        `CROSS_LANE_IMPORT: ${file} (lane: ${fileLaneName}) imports "${spec}" from ${importedPkgRel}/ (lane: ${importedLane}) — only @fleetos/contracts may cross lanes`,
+        `CROSS_LANE_IMPORT: ${file}:${line} (${form}) (lane: ${fileLaneName}) imports "${spec}" from ${importedPkgRel}/ (lane: ${importedLane}) — only @fleetos/contracts may cross lanes`,
       );
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// 6. Report
+// 7. Report
 // ---------------------------------------------------------------------------
 
 if (warnings.length > 0) {

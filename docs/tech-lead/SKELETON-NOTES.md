@@ -291,3 +291,218 @@ claims from W001 (`apps/web/` -> tech-lead, `packages/integrations/adcos/`
   W041 Fleet Actions, W050A ADCOS) when those work items are authorized.
   Workers will extend the payloads via additive optional fields (no
   breaking change) within schemaVersion 1.
+
+## W003 — contract-test harness (frozen for Wave 1)
+
+W003 introduces the contract-test harness that lets Wave 1's three parallel
+workers build without drift. The deliverables are:
+
+### D1 — Public-contract gate: `tools/check-contracts.mjs`
+
+A new gate with two responsibilities:
+
+1. **Workspace + module-marker gate** — for every `@fleetos/*` workspace
+   package: `src/index.ts` exports `MODULE_NAME` and `MODULE_VERSION`;
+   `package.json#name` matches the directory scope (derived from the
+   directory name with `@fleetos/` prepended; `packages/integrations/<x>`
+   maps to `@fleetos/integration-<x>` per the W001 convention); workspaces
+   resolve from the root `package.json` (each package directory must be
+   covered by one of the root `workspaces` globs).
+2. **Golden snapshot of `@fleetos/contracts` public API** — the gate walks
+   `export * from "./..."` chains starting from
+   `packages/contracts/src/index.ts`, parsing every named export and
+   classifying it by kind (`const` / `let` / `var` / `function` / `type` /
+   `interface` / `class` / `re-export`). The resulting sorted map is
+   compared to `tools/contracts-api.snapshot.json` (150 entries). Default
+   mode COMPARES — any added, removed, renamed, or kind-changed export
+   fails with a precise diff. `--regen` rewrites the snapshot deliberately
+   (used by the Tech Lead when a contract change is authorized by an ADR).
+
+The gate is wired into `bun run check` via the root `check:contracts` script,
+which runs in CI as part of the existing `bun run check` step
+(`.github/workflows/ci.yml` is unchanged — it already runs `bun run check`,
+and the new gate runs automatically within that step).
+
+The snapshot is committed at
+`tools/contracts-api.snapshot.json`. It captures 150 exports from the
+`@fleetos/contracts` runtime public API. The testing subpath
+(`packages/contracts/src/testing.ts`) is intentionally NOT in the snapshot
+— it is a test-only API, not a runtime API.
+
+### D2 — Fixture strategy: `@fleetos/contracts/testing`
+
+A new testing subpath exported by `@fleetos/contracts`:
+
+```json
+{
+  "exports": {
+    ".": { "types": "./src/index.ts", "default": "./src/index.ts" },
+    "./testing": { "types": "./src/testing.ts", "default": "./src/testing.ts" }
+  }
+}
+```
+
+The subpath exports deterministic, seeded fixture builders:
+
+- `makeTenantId`, `makeDeviceId`, `makeEventId`, `makeCorrelationId`,
+  `makeCausationId`, `makeCommandId`, `makeIdempotencyKey`, `makeIntentId`,
+  `makePolicyId` — branded ID builders.
+- `makeTimestamp(offsetMs)` — deterministic ISO 8601 timestamps derived from
+  a fixed `FIXTURE_BASE_EPOCH_MS = 2026-01-01T00:00:00.000Z`. No wall-clock
+  reads.
+- `makeEventEnvelope(options, seed)` — `EventEnvelope<P>` valid by
+  construction; throws if overrides would produce an invalid envelope.
+- `makeCommandEnvelope(options, seed)` — `CommandEnvelope<P>` with a
+  non-empty idempotency key, valid by construction.
+- `makeIntent(kind, options, seed)` — one of the nine `FleetIntent`
+  variants, tagged by `payload.kind`. Each kind has a default payload.
+- `makeAdapterCapabilities(supported, unsupported)` — explicit supported and
+  unsupported capability sets; throws if a capability appears in BOTH.
+- `makeGuardianDecision(decision, options, seed)` — frozen
+  `GuardianDecision` for each of the four decision types.
+- `makeFleetError(kind, options, seed)` — `FleetError` for each of the six
+  taxonomy classes.
+
+Determinism rules:
+- FNV-1a 32-bit hash of a domain-tagged seed string → Mulberry32 PRNG →
+  fixed-length lowercase-alphanumeric id suffixes.
+- No `Math.random()` anywhere. No network reads. No filesystem reads.
+  No wall-clock reads (`makeTimestamp` uses a fixed base epoch).
+- Domain-tagged seeds: each builder prefixes its seed with a domain tag
+  (`"tenant:"`, `"event:"`, `"command:"`, etc.) before hashing, so two
+  builders using the same seed produce DIFFERENT values — this is the
+  structural basis for tenant isolation.
+
+The four decision-type constants (`ALLOW`, `WARN`, `REQUIRE_APPROVAL`,
+`BLOCK`) and the nine intent-kind constants are re-exported from the testing
+subpath so callers can write `makeGuardianDecision(BLOCK, ...)` and
+`makeIntent(PRINT_INTENT_KIND, ...)` without separately importing from the
+main `@fleetos/contracts` entry.
+
+Full strategy documented in `docs/tech-lead/FIXTURES.md`.
+
+### D3 — Import-boundary hardening: `tools/check-ownership.mjs`
+
+The W001 scanner caught only static `import ... from "..."` statements. W003
+extends it to also catch:
+
+- **dynamic imports**: `import("...")` and `await import("...")`. The regex
+  matches anywhere in the source (not line-anchored).
+- **CommonJS require**: `require("...")` (single or double quotes). Does NOT
+  match `require.resolve(...)` (different function).
+- **`import type`**: the existing static-import regex already matches
+  `import type X from "..."`, but the report now tags these as `"import-type"`
+  (rather than `"static-import"`) so callers can see the form.
+
+The scanner was refactored: the spec-extraction logic now lives in an
+exported `extractImportSpecifiers(text)` function so it can be unit-tested
+in isolation (see `tools/check-ownership.test.mjs`). The line-based yaml
+parser for `spec/worker-ownership.yaml` is unchanged (per the W003
+constraint to keep it as-is).
+
+Tests in `tools/check-ownership.test.mjs` cover:
+- Each form is recognized and tagged correctly.
+- Mixed forms in the same file are all captured.
+- Comments (block + line) are stripped before matching.
+- Line numbers are 1-indexed and approximate.
+- `import.meta.url` is NOT matched (no parens after `import`).
+- `require.resolve(...)` is NOT matched (different function).
+
+A live-fire test was performed during W003: a temporary file with one
+violation of each form (static-import, import-type, dynamic-import, require)
+was placed in `packages/recovery/` (worker-a) and the scanner correctly
+reported all four cross-lane violations. The temp file was removed after
+verification.
+
+### D4 — CI wiring
+
+The CI workflow (`.github/workflows/ci.yml`) was already correct at the
+W002 base — it runs `bun install`, `bun run check`, `bun run typecheck`,
+`bun test` on push/PR to `main`. The new `check:contracts` gate runs
+automatically as part of `bun run check` (since the root `check` script now
+includes it). The YAML parses cleanly (verified with Python's `yaml.safe_load`
+and a custom indentation-parity check). No changes were needed to the YAML
+itself — only to the root `package.json` `scripts.check` entry.
+
+### D5 — Tests + docs
+
+- **Fixture tests** (`packages/contracts/test/testing.test.ts`, 43 tests):
+  determinism (same seed => same value across all builders), tenant-id
+  grammar (`tnt_[a-z0-9]{8,64}`), valid-by-construction (every fixture passes
+  the W002 invariant validators: `validateEnvelope`, `validateCommand`,
+  `validateTenantRef`, `validateObservationBatch`), throws-on-invalid-override,
+  cross-builder tenant isolation (no two builders using the same seed produce
+  the same tenant id), exhaustive coverage of each of the nine intent kinds,
+  each of the four guardian decision types, each of the six error taxonomy
+  classes, each of the eleven adapter capabilities.
+- **Cross-package consumer proof** (`apps/agent/src/testing-subpath.test.ts`,
+  2 tests): imports `@fleetos/contracts/testing` from the worker-a lane,
+  exercises every builder, asserts determinism from the consumer's
+  perspective. Read-only use of another lane's test directory (per the W003
+  D5 allowance). The `apps/agent` package declares
+  `@fleetos/contracts: "workspace:*"` in its `dependencies` so Bun's
+  workspace resolution links the package correctly.
+- **Ownership scanner tests** (`tools/check-ownership.test.mjs`, 12 tests):
+  unit tests for `extractImportSpecifiers` covering each form (static,
+  import-type, dynamic, require), mixed forms, comment stripping, line
+  numbers, and negative cases (`import.meta.url`, `require.resolve`).
+- **Docs**: `docs/tech-lead/FIXTURES.md` (the fixture strategy), this
+  `SKELETON-NOTES.md` section, and `spec/PROJECT-STATE.md` updated to
+  mark W003 done and Wave 1 unblocked.
+- **`types/bun-test.d.ts`** extended with `toBeGreaterThan`,
+  `toBeGreaterThanOrEqual`, `toBeLessThan`, `toBeLessThanOrEqual` matchers
+  needed by the new tests for numeric invariants (`schemaVersion`,
+  `version`, `seatCount`, etc.). The shim remains minimal; the
+  known-limitation note about replacing it with `@types/bun` is preserved.
+
+### Test results
+
+`bun test` runs 146 tests across 31 files (89 W002 baseline + 43 fixture
+tests + 2 cross-package consumer tests + 12 ownership scanner tests), 0
+failures, 515 `expect()` calls.
+
+`bun run check` runs architecture + ownership + contracts + skeleton checks,
+all green.
+
+`bun run typecheck` passes.
+
+### Files modified outside `packages/contracts/` and `tools/`
+
+Per the W003 ownership scope:
+
+- `apps/agent/package.json` — added `@fleetos/contracts: "workspace:*` to
+  `dependencies` so the cross-package consumer proof can resolve the
+  subpath. This is a minimal additive change; it does not modify any
+  worker-a source file.
+- `apps/agent/src/testing-subpath.test.ts` — new file. Read-only consumer
+  proof of the testing subpath.
+- `docs/tech-lead/FIXTURES.md` — new file. The fixture strategy.
+- `docs/tech-lead/SKELETON-NOTES.md` — this section.
+- `spec/PROJECT-STATE.md` — status update to W003 done, Wave 1 unblocked.
+- `package.json` (root) — added `check:contracts` script and wired it into
+  the `check` composite script.
+- `types/bun-test.d.ts` — extended with four numeric comparison matchers.
+
+No frozen spec file was modified. The `spec/worker-ownership.yaml` is
+unchanged (the W001 additive path claims for `apps/web/` and
+`packages/integrations/adcos/` per ADR-0001 remain in effect).
+
+### Known limitations carried forward (updated)
+
+- `types/bun-test.d.ts` remains a minimal ambient shim. It now covers
+  `test`, `expect`, `describe`, `mock`, `beforeEach`/`afterEach`/etc., plus
+  the `toBeGreaterThan` / `toBeGreaterThanOrEqual` / `toBeLessThan` /
+  `toBeLessThanOrEqual` matchers needed by the W003 tests. When `@types/bun`
+  is added in a later wave, this file should be deleted and replaced with
+  the canonical package.
+- The intent payload shapes (`MaintainDeviceIntentPayload`,
+  `SecurityRemediationIntentPayload`, etc.) are still minimal placeholders
+  — Wave 1 lanes (W010/W011/W012) refine them via additive optional fields.
+- The fixture builders do NOT generate realistic device payloads (the
+  default payloads are intentionally minimal — `description: "fixture ..."`
+  etc.). Workers refine the payload shapes in their owning work items; the
+  fixtures only need to satisfy the cross-cutting invariants.
+- The cross-lane import-boundary check now covers static, import-type,
+  dynamic, and require forms. Other forms (e.g. Webpack-specific
+  `require.ensure`, dynamic property access like `require("pkg-" + name)`)
+  are still not checked — they're rare in FleetOS source.

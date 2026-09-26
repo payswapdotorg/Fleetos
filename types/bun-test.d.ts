@@ -1,13 +1,13 @@
 // Minimal ambient declaration for the bun:test module.
 //
-// Sufficient for W001 placeholder tests (which only call test() and expect()).
-// When @types/bun is added in a later wave (W003 architecture/contract test
-// harness, or as Tech-Lead ADR), this file should be deleted and replaced
-// with the canonical @types/bun package.
+// Sufficient for W001 placeholder tests (which only call test() and expect())
+// plus W003 contract-test fixtures (which also call toBeGreaterThan /
+// toBeGreaterThanOrEqual on numeric invariants like schemaVersion). When
+// @types/bun is added in a later wave, this file should be deleted and
+// replaced with the canonical @types/bun package.
 //
-// This file declares ONLY the bun:test API surface used by W001 placeholder
-// tests. It does NOT introduce any domain types, event schemas, or contracts
-// (those arrive in W002).
+// This file declares ONLY the bun:test API surface used by tests in this
+// repo. It does NOT introduce any domain types, event schemas, or contracts.
 declare module "bun:test" {
   export type TestFn = () => void | Promise<void>;
 
@@ -33,6 +33,10 @@ declare module "bun:test" {
     toContain(expected: unknown): void;
     toHaveLength(expected: number): void;
     toMatch(expected: unknown): void;
+    toBeGreaterThan(expected: number): void;
+    toBeGreaterThanOrEqual(expected: number): void;
+    toBeLessThan(expected: number): void;
+    toBeLessThanOrEqual(expected: number): void;
     toThrow(expected?: unknown): void;
     readonly not: Expect<T>;
     resolves: Promise<Expect<T>>;

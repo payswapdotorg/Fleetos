@@ -11,6 +11,9 @@
     "apps/agent": {
       "name": "@fleetos/agent",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
     },
     "apps/web": {
       "name": "@fleetos/web",
