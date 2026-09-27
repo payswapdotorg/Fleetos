@@ -2881,3 +2881,166 @@ ZERO cross-lane src imports.
   richer approval routing is the actions/identity wave's evolution.
 - apps/web/recovery is NOT started (a later work item, per the work
   order).
+
+## W042 — Lane C: maintenance exchange + deadline aggregation
+
+Implemented by W042 (worker-c) on branch `work/w042`, base
+`integration/wave0`.
+
+The FleetOS maintenance exchange (per `spec/ARCHITECTURE.md` §
+Procurement/service exchange + Module map `maintenance -> devices,
+health, actions, vendors, audit`): the demand-side orchestrator for
+local vendor fulfillment of maintenance service work orders derived
+from health diagnoses/treatment recommendations. Health/diagnosis
+(W021) produces diagnosis hypotheses and treatment recommendations
+as PROPOSALS; maintenance turns approved treatments into service
+work orders matched to vendors (W032's matching pattern). Compatible
+service orders may be aggregated before a customer deadline;
+individual contracts remain auditable.
+
+### D1 — Service work order model (`src/service-work-order.ts`)
+
+- Consumes W021 health's versioned diagnosis evidence as INJECTED
+  inputs via the frozen contracts shapes (the `MaintainDeviceIntentPayload`
+  shape — owned by this package per the frozen contracts doc comment —
+  is the binding payload; the `ReplacementIntentPayload` shape is the
+  frozen payload for the replacement-escalation linkage, owned by
+  `@fleetos/recovery`). The diagnosis evidence is a STRUCTURAL twin
+  of W021's `TreatmentRecommendation` maintenance arm (the module-map
+  edge `maintenance -> health` honored via the frozen contracts shapes
+  only — health is worker-b's lane; the same-lane rule permits
+  `@fleetos/health` imports but src/ never imports it; the test-suite
+  bridge proves the payload flows through).
+- Tenant-scoped, versioned records (append-only revisions): a new
+  revision is a NEW record citing the prior via `supersedes`; the
+  prior revision is never rewritten (the "versioned-interpretation
+  discipline" from `spec/ARCHITECTURE-LOCK.md` item 3). `buildServiceWorkOrder`
+  / `buildServiceWorkOrderRevision` are pure builders; the audit-emitting
+  boundaries (`createServiceWorkOrder` / `reviseServiceWorkOrder`) own
+  the consequential side effects.
+- Warranty-aware: warranty eligibility as typed rules against vendor
+  terms from `@fleetos/vendors` (`WarrantyEligibilityRules` carrying
+  `warrantyFloor: DaysDuration` + `requireInWarranty: boolean`;
+  `classifyWarrantyEligibility` returns machine-stable standings:
+  `in_warranty_headroom` / `warranty_floor_unmet` — `out_of_warranty_shortfall`
+  is reserved for a later wave that introduces a tenant-configurable
+  in-warranty threshold above the floor).
+- Replacement-escalation linkage: `ReplacementEscalationLink` carries
+  the DRAFT `ReplacementIntentPayload` (frozen shape — DRAFT only,
+  no intent lifecycle, no intent id) + the diagnosis refs the
+  escalation cites. The matcher treats the linkage as advisory input;
+  the procurement wave is responsible for materializing any procurement
+  (this package creates no demand and orders nothing).
+
+### D2 — Vendor matching for service (`src/matching.ts`)
+
+- The W032 `matchDemand` pattern adapted for service work orders:
+  pure function, injected inputs (both the work order's typed
+  comparable floors and the vendors' typed terms from
+  `@fleetos/vendors`), machine-stable match reasons, hard gates
+  (region / capability / deadline / availability / SLA / warranty
+  floor / quality), rank score (baseline 0.5 + quality/SLA/warranty/
+  availability headrooms - substitution_downrank -
+  out_of_warranty_downrank), clamped to [0, 1].
+- The matcher requires either the primary service category match OR
+  an allowed substitution match (no "any capability" fallback when
+  the work order has explicit allowed substitutions). Substitution
+  matches (matched capability != primary) are down-ranked by 0.2.
+- Audit emission: one `maintenance.match.recorded` record per
+  satisfiable match (the matching trail).
+
+### D3 — Deadline aggregation (`src/aggregation.ts`)
+
+- Compatible service orders aggregated before a customer deadline:
+  deterministic grouping by (vendorId, serviceArea, deadline) —
+  the spec's "compatible orders may be aggregated before a customer
+  deadline. Individual customer contracts remain auditable."
+- Member work order ids sorted; aggregation id is a stable hash of
+  the grouping tuple + member work order ids (`magg_` + fnv1a32).
+- Aggregation as PROPOSAL (never automatic dispatch): nothing here
+  dispatches, fulfills, or procures. The aggregation traces to its
+  member work orders (`memberWorkOrders` array IS the auditable
+  trace — every batch cites its members verbatim). `verifyAggregationTrace`
+  is a pure predicate the caller can use to verify the trace.
+
+### D4 — Audit + tenancy
+
+- Audit emission through the injected `MaintenanceAuditSink` (the
+  W011/W021/W022/W031/W032/W040/W041 pattern — structurally identical
+  record shape). Emission policy: the DOMAIN boundary functions own
+  ALL emissions (`createServiceWorkOrder` ->
+  `maintenance.workorder.created`; `reviseServiceWorkOrder` ->
+  `maintenance.workorder.revised`; `matchServiceWorkOrder` ->
+  `maintenance.match.recorded`; `formServiceAggregation` /
+  `aggregateServiceWorkOrders` -> `maintenance.aggregation.formed`);
+  the in-memory store audits NOTHING. Proven by test into the REAL
+  hash-chained AuditLog via `@fleetos/audit`'s sink adapter — the
+  chain verifies, per-tenant chains stay separate.
+- Tenant isolation by construction: TenantContext-first
+  (`MaintenanceTenantScope`, the structural twin of identity's
+  TenantContext) on every operation of the store; partitioned
+  per-tenant storage; the runtime guard rejects context-free,
+  invalid-grammar, and cross-tenant access WITH THE TYPES BYPASSED
+  (`undefined as never` — proven by test); foreign ids are
+  indistinguishable from unknown ones (no existence side channel).
+- The store maintains TWO separate per-tenant partition maps (the
+  rich store's `Map<workOrderId, revisions[]>` and the W012
+  isolation-harness's raw KV `Map<key, workOrder>`) — same
+  judgment call as W032's demand store: the workOrderId is
+  computed deterministically (a `swo_<hash>` string), so it
+  cannot be controlled by the W012 harness's caller-supplied key.
+  Sharing partitions would break the harness's reference-equality
+  check.
+
+### D5 — Tests + docs
+
+- Tests: 110 new (contract conformance via
+  `@fleetos/contracts/testing` fixture builders (makeTenantId,
+  makeDeviceId, makeTimestamp, makeCorrelationId, makeIntent,
+  makeAllIntents, FIXTURE_TIME_ANCHOR; frozen helpers exercised:
+  asTenantId, asDeviceId, asVendorId, asCorrelationId, asWorkloadId,
+  validateTenantRef, isValidTenantId, assertVersion, makeVersioned,
+  MAINTAIN_DEVICE_INTENT_KIND, REPLACEMENT_INTENT_KIND, toApiError);
+  byte-identical end-to-end determinism across runs and input
+  permutations (vendor input order, audit on/off — domain output
+  never changes; diagnosis evidence observation id order; aggregation
+  member work order input order); warranty-eligibility edge coverage
+  (above/at/below floor, requireInWarranty true/false); aggregation
+  trace coverage (verifyAggregationTrace, member work orders carry
+  the acting tenant, member ids sorted); tenant isolation by
+  construction — W012's reusable runTenantIsolationSuite green over
+  the store's raw KV view + exhaustive rich-operation isolation checks
+  (foreign ids indistinguishable from unknown, cross-tenant writes
+  refused with `tenant_mismatch`, context-free access rejected by
+  the runtime guard with types bypassed). Total 1523 green, 0 failed
+  (1413 baseline + 110 new). All gates green on the branch — snapshot
+  150 contracts exports unchanged.
+
+### Line-stop findings
+
+- None. The frozen `MaintainDeviceIntentPayload` + `ReplacementIntentPayload`
+  shapes in `@fleetos/contracts` were consumed verbatim with no
+  contract change required; the `@fleetos/contracts` snapshot gate
+  passes unchanged (150 exports). The `maintenance -> devices, health,
+  actions, vendors, audit` module-map edges are honored via the frozen
+  contracts shapes (health + actions) + the same-lane `@fleetos/vendors`
+  import (vendors) + the structural-twin `MaintenanceTenantScope` +
+  `MaintenanceAuditSink` (identity + audit, structurally satisfied by
+  `@fleetos/audit`'s sink adapter — proven by test, no cross-lane
+  wiring in src/).
+
+### Known limitations
+
+- No durable persistence: the store is the in-memory reference
+  implementation (the W011/W021/W022/W031/W032/W040/W041 pattern);
+  the durable storage wave binds the same interfaces.
+- The `out_of_warranty_shortfall` warranty standing is reserved for
+  a later wave that introduces a tenant-configurable in-warranty
+  threshold above the floor (currently the floor IS the threshold
+  — the standing is unreachable in the v1 rules).
+- The aggregation's deadline-window is fixed at 1 calendar day
+  (the strictest interpretation). A later wave may relax this to a
+  tenant-configurable window; the aggregator would need a tenant-
+  supplied window parameter (currently unimplemented).
+- apps/web/maintenance is NOT started (a later work item, per the work
+  order).

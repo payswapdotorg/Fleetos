@@ -89,6 +89,14 @@
     "packages/maintenance": {
       "name": "@fleetos/maintenance",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/contracts": "workspace:*",
+        "@fleetos/health": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+        "@fleetos/vendors": "workspace:*",
+        "@fleetos/workloads": "workspace:*",
+      },
     },
     "packages/policy": {
       "name": "@fleetos/policy",
