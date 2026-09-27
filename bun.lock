@@ -96,6 +96,13 @@
     "packages/procurement": {
       "name": "@fleetos/procurement",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/contracts": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+        "@fleetos/vendors": "workspace:*",
+        "@fleetos/workloads": "workspace:*",
+      },
     },
     "packages/recovery": {
       "name": "@fleetos/recovery",
@@ -113,10 +120,21 @@
     "packages/software": {
       "name": "@fleetos/software",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/contracts": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+        "@fleetos/workloads": "workspace:*",
+      },
     },
     "packages/vendors": {
       "name": "@fleetos/vendors",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/contracts": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+      },
     },
     "packages/workloads": {
       "name": "@fleetos/workloads",
