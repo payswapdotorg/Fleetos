@@ -1368,3 +1368,205 @@ details payloads).
 - seatCount is fixed at 1 per proposed SoftwareSubscriptionIntent draft
   (one seat for the workload's principal); fleet-level seat pooling is
   W032's aggregation concern.
+
+## W031 — Lane B: Security Doctor + Contract Guardian
+
+Implemented by W031 (worker-b) on branch `work/w031`, base
+`integration/wave0` @ `d47780d` (the W022 acceptance commit).
+Deliverables D1-D5 landed in TWO packages (both frozen lane B paths):
+`@fleetos/security` (`packages/security/`) and `@fleetos/policy`
+(`packages/policy/`). Test suite: 131 new tests across 14 files (81
+policy + 50 security); full suite after W031: 822 pass, 0 fail (691
+baseline + 131 new). All gates green (`bun run check` — architecture +
+ownership + skeleton + contracts snapshot 150 exports unchanged; `bun
+run typecheck`; `bun test`, byte-stable across repeated runs).
+
+### D1 — SecurityPosture domain model (`packages/security/src/posture.ts`, `src/findings-ledger.ts`)
+
+Posture derived deterministically from the FROZEN canonical observation
+shapes (`Observation` from `@fleetos/contracts`, kind `device.security`,
+payload schema version 1): an ORDERED 9-rule library (disk encryption,
+screen lock disabled / excessive delay, firewall, endpoint protection
+disabled / outdated, OS unsupported, critical updates pending, active
+malware) maps recognized payload facts to findings with severity
+(CRITICAL/HIGH/MEDIUM/LOW) + classification
+(compliance/configuration/exposure/threat). Multiple observations
+supporting the same rule merge into ONE finding (evidence sorted by
+observation id); `assessSecurityPosture` derives the posture status
+(most severe finding wins; LOW alone stays HEALTHY in model v1) plus
+per-severity counts, output sorted (severity rank desc, code asc)
+regardless of observation input order. Forward compatibility is
+machine-stable skips: `kind_not_security`,
+`payload_version_unsupported` (schemaVersion !== 1 — never
+misinterpreted), `payload_unrecognized` (no recognized key; unknown
+EXTRA keys alongside recognized ones are tolerated),
+`payload_invalid` (recognized key, wrong value type). Findings are
+VERSIONED interpretations with deterministic ids: `findingId` =
+digest(tenant, device, code) stable across re-assessments; `recordId`
+adds the interpretation version; `supersedes` links the prior record
+(stamped from injected history — W021's pattern). The findings LEDGER
+is append-only per (tenant, device): version-out-of-sequence appends
+rejected, dismissal appends entries (the record stays in history), the
+ACTIVE view is derived (latest version per identity minus
+latest-entry-dismissed; a re-derived finding re-activates at v+1 —
+observable evidence wins). Remediation: DRAFT
+`SecurityRemediationIntent` payloads (the intent kind OWNED by
+`@fleetos/security` per the frozen contracts) on CRITICAL/HIGH findings
+only — payload shapes only; asserted by test that the serialized
+proposal carries neither `intentId` nor `status`.
+
+### D2 — Guardian rule model (`packages/policy/src/rule-model.ts`)
+
+Typed rule inputs covering the spec's ten inputs verbatim: principal,
+device (incl. a posture summary input), workload, data classification,
+contract/obligation, destination, network, printer, time, geography,
+action (time and geography as separate facets, jointly documented as
+the spec's "time/geography" input). EVERY facet is an observable fact
+(roles, platforms, zones, classifications, approved-printer flags,
+instants, country codes, action kinds) — there is NO intent input
+anywhere in the model (ARCHITECTURE-LOCK item 11). Conditions are a
+discriminated union (11 kinds + `allOf` conjunction) over uniform
+`StringSetMatcher`s (`in` / `notIn`); absent facet values satisfy
+`notIn` (fail-closed: "only these zones may..." fires when unknown) and
+fail `in`; the absent data classification matches the `UNCLASSIFIED`
+sentinel; obligation requirements (`missingAnyObligations`) fire when
+the contract facet is absent. Rules: deterministic ids —
+digest(tenantId, name), stable across revisions; version 1 at
+definition, +1 per `reviseGuardianRule` (new frozen record, identity
+immutable); content digest over (name, condition, effect, enabled).
+Rule sets: versioned, compiled with member rules SORTED by ruleId —
+byte-identical rule sets from any input order — with duplicate-rule-id
+and cross-tenant-member rejection.
+
+### D3 — Guardian evaluation engine (`packages/policy/src/engine.ts`)
+
+`evaluateGuardianRequest(ruleSet, request, { at, correlationId, ... })`
+is PURE (injected clock/inputs — no clock reads, no entropy) and
+produces the FROZEN `GuardianDecision` shape from `@fleetos/contracts`
+BUILT via the frozen `makeGuardianDecision` constructor (decision types
+ALLOW/WARN/REQUIRE_APPROVAL/BLOCK reused, never re-declared; asserted by
+test that the decision carries exactly the frozen shape's keys and is
+byte-identical to a fixture decision built from the same inputs).
+Blocking precedence BLOCK > REQUIRE_APPROVAL > WARN > ALLOW is DATA
+(`DECISION_PRECEDENCE_RANK`), resolved deterministically — exhaustive
+pairwise coverage (all 6 ordered pairs + all-four-together across input
+permutations). No rule fired -> ALLOW with empty rules +
+`policy.no_rule_matched`. Machine-stable reasons
+(`policy.rule.matched` with ruleId/ruleVersion/conditionKind/effect,
+`policy.precedence.resolved` with the chosen effect). Observable-
+evidence links: the request's `EvidenceRef` artifacts pass through into
+the decision untouched (never interpreted). Time conditions evaluate
+against the effective instant (request `time.at` ?? injected `at`, both
+caller-injected). The full `GuardianEvaluation` carries the decision +
+rule-set id/version (the "policy version" of the spec's decision
+recording) + matched rules + reasons.
+
+### D4 — Audit + tenancy (`src/audit-seam.ts`, `src/rule-store.ts`, `src/findings-ledger.ts`)
+
+- Audit: the injected `PolicyAuditSink` / `SecurityAuditSink` seams
+  (W011/W021/W022's pattern — structurally identical record shape).
+  `@fleetos/audit`'s `createAuditSinkAdapter(log, { source })` satisfies
+  BOTH seams with ZERO glue (proven by test: the adapter is assigned to
+  each seam type; emissions land in the tenant-scoped hash-chained
+  AuditLog; the chain verifies; per-tenant chains stay separate).
+  Emission for consequential events ONLY: Guardian decisions that are
+  BLOCK or REQUIRE_APPROVAL (the types that hold/refuse an action —
+  WARN/ALLOW never audit), rule-set version publication (an
+  authorization-posture mutation), and every posture-finding mutation
+  (recorded / superseded / dismissed). Pure derivations and failed
+  mutations never audit (the frozen error taxonomy carries its own
+  trace).
+- Tenancy: tenant isolation BY CONSTRUCTION in both stores. The acting
+  `PolicyTenantScope` / `SecurityTenantScope` (`{ tenantId,
+  correlationId? }` — structurally identical to identity's
+  TenantContext, declared locally because the ownership gate forbids
+  importing `@fleetos/identity` from lane B) is the FIRST parameter of
+  every operation; the runtime guards reject context-free, invalid-
+  grammar, and cross-tenant access even when the types are bypassed
+  (`undefined as never` — proven by test); storage is partitioned per
+  tenant (rule sets by tenant; findings by tenant then device) and NO
+  operation accepts a tenant override. Foreign rule-set versions and
+  finding ids are INDISTINGUISHABLE from unknown ones (no existence
+  side channel). Evaluation rejects a request whose tenant differs
+  from the rule set's tenant (tagged `tenant_mismatch` error, never a
+  wrong-tenant decision) — exhaustive pairing over all four effects.
+
+### D5 — Tests + docs
+
+Contract conformance via `@fleetos/contracts/testing` fixture builders:
+`makeGuardianDecision`, `makeAllGuardianDecisions` (all four types,
+frozen shape keys, RuleRef shape), `makeObservationBatch` (frozen batch
+invariants + forward-compatible skips over fixture payloads),
+`makeIntent` (SecurityRemediationIntent determinism + payload-shape
+conformance of the drafts), `makeTenantId`, `makeDeviceId`,
+`makeObservationId`, `makeTimestamp`, `makePolicyId`,
+`FIXTURE_TIME_ANCHOR`, `TESTING_MODULE_NAME`. Byte-identical
+determinism across runs and input permutations (rules, observations,
+audit on/off — domain output never changes). Blocking-precedence
+coverage (exhaustive pairwise). Finding-ledger immutability (v1 bytes
+untouched after supersession; frozen records; version discipline).
+Tenant isolation (exhaustive, incl. types-bypassed). End-to-end:
+observations -> posture -> policy-typed device facet -> Guardian
+REQUIRE_APPROVAL (the module-map integration).
+
+### Judgment calls
+
+- **@fleetos/audit is a TEST-scope dependency of both packages** (the
+  work order's "depend on them via workspace:* imports only" clause):
+  src/ NEVER imports it — the ownership gate scans src/ only and stays
+  green — the dependency exists so the tests PROVE the seams are
+  structurally satisfied by W012's sink adapter (the W022-disclosed
+  pattern; the W012 sink-adapter doc explicitly anticipates lane-B
+  seams).
+- **The security -> policy module-map edge is real code**:
+  `packages/security` depends on `@fleetos/policy` (same lane, gate-
+  legal) and derives policy-owned `GuardianDevicePosture` rule inputs
+  from its posture model (`deriveGuardianDevicePosture`); the devices/
+  observations edges are honored via the frozen contracts shapes only
+  (per the work order); the audit edge is the injected sink seam.
+- **The policy package imports only `@fleetos/contracts`** (module map:
+  policy -> organizations/devices/workloads/audit — all four honored
+  through frozen shapes: TenantScoped/TenantId, DeviceId, WorkloadId,
+  the injected audit seam).
+- **`PolicyTenantScope`/`SecurityTenantScope` are local
+  structural twins of identity's TenantContext** ({ tenantId,
+  correlationId? }): same-lane consumers can pass identity contexts
+  directly (structural typing); the guards validate against the frozen
+  `validateTenantRef` grammar. One definition per package, mirroring
+  the accepted per-package seam pattern.
+- **Explicit ALLOW rules exist** (the spec's "permit a manager-approved
+  exception" example) but NEVER override stricter firing rules — the
+  precedence is total and deterministic; an explicit ALLOW records a
+  permissive exception in the decision's rule refs and loses to any
+  WARN/REQUIRE_APPROVAL/BLOCK that also fires.
+- **Time windows evaluate in UTC** (hour-of-day + day-of-week from the
+  injected instant): timezone-aware local windows need a tz database —
+  out of scope for a zero-dependency package; a versioned model change
+  if ever needed.
+- **The device-posture summary is a rule INPUT, not an inference**:
+  security derives counts + status deterministically from findings;
+  the Guardian evaluates them; neither layer asserts employee intent.
+- **bun.lock committed**: adding the workspace deps updates the
+  lockfile (the accepted W012/W021/W022 pattern).
+- **Test suites stick to the shim-supported matchers**
+  (toBe/toEqual/toContain/toHaveLength with boolean pre-computation —
+  the accepted packages' convention).
+
+### Known limitations
+
+- The in-memory rule-set store and findings ledger are reference
+  seams; durable persistence (PostgreSQL per ARCHITECTURE.md § Storage)
+  is the infrastructure wave.
+- The v1 posture recognition vocabulary covers the nine rules' payload
+  fields; richer agent payloads skip with `payload_unrecognized` until
+  a versioned model change (SECURITY_POSTURE_MODEL_VERSION 2).
+- The frozen `GuardianDecision` shape carries no expiry field; the
+  spec's "expiry/re-evaluation" is realized as re-evaluation (the
+  engine is pure; decisions are point-in-time) + the rule-set version
+  recorded in the evaluation result. An expiry field would be a frozen
+  contracts change (Line-stop territory if required).
+- Approval workflows (holding an action until a human approves a
+  REQUIRE_APPROVAL decision) belong to W041 Fleet Actions; the Guardian
+  only decides.
+- LOW findings do not degrade the posture status in model v1
+  (documented; counts still surface them).

@@ -88,6 +88,10 @@
     "packages/policy": {
       "name": "@fleetos/policy",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/contracts": "workspace:*",
+      },
     },
     "packages/procurement": {
       "name": "@fleetos/procurement",
@@ -100,6 +104,11 @@
     "packages/security": {
       "name": "@fleetos/security",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/contracts": "workspace:*",
+        "@fleetos/policy": "workspace:*",
+      },
     },
     "packages/software": {
       "name": "@fleetos/software",
