@@ -23,6 +23,11 @@
     "packages/actions": {
       "name": "@fleetos/actions",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/contracts": "workspace:*",
+        "@fleetos/policy": "workspace:*",
+      },
     },
     "packages/audit": {
       "name": "@fleetos/audit",

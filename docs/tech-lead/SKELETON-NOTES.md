@@ -2050,3 +2050,298 @@ branch — snapshot 150 contracts exports unchanged.
 - The procurement -> maintenance module-map edge is honored via the
   frozen contracts shapes only (the maintenance package is worker-c
   but W042 — not started; the work order forbids the import).
+
+## W041 — Lane B: Fleet Actions + Print orchestration
+
+Implemented by W041 (worker-b) on branch `work/w041`, base
+`integration/wave0` @ `db3c2fe` (the W032 acceptance commit — past the
+Wave 2 acceptances; the required W031 Contract Guardian artifacts
+`packages/policy/src/{rule-model,engine,rule-store,audit-seam}.ts` are
+present, and the W030/W032 lane-A/C code does not intersect lane B).
+Deliverables D1-D5 landed in ONE package: `@fleetos/actions`
+(`packages/actions/`). Test suite: 79 new tests across 6 files; full
+suite after W041: 1184 pass, 0 fail (1105 baseline + 79 new). All gates
+green (`bun run check` — architecture + ownership + skeleton +
+contracts snapshot 150 exports unchanged; `bun run typecheck`; `bun
+test`, byte-stable across repeated runs).
+
+### D1 — FleetAction domain model (`src/device-descriptor.ts`, `src/fleet-action.ts`)
+
+The minimal device descriptor carries the FROZEN contracts shapes only
+(tenantId, deviceId, lifecycleState, adapterCapabilities, platform,
+ownership) — the actions -> devices module-map edge is honored via the
+frozen contracts shapes only (the work order's "depend on them via
+workspace:* imports only" clause). The local `DeviceRegistryView`
+interface is structurally compatible with `@fleetos/device-model`'s
+`TwinStore` (W011, same lane B) at the binding site — the consumer
+projects a TwinStore onto this view at the call site without a
+src-import of `@fleetos/device-model`. The view is INJECTED (never
+constructed inside the actions package): a test injects an in-memory
+view with deterministic descriptors; production injects a real registry
+adapter. `list(tenantId)` returns descriptors sorted by deviceId for
+deterministic iteration (byte-stable target resolution).
+
+Typed device-group selectors (PURE values, no I/O): a discriminated
+union of 10 kinds — `all` (the universal selector), `byId` (explicit
+device id list — closed set; resolved as the intersection with the
+registry — foreign ids are filtered out, never raising an existence
+side channel), `byPlatform`, `byOwnership`, `byLifecycleState` (frozen
+contracts), `byCapability` (devices whose declared adapter capabilities
+explicitly support the named capability — uses the frozen `isSupported`
+helper directly, never re-declared), `byPostureSummary` (queries a
+forward-compatible extension field on the descriptor; the frozen
+descriptor does not include `postureSummary` — the binding site may
+attach it via a structural supertype; fail-closed when posture is
+unknown), and set algebra `intersect` / `union` / `subtract` over
+sub-selectors. Selectors compose; resolution is deterministic — the
+same selector + the same registry produce the same device set,
+byte-for-byte, every run. Resolved target sets are sorted by deviceId
+for stable ordering.
+
+Action plan templates: versioned, immutable PROPOSAL — `planId` =
+digest(tenantId, name) stable across revisions; `version` >= 1;
+`selector` (the device-group selector the targets were resolved from);
+`capability` (the intended capability invocation per target — must be
+one of the frozen `AdapterCapabilities` keys; destructive capabilities
+carry an explicit grant requirement at the policy-gate boundary);
+`selectedTargets` (the resolved device set, frozen at creation time —
+the plan captures the device set the proposal was based on; re-
+resolution after registry changes is a new revision with a new content
+digest — versioned-interpretation discipline); `targetCount` (mirrors
+`selectedTargets.length` — also surfaced in the frozen
+`FleetActionIntentPayload`); `status: PROPOSAL` at creation (always —
+until the Guardian evaluates); `createdAt` (injected timestamp);
+`evidence` (observable artifacts, never interpreted); `contentDigest`
+(canonical digest of selector + capability + selectedTargets + status).
+
+The plan transition table: PROPOSAL -> ADVANCED | PARKED | REJECTED
+(via the Guardian decision); PARKED -> APPROVED | REJECTED (via the
+human-approval step); ADVANCED / APPROVED / REJECTED are terminal from
+the policy-gate perspective (execution belongs to later waves — W060B
+/ device-adapters, not this package).
+
+### D2 — Policy-gated execution flow (`src/policy-gate.ts`)
+
+`submitActionPlan(plan, { ruleSet, request, at, correlationId })`
+delegates to `@fleetos/policy`'s `evaluateGuardianRequest` (same lane
+B; the W031 Guardian is the AUTHORITATIVE policy layer — the actions
+package is the bridge that translates a Guardian decision into a plan
+transition + an audit emission). The decision-to-status mapping is the
+frozen Guardian's semantics: ALLOW -> ADVANCED; WARN -> ADVANCED (non-
+blocking per the frozen `isBlockingDecision` helper — warnings are
+recorded but do not hold the action; the audit carries the warning
+context); REQUIRE_APPROVAL -> PARKED (held for human approval); BLOCK
+-> REJECTED (refused with the Guardian's machine-stable reasons). The
+proposal-gated boundary is enforced: submitting a plan that is not in
+PROPOSAL status is rejected with a tagged DomainError
+(`status_not_proposal`). NEVER auto-execute.
+
+The parked-plan approval step (`approveParkedPlan(plan, "approve" |
+"reject", { at, correlationId, approverId })`) lives HERE — the W031-
+deferred-to-W041 note in the SKELETON-NOTES: "Approval workflows
+(holding an action until a human approves a REQUIRE_APPROVAL decision)
+belong to W041 Fleet Actions; the Guardian only decides." The
+transition is PARKED -> APPROVED (the human-approval step) or PARKED
+-> REJECTED (the human-rejection step); the audit carries the
+approving principal's id.
+
+Tenant isolation by rejection: the plan's tenant MUST match the rule
+set's tenant AND the request's tenant — a tenant-A plan can never be
+evaluated against tenant-B rules (rejected with a tagged
+`tenant_mismatch` error, never a wrong-tenant decision). The Guardian
+engine itself rejects request/rule-set tenant mismatches; the actions
+lane is fail-closed at the action boundary.
+
+Audit: consequential transitions (ADVANCED / PARKED / REJECTED) emit
+`action.plan.submitted` to the injected sink; approvals emit
+`action.plan.approved`. Pure reads and failed submissions never audit.
+
+### D3 — Print orchestration (`src/print-orchestration.ts`)
+
+Print job requests as versioned records built on top of the FROZEN
+`PrintIntentPayload` (documentRef + targetUserId — embedded verbatim,
+never modified). The job's `requiredFeatures` is the printer-capability
+subset the document demands (color, duplex, staple, ...). The router
+filters the supporting printers: the tenant MUST match (foreign-tenant
+printers are filtered out — no side channel) AND the printer's declared
+capabilities MUST satisfy the required features via the local
+`supportsPrintFeatures` helper (a non-emulation gate — unsupported
+features are REFUSED, never emulated via a different printer that lacks
+them; if no printer supports the required features, the routing returns
+a tagged `routing_refused` error with the unsupported feature names as
+machine-stable reasons). Among the supporting printers, the router
+selects the one with the LOWEST score (the consumer's injected scoring
+function maps `PrinterPreferences` — cost / latency / proximity as
+typed comparable inputs — to a number; ties broken by printerId
+ascending — input-order invariant). Default: identity rank — the
+first supporting printer in the registry's deterministic order.
+
+Queue-state contracts per printer with observable evidence links: the
+per-printer queue state is DERIVED from the latest QUEUED revisions
+across all jobs at the printer (no mutable queue state). The
+`enqueuePrintJob(job, { at, priorState })` transition produces a NEW
+frozen queue state with the job appended (FIFO) and the depth
+incremented; the job's `queuePosition` is updated to its actual
+position; the job's status transitions ROUTED -> QUEUED. The
+`PrinterQueueState` carries the queued job ids in queue order, the
+observable evidence links (the queued jobs' correlation ids), and the
+injected update timestamp.
+
+### D4 — Audit + tenancy (`src/audit-seam.ts`, `src/action-store.ts`, `src/print-store.ts`)
+
+- Audit: the injected `ActionAuditSink` seam (W011/W021/W022/W031's
+  pattern — structurally identical record shape: `{ tenantId, action,
+  subject, occurredAt, correlationId, causationId?, details }`).
+  `@fleetos/audit`'s `createAuditSinkAdapter(log, { source })`
+  satisfies the seam with ZERO glue (proven by test: the adapter is
+  assigned to the seam type; emissions land in the tenant-scoped hash-
+  chained AuditLog; the chain verifies; per-tenant chains stay
+  separate). Emission for consequential events ONLY: plan creation
+  (the FIRST revision appended to a plan's revision chain — the
+  persistence boundary is the audit trigger, not the version number;
+  supports the case where the caller transitioned the plan before
+  persisting it), plan submission (ADVANCED / PARKED / REJECTED), plan
+  approval (the W031-deferred human-approval step), print job routing
+  (ROUTED + REFUSED both audit — REFUSED carries the unsupported
+  feature names as machine-stable reasons), and print job queueing
+  (QUEUED). The print STORE does NOT emit on append (the routing
+  module is the emission owner — the store's audit sink is plumbed
+  for future store-level emissions). Pure reads and failed mutations
+  never audit (the frozen error taxonomy carries its own trace).
+- Tenancy: tenant isolation BY CONSTRUCTION in both stores. The
+  acting `ActionTenantScope` (`{ tenantId, correlationId? }` —
+  structurally identical to identity's TenantContext + policy's
+  PolicyTenantScope; declared locally because the ownership gate
+  forbids importing `@fleetos/identity` from lane B) is the FIRST
+  parameter of every operation; the runtime guards reject context-
+  free, invalid-grammar, and cross-tenant access even when the types
+  are bypassed (`undefined as never` — proven by test); storage is
+  partitioned per tenant (`Map<tenantId, Map<planId/jobId,
+  revisions[]>>`) and NO operation accepts a tenant override. Foreign
+  plan/job ids are INDISTINGUISHABLE from unknown ones (no existence
+  side channel) — verified by test (tenant-A's `getLatestPlan(tenantB,
+  planIdA)` returns `undefined`, indistinguishable from a missing
+  plan). Cross-tenant injection (a tenant-A scope naming a tenant-B
+  plan) is rejected with a tagged `tenant_mismatch` DomainError.
+
+### D5 — Tests + docs
+
+Contract conformance via `@fleetos/contracts/testing` fixture builders:
+`makeIntent` with `PRINT_INTENT_KIND` and `FLEET_ACTION_INTENT_KIND`
+(verifying the frozen payload shapes are consumed verbatim — the
+PrintIntentPayload's `documentRef` + `targetUserId` and the
+FleetActionIntentPayload's `actionPlanRef` + `targetCount`), `makeAllIntents`
+(both kinds produced from a single seed), `makeTenantId`,
+`makeDeviceId`, `makePolicyId`, `makeCorrelationId`, `makeTimestamp`,
+`FIXTURE_TIME_ANCHOR`, `TESTING_MODULE_NAME`/`VERSION`. Byte-identical
+determinism across runs and input permutations (selectors, descriptor
+insertion order, plan creation, print routing, store listPlanIds /
+listJobIds sorting — audit on/off never changes the domain output).
+Guardian-gate coverage (ALLOW / WARN -> ADVANCED, REQUIRE_APPROVAL ->
+PARKED -> APPROVED / REJECTED, BLOCK -> REJECTED with matched rule
+ids, NEVER auto-execute enforcement, tenant mismatch rejection).
+Routing refusal for unsupported capabilities (color / staple /
+multi-feature — never emulated; the router selects the ONLY
+supporting printer even when a non-supporting printer has a lower
+score). Tenant isolation (exhaustive — partitions, cross-tenant
+rejection, foreign-id indistinguishability, types-bypassed access
+rejection, queue-state per-tenant separation). End-to-end structural
+compatibility with @fleetos/audit's sink adapter (the adapter
+satisfies ActionAuditSink with ZERO glue; emissions land in the
+tenant-scoped hash-chained AuditLog; the chain verifies; per-tenant
+chains stay separate; the action store routes its planCreated
+emissions through the adapter sink).
+
+### Judgment calls
+
+- **@fleetos/audit is a TEST-scope dependency of the package** (the
+  work order's "depend on them via workspace:* imports only" clause):
+  src/ NEVER imports it — the ownership gate scans src/ only and stays
+  green — the dependency exists so the tests PROVE the seam is
+  structurally satisfied by W012's sink adapter (the W022/W031-
+  disclosed pattern).
+- **The actions -> devices module-map edge is honored via the frozen
+  contracts shapes only**: the local `DeviceRegistryView` interface is
+  structurally compatible with `@fleetos/device-model`'s `TwinStore`
+  (W011, same lane B) at the binding site — the consumer projects a
+  TwinStore onto this view at the call site. No src-import of
+  `@fleetos/device-model` (per the work order's "module-map edges to
+  devices resolve via the frozen contracts shapes" clause).
+- **The actions -> policy module-map edge is real code**:
+  `packages/actions` depends on `@fleetos/policy` (same lane, gate-
+  legal) and calls `evaluateGuardianRequest` directly — the W031
+  Guardian is the AUTHORITATIVE policy layer; the actions package is
+  the bridge that translates a Guardian decision into a plan
+  transition + an audit emission.
+- **`ActionTenantScope` is a local structural twin of identity's
+  `TenantContext` + policy's `PolicyTenantScope`** ({ tenantId,
+  correlationId? }): same-lane consumers can pass identity contexts
+  directly (structural typing); the guards validate against the
+  frozen `validateTenantRef` grammar. One definition per package,
+  mirroring the accepted per-package seam pattern.
+- **WARN advances with the warning context** (non-blocking per the
+  frozen `isBlockingDecision` helper): the spec's ALLOW/WARN/
+  REQUIRE_APPROVAL/BLOCK decision types map to ADVANCED / ADVANCED /
+  PARKED / REJECTED. WARN surfaces the warning to the operator (via
+  the audit's `decision` field) without holding the plan — the
+  frozen helper confirms WARN is non-blocking.
+- **The parked-plan approval step lives HERE** per the W031 SKELETON-
+  NOTES line: "Approval workflows (holding an action until a human
+  approves a REQUIRE_APPROVAL decision) belong to W041 Fleet Actions;
+  the Guardian only decides." The transition is PARKED -> APPROVED /
+  REJECTED; the audit carries the approving principal's id.
+- **The action store audits only the FIRST revision appended**: the
+  persistence boundary is the audit trigger, not the version number.
+  Supports the case where the caller transitioned the plan before
+  persisting it (the test that drove this design: route a print job
+  through ROUTED -> QUEUED before persisting — the QUEUED revision is
+  the first one stored, and the persistence is the audit trigger).
+- **The print store does NOT emit on append**: the routing module is
+  the emission owner (routed / queued). The store's audit sink is
+  plumbed for future store-level emissions (e.g. a queue reorder) —
+  the constructor signature does not need to change.
+- **The byPostureSummary selector queries a forward-compatible
+  extension field on the descriptor**: the actions package's frozen
+  `DeviceDescriptor` does not include `postureSummary` — the binding
+  site may attach it via a structural supertype. Fail-closed when
+  posture is unknown (the selector returns the empty set rather than
+  over-selecting).
+- **The version discipline accepts any version as the first revision**:
+  the caller may have transitioned the plan / job before persisting it;
+  the first revision's version may be > 1. Subsequent revisions MUST
+  be exactly prior + 1 (no gaps, no out-of-sequence). This is a
+  deliberate deviation from the W031 rule-store's per-version-slot
+  model (the actions store is a revision chain per plan id, not a
+  version slot).
+- **bun.lock committed**: adding the workspace deps updates the
+  lockfile (the accepted W012/W021/W022/W031 pattern).
+- **Test suites stick to the shim-supported matchers**
+  (toBe/toEqual/toContain/toHaveLength with boolean pre-computation —
+  the accepted packages' convention).
+
+### Known limitations
+
+- The in-memory ActionStore and PrintStore are reference seams;
+  durable persistence (PostgreSQL per ARCHITECTURE.md § Storage) is
+  the infrastructure wave.
+- The print router's scoring function is INJECTED — the actions
+  package never interprets the preference values' semantics (only
+  the comparable ordering matters). The default (identity rank —
+  first supporting printer in the registry's deterministic order) is
+  the "no preference expressed" fallback, mirroring the W031 fail-
+  closed posture.
+- The print router does NOT model print-job content (the documentRef
+  is opaque); it models the printer-capability subset the document
+  demands (the `requiredFeatures`). A richer document-profile model
+  (e.g. page count, paper size, color-profile requirements) would be
+  a versioned model change (PRINT_MODEL_VERSION 2).
+- The action plan's `capability` is one of the frozen
+  `AdapterCapabilities` keys; multi-capability plans (e.g. "lock +
+  locate + wipe" in one plan) would be a versioned model change
+  (PLAN_MODEL_VERSION 2). The v1 model carries ONE capability per
+  plan; the consumer composes multiple plans for multi-capability
+  workflows.
+- Execution belongs to later waves (W060B / device-adapters, not
+  this package). The actions package stops at the proposal-gated
+  boundary — APPROVED is terminal from the policy-gate perspective;
+  the execution handoff is downstream.
