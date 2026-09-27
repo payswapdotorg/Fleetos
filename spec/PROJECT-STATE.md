@@ -1,9 +1,9 @@
 # FleetOS Project State
 
-STATUS: WAVE 2 IN PROGRESS — W010 ACCEPTED, W021 ACCEPTED, W022 ACCEPTED; W020 in flight per dispatch; W031 implemented on work/w031 pending TL acceptance
+STATUS: WAVE 2/3 IN PROGRESS — W021, W010, W022, W031 ACCEPTED; W020 in flight; W032 in flight; W031 implemented on work/w031 pending TL acceptance
 Architecture: FROZEN v1.0
 Implementation wave: 2 in progress (Wave 0 complete; Wave 1 complete — W011 + W012 accepted; W021 [B] accepted; W010 [A] accepted on work/w010 6799620; W022 [C] accepted on work/w022 b0ee6e5; W031 [B] implemented on work/w031 — security + policy packages, 822 tests)
-Active workers: w020 [A] (in flight; git delivery), w031 [B] (implemented; pushed for acceptance)
+Active workers: w020 [A], w032 [C] (in flight; git delivery), w031 [B] (implemented; pushed for acceptance)
 Completed work items:
 - W001 (ACCEPTED — integration ebdf19f; ADR-0001 confirms ownership path gap-fills)
 - W002 (ACCEPTED — integration 4a302f8; contracts package: 10 modules, 150 exports, 89 tests green)
