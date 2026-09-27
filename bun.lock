@@ -77,6 +77,14 @@
     "packages/integrations/arena": {
       "name": "@fleetos/integration-arena",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+        "@fleetos/policy": "workspace:*",
+      },
     },
     "packages/integrations/aurum": {
       "name": "@fleetos/integration-aurum",
