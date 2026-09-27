@@ -112,6 +112,16 @@
     "packages/recovery": {
       "name": "@fleetos/recovery",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/contracts": "workspace:*",
+        "@fleetos/device-adapters": "workspace:*",
+        "@fleetos/health": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+        "@fleetos/policy": "workspace:*",
+        "@fleetos/security": "workspace:*",
+        "@fleetos/vendors": "workspace:*",
+      },
     },
     "packages/security": {
       "name": "@fleetos/security",

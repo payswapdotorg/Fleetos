@@ -2685,3 +2685,199 @@ package boundary (ownership gate green).
   scoping is W071 (privacy/security/tenant hardening).
 - W040 (recovery), W050A (ADCOS adapter) and UI surfaces are NOT
   started (later waves).
+
+## W040 — Lane A: Recovery + Find My Device
+
+Work order: W040 (`packages/recovery/**` only; branch `work/w040` off
+`integration/wave0`). Base: the W030 acceptance commit (1312 baseline
+tests green before any change). All four module deliverables (D1-D5)
+implemented; 1413 tests green on the branch (1312 baseline + 101 new);
+`bun run check` / `typecheck` green; the ownership gate stays green with
+ZERO cross-lane src imports.
+
+### D1 — Last-seen evidence + Find My Device (`src/last-seen.ts`)
+
+- Deterministic last-seen ledger per device derived from canonical
+  observation batches (the FROZEN contracts
+  `Observation`/`ObservationBatch` shapes — the `recovery -> devices`
+  edge honored via the frozen shapes only; `@fleetos/device-model` is
+  worker-b's lane and is never imported). Every record carries source
+  evidence refs (the observation ids at the max observed instant,
+  sorted), an injected `recordedAt`, and a derived staleness
+  classification against INJECTED thresholds (no clock reads).
+- Records are append-only + versioned (revision prior+1; never
+  rewritten); ids/digests are FNV-1a over canonical JSON; the CURRENT
+  view (`resolveLastSeen`) is DERIVED (max observedAt, tie -> max
+  version), so out-of-order arrivals append without ever regressing
+  the view.
+- **Staleness semantics (judgment call, documented in-module):** a
+  two-sided band test against injected
+  `{freshWithinMs, staleAfterMs}` — fresh within the fresh band, stale
+  beyond the stale band, `unknown` for the indeterminate band between,
+  for NO evidence, and for future-dated evidence (clock skew; never a
+  clamp). `unknown` is a machine-stable refusal to guess.
+- Find-My-Device view: the latest location-bearing evidence (kind
+  `device.location`, the canonical frozen kind) across ALL revisions,
+  ordered (observedAt, record version); the payload passes through
+  VERBATIM and opaque (the W030 geolocation-as-evidence privacy
+  boundary — recovery never interprets a location payload). Absent
+  location evidence is machine-stable `no_location_evidence` — never a
+  guess. The view re-derives staleness at view time against the view's
+  own injected instant.
+
+### D2 — Recovery cases + state machine (`src/recovery-case.ts`)
+
+- Cases open per device from typed observable triggers: lost/stolen
+  reports (operator evidence — never an inferred intent) and posture
+  escalations via the `recovery -> security` edge (a STRUCTURAL
+  trigger input: the posture status union + the security package's
+  finding record-id refs; the binding site injects
+  `@fleetos/security`'s real `assessSecurityPosture` output — proven
+  by test; the cross-lane src import is forbidden by the ownership
+  gate).
+- Typed state machine:
+  `OPENED -> SECURING -> SECURED / ESCALATED -> REPLACEMENT_PROPOSED /
+  CLOSED`, with `CLOSED` terminal and machine-stable closure reasons
+  (`device_recovered` / `replacement_proposed` / `operator_cancelled`
+  / `evidence_stale`) enforced exactly on CLOSE. Documented
+  departures: a case may close from any live state, and a SECURED
+  device may still ESCALATE (damaged hardware).
+- Versioned PROPOSAL-gated transitions: every transition appends
+  revision prior+1 with a deterministic content digest; illegal
+  transitions are refused with machine-stable DomainErrors (never
+  silent, never a rewrite). The case records the evidence basis: the
+  D1 last-seen record id + the posture finding refs.
+
+### D3 — Destructive recovery gate (`src/policy-seam.ts`,
+`src/destructive-request.ts`, `src/destructive-gate.ts`)
+
+- **The Guardian routing seam (disclosed judgment call):** the work
+  order routes every destructive request through
+  `evaluateGuardianRequest` from `@fleetos/policy` — but policy is
+  worker-b's lane and the ownership gate forbids cross-lane src
+  imports (only `@fleetos/contracts` may cross lanes). The routing is
+  therefore honored through a STRUCTURAL seam exactly like the
+  audit-sink pattern the work order itself mandates: `GuardianEvaluateFn<R>`
+  (generic over the rule-set type; the seam's request/options are
+  structural subtypes of the engine's params; the engine's return is a
+  subtype of the seam's outcome). TypeScript accepts
+  `evaluateGuardianRequest` at the binding site; the test suite
+  injects the REAL engine + REAL compiled rule sets and proves every
+  decision path (ALLOW / WARN / REQUIRE_APPROVAL / BLOCK) runs through
+  it. The recovery lane NEVER re-implements Guardian logic.
+- The frozen `RecoveryIntentPayload` (`deviceId?` +
+  `action: lock/locate/wipe/reboot`) is consumed VERBATIM as the
+  durable intent record's payload (never re-declared; the action union
+  is derived from the frozen shape).
+- Request lifecycle (typed, machine-stable):
+  `REQUESTED -> ADVANCED | PARKED | REJECTED`;
+  `ADVANCED/APPROVED -> EXECUTED | FAILED`; `PARKED -> APPROVED |
+  REJECTED`. ALLOW advances AND dispatches; WARN advances with the
+  warning context (non-blocking per the frozen `isBlockingDecision`;
+  the reasons + matched rules ride the revision + audit);
+  REQUIRE_APPROVAL parks (the parked -> approved/rejected transitions
+  are ledger entries; approval dispatches — the human approval IS the
+  explicit §16 grant); BLOCK rejects carrying the Guardian's
+  machine-stable reasons (matched rule ids + reason codes verbatim).
+  NEVER auto-execute.
+- **Capability awareness (fail-fast, disclosed judgment call):** the
+  gate refuses BEFORE any seam call when the adapter fronts a foreign
+  tenant (`adapter_tenant_mismatch`), a different device
+  (`adapter_device_mismatch`), the case is not active
+  (`case_not_active`), or the action's capability is not in the
+  adapter's DECLARED record (`capability_unsupported` — never
+  emulated). The capability check fires BEFORE the Guardian (a
+  proposal that can never execute never consumes a policy evaluation);
+  the adapter's own W020 negotiation re-asserts grant +
+  fresh-policy-cache at dispatch (defense in depth — a
+  `policyCacheReady: false` dispatch is RECORDED as FAILED with the
+  adapter's PolicyError, never retried/emulated; proven by test with
+  the seam's call log proving zero platform invocations).
+- Execution dispatch goes through the REAL W020 `EndpointAdapter`
+  interface imported from `@fleetos/device-adapters` (same lane — the
+  ONLY same-lane import besides contracts), with `policyGrant: true`
+  justified by the Guardian advance / human approval. Every granted
+  action carries the full §16 evidence trail: the frozen
+  `GuardianDecision`, the matched rule refs, the observation evidence
+  `EvidenceRef`s (a `evidenceRefsFromObservations` helper builds
+  content-addressed refs with the W020 key convention), and the
+  adapter's execution evidence — all on the record AND in the audit.
+
+### D4 — Replacement escalation (`src/replacement.ts`)
+
+- Consumes W021 health's versioned diagnosis evidence (a STRUCTURAL
+  twin of the health package's replacement-arm proposal: hypothesis
+  id, recommendation id, cause id, confidence, the DRAFT
+  `ReplacementIntentPayload` — the frozen shape, verbatim — and the
+  observation ids behind the anomalies) + W032 vendor warranty terms
+  (a STRUCTURAL twin of `VendorTerms`' comparable values; the binding
+  site injects `@fleetos/vendors`' real built terms — proven by test).
+- Warranty-aware: `in_warranty` / `out_of_warranty` against the
+  vendor's typed warranty days measured from an injected
+  warranty-start instant (the boundary day itself is in warranty;
+  future-dated coverage classifies out — machine-stable, never a
+  clamp), or `no_warranty_terms` when no terms were supplied.
+- PROPOSALS only: append-only ledger with supersession discipline (the
+  new revision cites the prior via `supersedes`; the prior revision is
+  never rewritten). NOTHING here creates a demand, matches a vendor,
+  or orders anything — procurement is `@fleetos/procurement`'s wave,
+  invoked by a human decision this package does not make (proven by
+  the record's serialized shape carrying no procurement surface).
+
+### D5 — Audit + tenancy + tests + docs
+
+- Audit emission through the injected `RecoveryAuditSink` (the
+  W011/W021/W022/W031/W041 pattern — structurally identical record
+  shape). Emission policy (one coherent rule across the package): the
+  DOMAIN boundary functions own ALL emissions
+  (`recordLastSeenObservations` -> `recovery.lastseen.recorded`;
+  `openRecoveryCase`/`transitionRecoveryCase` ->
+  `recovery.case.opened`/`transitioned`; the destructive gate ->
+  requested/parked/approved/rejected/executed/failed/refused;
+  `escalateReplacement`/`supersedeReplacementEscalation` ->
+  escalated/superseded); the in-memory stores audit NOTHING. Proven by
+  test into the REAL hash-chained AuditLog via `@fleetos/audit`'s sink
+  adapter — the chain verifies, per-tenant chains stay separate.
+- Tenant isolation by construction: TenantContext-first
+  (`RecoveryTenantScope`, the structural twin of identity's
+  TenantContext) on every operation of every store; partitioned
+  per-tenant storage; the runtime guard rejects context-free,
+  invalid-grammar, and cross-tenant access WITH THE TYPES BYPASSED
+  (`undefined as never` — proven by test); foreign ids are
+  indistinguishable from unknown ones (no existence side channel).
+- Tests: 101 new (contract conformance via
+  `@fleetos/contracts/testing` fixture builders; D1 last-seen + Find
+  My Device incl. byte-identical determinism + permutations; D2 cases
+  incl. the real security edge; D3 Guardian-gate coverage with the
+  REAL engine — all four decision paths + parked-approval transitions
+  + dispatch through a REAL adapter over the in-memory Windows seam
+  with call-log proofs; capability refusal with seam-never-invoked
+  proofs; D4 warranty-aware escalation with the real health + vendor
+  packages; audit into the real hash-chained log; exhaustive tenant
+  isolation; determinism). Total 1413 green, 0 failed.
+
+### Line-stop findings
+
+- None. The frozen `ReplacementIntentPayload` + `RecoveryIntentPayload`
+  shapes in `@fleetos/contracts` were consumed verbatim with no
+  contract change required; the `@fleetos/contracts` snapshot gate
+  passes unchanged (150 exports).
+
+### Known limitations
+
+- No durable persistence: the stores/ledgers are the in-memory
+  reference implementations (the W011/W021/W022/W031/W041 pattern);
+  the durable storage wave binds the same interfaces.
+- The Guardian evaluation seam is synchronous and the rule set is
+  injected per call site; a richer long-running approval workflow
+  (expiry, escalation timers, notification fan-out via Aurum) is a
+  later wave (W050C/W061).
+- Find My Device surfaces only the LAST location-bearing observation
+  verbatim (payload opaque); any location-payload semantics (accuracy
+  filtering, fix-source ranking) belong to the owning adapter family
+  contracts (W030) or a later UI wave — never guessed here.
+- The recovery case state machine parks destructive requests but does
+  not model multi-actor approval chains (single approver id recorded);
+  richer approval routing is the actions/identity wave's evolution.
+- apps/web/recovery is NOT started (a later work item, per the work
+  order).
