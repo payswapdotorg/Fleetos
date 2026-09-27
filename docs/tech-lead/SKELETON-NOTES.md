@@ -1824,3 +1824,229 @@ gate green).
   started; `AdapterPlatform` is deliberately the three desktop
   platforms. Recovery/adcos/web-device paths (lane A's later items)
   are NOT started.
+---
+
+## W032 — Lane C: procurement / vendor / software exchange
+
+Work item W032 (lane C, worker-c) implements the FleetOS procurement /
+vendor / software exchange per `spec/ARCHITECTURE.md` § Procurement/
+service exchange and `spec/procurement/PROCUREMENT-EXCHANGE.md`. Three
+packages: `@fleetos/vendors` (D1), `@fleetos/procurement` (D2/D3),
+`@fleetos/software` (D4). Audit + tenancy (D5) span all three.
+
+### D1 — Vendor model (`packages/vendors/src/vendor.ts`)
+
+The Vendor domain model: vendor identity (tenant-scoped — the tenant
+approves vendors), capability declarations (typed `VendorCapability`
+with open-union `VendorCapabilityKind` for forward compatibility —
+unknown kinds are NOT errors), inventory signals
+(`VendorInventorySignal` with `InventoryAvailability` ratio in [0, 1]
++ `DaysDuration` lead time), and quality/SLA/warranty terms
+(`VendorTerms` carrying `QualityScore`, `SlaCoverage`, `DaysDuration`
+warranty — all typed comparable values). Versioned vendor records
+(append-only revisions: `buildVendor` writes revision 1; `reviseVendor`
+appends revision+1 with a fresh deterministic content hash; the prior
+revision is never rewritten — `spec/ARCHITECTURE-LOCK.md` item 3
+discipline).
+
+### D2 — Demand + matching (`packages/procurement/src/demand.ts`, `matching.ts`, `demand-store.ts`)
+
+`ProcurementDemand` consumes W022's WorkloadRecommendation DRAFT
+`ProcurementIntentPayload` (the frozen shape from `@fleetos/contracts`):
+the demand carries the workload linkage (`workloadId` from the payload,
+optional), the requirement description (`description` from the payload,
+required), the demand quantity, the customer deadline, the delivery
+area, the budget cap (USD), and the SLA / warranty / quality /
+availability floors. The W022 `CandidateRejection` evidence is
+carried as `DemandRejectionEvidence` (machine-stable, advisory input
+— the matcher down-ranks vendors whose matched capability appears in
+the evidence, never silently dropped).
+
+`matchDemand` is a PURE FUNCTION: given a demand + a list of vendor
+records (INJECTED inputs), produces a deterministic ranked list of
+`VendorMatch` records with machine-stable match reasons. Hard gates
+(fail-closed): region (vendor regions include the delivery area),
+capability (vendor declares at least one capability matching the
+demand's allowed substitutions, or any capability when the demand is
+unscoped), quantity (vendor availability ratio > 0), deadline (vendor
+lead time <= demand deadline days from `at`), availability floor, SLA
+floor, warranty floor, quality floor. Rank score (only satisfiable
+candidates get a positive score): baseline 0.5 + 0.2 * quality headroom
++ 0.15 * SLA headroom + 0.1 * normalized warranty bonus + 0.05 *
+availability headroom - 0.2 * substitution down-rank - 0.3 *
+rejected_by_evidence down-rank. Clamped to [0, 1]; unsatisfiable
+candidates get 0. Ranking is by rankScore desc, vendorId asc — input
+order invariant. The matcher emits one
+`procurement.match.found` audit record per satisfiable match (the
+matching trail).
+
+### D3 — Quotes + acceptance + aggregation (`packages/procurement/src/quotes.ts`)
+
+Versioned Quote contracts (append-only ledger with supersession —
+versioned-interpretation discipline per `spec/ARCHITECTURE-LOCK.md`
+item 3). `issueQuote` produces revision 1 in ISSUED status;
+`supersedeQuote` produces revision+1 with `supersedes` pointing at
+the prior. The `QuoteLedger` is append-only: `appendQuote`,
+`acceptQuote`, and supersession entries are all NEW entries (the
+prior is never rewritten). Quote acceptance is PROPOSAL-GATED (never
+automatic): `acceptQuote` is the explicit acceptance step; the
+acceptance is a one-way ISSUED -> ACCEPTED transition recorded as a
+new ledger entry (the quote's own `status` field stays "ISSUED" —
+the acceptance entry is the machine-stable record of the
+PROPOSAL-GATED transition). Cannot accept an unknown / already-
+accepted / rejected quote (tagged DomainErrors). `resolveActiveQuote`
+returns the latest non-superseded revision of a (demandId, vendorId)
+lineage.
+
+Compatible-order aggregation: `aggregateAcceptedQuotes` groups
+accepted (demand, quote) pairs by (vendorId, deliveryArea, deadline)
+— the spec's "compatible orders may be aggregated before a customer
+deadline". Each `AggregatedOrder` traces to its member demands
+(`memberDemandIds` sorted by demandId — deterministic). Individual
+customer contracts remain auditable: every aggregated order's audit
+record carries the member demand ids.
+
+### D4 — Software subscriptions (`packages/software/src/subscription.ts`, `store.ts`)
+
+`SoftwareSubscription` consumes W022's WorkloadRecommendation DRAFT
+`SoftwareSubscriptionIntentPayload` (the frozen shape from
+`@fleetos/contracts`): the subscription carries the software id
+(`softwareId` from the payload), the seat count (`seatCount` from the
+payload), the term in days (default 365), the workload linkage
+(optional), and the tenant scope. `allocateSubscription` is the pure
+builder; `reviseSubscription` appends revision+1 with `supersedes`
+pointing at the prior. The `SubscriptionStore` is tenant-scoped,
+in-memory reference; the `SubscriptionService` wraps it with an
+injected audit sink (`software.subscription.allocated` /
+`software.subscription.revised`).
+
+### D5 — Audit + tenancy + tests + docs
+
+Audit: consequential mutations (vendor created/revised, demand
+created, quote issued/accepted/superseded, aggregation formed,
+subscription allocated/revised, match found) emit append-only audit
+records through an INJECTED sink (W012's pattern — structurally
+satisfied by `@fleetos/audit`'s `createAuditSinkAdapter`; proven by
+test, no cross-lane wiring in `src/`). Tenant isolation by
+construction: a tenant-A context can never read tenant-B
+vendors/quotes/demands/subscriptions — every store operation takes
+the acting `TenantContext` as its FIRST parameter; the runtime guard
+`requireTenantContext` rejects context-free and invalid-tenant access
+even when a caller bypasses the types. The W012 reusable isolation
+harness (`runTenantIsolationSuite`) runs green over each store's raw
+KV view; exhaustive rich-operation isolation checks (foreign ids
+indistinguishable from unknown, duplicate detection scoped to the
+acting tenant, revision history append-only).
+
+Contract conformance via `@fleetos/contracts/testing` fixture builders
+(`makeTenantId`, `makeTimestamp`, `makeCorrelationId`, `makeIntent`,
+`makeAllIntents`, `FIXTURE_TIME_ANCHOR`); frozen contracts helpers
+exercised (`asVendorId`, `asWorkloadId`, `validateTenantRef`,
+`isValidTenantId`, `assertVersion`, `makeVersioned`,
+`PROCUREMENT_INTENT_KIND`, `SOFTWARE_SUBSCRIPTION_INTENT_KIND`,
+`toApiError`, `TenantScoped`). Byte-identical end-to-end determinism
+across runs and input permutations (vendor input order, audit on/off
+— domain output never changes). End-to-end: W022 recommendation →
+demand → matching → quote → acceptance → aggregation (the W022 → W032
+bridge).
+
+129 new tests (40 vendors + 46 procurement + 43 software). Full suite
+951 pass 0 fail (822 baseline + 129 new). All gates green on the
+branch — snapshot 150 contracts exports unchanged.
+
+### Judgment calls
+
+- **The demand store and the subscription store maintain TWO separate
+  per-tenant partition maps** (one for the rich store, keyed by the
+  deterministic `demandId` / `subscriptionId`; one for the raw KV
+  view, keyed by the harness's caller-supplied key). The
+  demandId/subscriptionId is computed deterministically (a
+  `dmd_<hash>` / `sub_<hash>` string), so it cannot equal the W012
+  isolation harness's fixed "k1"/"k2" keys. Sharing partitions would
+  break the harness's reference-equality check. The W022 workloads
+  store shares partitions because the workloadId is caller-supplied
+  (the test passes the harness's key as the workloadId); for demands
+  and subscriptions, the natural primary key is computed, so the
+  views must be separate. Documented in the store files.
+- **The matching quantity gate uses a soft rule (availability ratio > 0)**:
+  the matcher treats vendor inventory availability as "fraction of
+  full availability" and the demand's quantity as "number of units";
+  the gate fails when availability <= 0 (the vendor can fulfill
+  nothing). The actual allocation (how many units a vendor can
+  fulfill at a given availability ratio) is the QUOTE step's
+  responsibility — the matcher only determines whether the vendor is
+  a candidate. A stricter rule (e.g. availability >= demand.quantity
+  / MAX_DEMAND_QUANTITY_PER_VENDOR) would require a vendor-capacity
+  model that does not exist in the spec; the soft rule is documented
+  in `matching.ts`.
+- **The quote's `status` field stays "ISSUED" after acceptance**:
+  the quote is immutable; the acceptance is a separate ledger entry
+  (the machine-stable record of the PROPOSAL-GATED transition).
+  `quoteStatus(ledger, quoteId)` resolves ACTIVE / SUPERSEDED /
+  ISSUED / ACCEPTED / REJECTED by walking the ledger, not by reading
+  the quote's own `status` field. The `acceptQuote` check for
+  already-accepted looks for an existing acceptance entry in the
+  ledger.
+- **The aggregation's `totalQuantity` is derived from the quotes'**
+  `totalPriceUsd / unitPriceUsd` (the demand's quantity preserved
+  across revisions). This is a documented computation; the spec's
+  "individual customer contracts remain auditable" is satisfied by
+  the `memberDemandIds` field carrying every aggregated order's
+  member demand ids.
+- **The demand + subscription consume W022 DRAFT payloads only** (no
+  intent id, no lifecycle) — the spec's "FleetOS is the demand-side
+  orchestrator" boundary. Creating, authorizing, or executing a
+  Fleet Intent belongs to the intent owners and the deterministic
+  policy layer (W031's Contract Guardian boundary) — never to this
+  engine.
+- **`@fleetos/audit` is a TEST-scope dependency of all three packages**
+  (the work order's "depend on them via workspace:* imports only"
+  clause): src/ NEVER imports it — the ownership gate scans src/ only
+  and stays green — the dependency exists so the tests PROVE the seams
+  are structurally satisfied by W012's sink adapter (the W022-disclosed
+  pattern).
+- **`@fleetos/vendors` is a same-lane runtime dependency of
+  `@fleetos/procurement`** (the matcher consumes the `Vendor` type).
+  `@fleetos/workloads` is declared as a runtime dependency of both
+  `@fleetos/procurement` and `@fleetos/software` for the test-suite
+  bridge (a real W022 WorkloadRecommendation run produces the draft
+  payloads + rejection evidence that these packages consume); src/
+  never imports it. The ownership gate scans src/ only — green.
+- **`@fleetos/identity`'s TenantContext is the same-lane import** for
+  all three packages (W012's pattern). Local structural twins are
+  NOT introduced (the work order's workspace-binding protocol rules
+  permit same-lane imports; the workloads package established the
+  pattern).
+- **bun.lock committed**: adding the workspace deps updates the
+  lockfile (the accepted W012/W021/W022/W031 pattern).
+- **Test suites stick to the shim-supported matchers**
+  (toBe/toEqual/toContain/toHaveLength with boolean pre-computation —
+  the accepted packages' convention; `toBeGreaterThan` is NOT in the
+  shim, replaced with `(<value> > 0)` pre-computed to a boolean).
+
+### Known limitations
+
+- The in-memory vendor / demand / subscription stores and the quote
+  ledger are reference seams; durable persistence (PostgreSQL per
+  ARCHITECTURE.md § Storage) is the infrastructure wave.
+- The matching engine v1 covers the spec's ten dimensions
+  (workload, quantity, deadline, location, substitutions, budget,
+  warranty, SLA, vendor quality, inventory); budget is matched at
+  the QUOTE step (D3) — the matcher carries the budget cap as
+  advisory input only. A richer vendor-capacity model (e.g.
+  per-capacity allocation) would be a versioned model change
+  (MATCH_MODEL_VERSION 2).
+- The aggregation's deadline-window grouping uses the demand's
+  `deadline` (per spec — compatible orders share the same customer
+  deadline). A "deadline window" (e.g. demands due within the same
+  week, not the same instant) would be a versioned model change
+  (AGGREGATION_MODEL_VERSION 2).
+- The vendor quality score is an INJECTED typed value (the spec's
+  "vendor outcomes" derivation rule belongs to a later learning
+  wave — W06x Arena). The matcher consumes the score as-is.
+- Approval workflows (holding a quote acceptance until a human
+  approves) belong to W041 Fleet Actions; this package only records
+  the acceptance.
+- The procurement -> maintenance module-map edge is honored via the
+  frozen contracts shapes only (the maintenance package is worker-c
+  but W042 — not started; the work order forbids the import).
