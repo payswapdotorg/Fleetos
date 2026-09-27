@@ -950,3 +950,197 @@ proposal-only boundary).
   durable home via W011's `TwinInterpretation` + `updateTwinSection`).
 - Hypothesis confidence does not yet decay with evidence age; time-weighted
   confidence is a learning-wave refinement.
+
+## W022 — Lane C: workload profiles + recommendation contracts
+
+Implemented by W022 (worker-c) on branch `work/w022`, base
+`integration/wave0` @ `9dfde29` (the W021 acceptance commit). Deliverables
+D1-D5 landed in one package: `@fleetos/workloads` (`packages/workloads/`).
+Test suite: 104 new tests across 9 files; full suite after W022: 576
+pass, 0 fail (472 baseline + 104 new). All gates green (`bun run check` —
+architecture + ownership + skeleton + contracts snapshot 150 exports
+unchanged; `bun run typecheck`; `bun test`, byte-stable across repeated
+runs).
+
+### D1 — WorkloadProfile domain model (`src/profile.ts`)
+
+Role/process identity (`subjectKind` role|process, name, description),
+tenant scoping (`TenantScoped` from the frozen contracts), and IMMUTABLE
+versioned revisions: `buildWorkloadProfile` writes revision 1;
+`reviseWorkloadProfile` appends revision prior+1 as a NEW frozen record —
+the prior revision is never rewritten (versioned-interpretation
+discipline, ARCHITECTURE-LOCK item 3). Every revision carries a
+deterministic FNV-1a `contentHash` over the canonical JSON of its full
+content (identity + requirements + constraints + working hours +
+evidence + createdAt) — same content, same hash, byte for byte. The
+workload id is caller-supplied or derived deterministically from
+(tenant, subjectKind, name). `subjectKind` is immutable across revisions
+(a role that becomes a process is a different workload). Working hours
+are informational (consumed by connectivity/maintenance later waves);
+the comparable proxy (downtime sensitivity) lives on the vector.
+
+### D2 — Requirement vectors + constraints (`src/requirement-vector.ts`, `src/constraints.ts`)
+
+The soft score and the hard gate are NEVER conflated:
+
+- `RequirementVector` — ten typed, unit-normalized dimensions in [0, 1]
+  (cpu/gpu/memory/storage/network demand, power dependence, mobility,
+  peripherals, security classification, downtime sensitivity) mapping
+  the spec's observed factors. Raw units normalize through FROZEN anchor
+  tables (piecewise-linear, clamped) — W011's unit-normalization
+  pattern. Unspecified raw fields leave their dimension at 0 and lower
+  the vector's coverage confidence (fraction of dimensions observed) —
+  honest, never guessed. `compareVectors` computes per-dimension
+  satisfaction `min(1, offered/required)` (required 0 -> 1), the
+  arithmetic mean, deficits/satisfied lists, and the worst dimension
+  (canonical-order tie-break). `diffRequirementVectors` compares two
+  profiles. Pure functions; no ML.
+- `WorkloadConstraints` — the checkable, discrete requirements:
+  application set/versions (dotted-numeric comparison that fails CLOSED
+  on malformed versions), environments where lawful, peripherals, and
+  the security classification ceiling (strict `CLASSIFICATION_ORDER`).
+  `checkConstraints` returns pass/fail with machine-stable failure kinds
+  in fixed check order. `assessFit` combines vector + constraints into
+  the `FitAssessment` — a perfect soft score never rescues a failed hard
+  gate.
+
+### Observations module-map edge (`src/observed-factors.ts`)
+
+`workloads -> devices, observations, audit` is honored with real code:
+`deriveObservedFactors` maps canonical `device.workload` observations
+(the FROZEN `@fleetos/contracts` `Observation` shape) to typed factor
+samples (direct ratio reads confidence 1.0; anchor-normalized
+quantities 0.9 — the W021 convention), with forward-compatible skip
+reasons (unknown_kind / bad_payload / outside_window /
+field_out_of_range — never errors). `aggregateObservedFactors` folds a
+NEAREST-RANK p90 per dimension (always an observed sample). The window
+is `(asOf - windowMs, asOf]` — inclusive end, injected anchor.
+
+### D3 — Versioned recommendation contracts (`src/recommendations.ts`)
+
+`WorkloadRecommendation` — a PROPOSAL (never automatic): kind
+device-class (advisory standardization) or procurement (the candidate
+declares `procurementRequired`), derived deterministically from the
+profile's requirement vector against INJECTED candidates. Ranking:
+satisfaction desc, candidateId asc — candidate input order never
+matters (proven by permutation tests). Records carry the FitAssessment
+(per-dimension evidence), confidence `min(0.99, satisfaction x profile
+vector confidence)`, evidence links from the profile revision, a
+deterministic rationale template, and DRAFT `WorkloadIntentProposal`s:
+ProcurementIntent (payload: workloadId + description) and
+SoftwareSubscriptionIntent (payload: softwareId + seatCount 1, for
+required applications the candidate lists subscriptionRequired) —
+payload shapes ONLY from the frozen contracts: no intent id, no
+lifecycle, no dispatch (asserted by test: the serialized record contains
+neither `intentId` nor `status`). The append-only per-workload
+`WorkloadRecommendationLedger`: supersession via NEW records
+(`supersedes`), dismissal entries, duplicate/scope guards, and the
+derived ACTIVE view (`resolveActiveRecommendations`). Unsatisfiable
+candidates are reported as `CandidateRejection` evidence (machine
+failure kinds) for later waves (W032 procurement matching).
+
+### D4 — Audit + tenancy (`src/audit-seam.ts`, `src/store.ts`)
+
+- Audit: the injected `WorkloadAuditSink` seam (W012's pattern —
+  structurally identical to W011's device-model seam and W021's health
+  seam). `@fleetos/audit`'s `createAuditSinkAdapter(log, { source })`
+  satisfies `WorkloadAuditSink` with ZERO glue (proven by test: the
+  adapter is assigned to the seam type and the records land in the
+  tenant-scoped, hash-chained, append-only `AuditLog`; the chain
+  verifies). Emission for consequential events only: profile
+  created/revised (service boundary), recommendation proposed (engine),
+  recommendation dismissed (ledger op). Pure reads never audit; failed
+  mutations never audit (the frozen error taxonomy carries its own
+  trace).
+- Tenancy: the `WorkloadProfileStore` takes W012's `TenantContext` as
+  the FIRST parameter of every operation, partitions storage per tenant,
+  and exposes NO API that names another tenant — cross-tenant reads are
+  impossible by construction. The runtime guards
+  (`requireTenantContext`) reject context-free and invalid-tenant access
+  even when the type system is bypassed (proven by test with
+  `undefined as never`). A foreign workload id is INDISTINGUISHABLE from
+  an unknown one (`workload_unknown` for both — no existence side
+  channel). W012's reusable `runTenantIsolationSuite` runs against the
+  store's raw KV view over the SAME partitions (all seven checks pass),
+  complemented by exhaustive rich-operation isolation tests (latest +
+  specific-revision reads, listing, sizing, revision appends,
+  same-key partitioning, duplicate handling).
+
+### D5 — Tests + docs
+
+Contract conformance via `@fleetos/contracts/testing` fixture builders:
+`makeTenantId`, `makeTimestamp`, `makeCorrelationId`, `makeDeviceId`,
+`makeObservationBatch`, `makeIntent`, `makeAllIntents`,
+`FIXTURE_TIME_ANCHOR` (frozen helpers exercised: `asWorkloadId`,
+`validateTenantRef`, `isValidTenantId`, `assertVersion`, `makeVersioned`,
+`toApiError`, the intent-kind constants). Determinism: byte-identical
+full-pipeline runs (observation -> factors -> vector -> profile ->
+store -> service -> recommendation -> ledger -> audit), input-permutation
+invariance (observations and candidates), audit-vs-no-audit domain-output
+equality. Revision immutability: byte snapshots of stored revisions
+survive later revisions; content hashes unique per revision. Tenant
+isolation: the W012 harness + exhaustive store checks. Audit emission on
+every consequential mutation (counts, actions, traceability fields,
+details payloads).
+
+### Judgment calls
+
+- **The devices module-map edge is satisfied via the frozen contracts,
+  not @fleetos/device-model**: the work order names identity/audit/
+  device-model as depend-via-workspace-import dependencies, but the
+  ownership gate (hard constraint: `bun run check` stays green) forbids
+  cross-lane imports — device-model is worker-b's lane. The devices and
+  observations edges are therefore honored through the frozen
+  `@fleetos/contracts` shapes (`DeviceId`, `Observation`,
+  `ObservationKind`) and the `device.workload` factor derivation; no
+  DeviceTwin import occurs (health could import device-model only
+  because it is same-lane with it).
+- **@fleetos/audit is a TEST-scope dependency only**: the audit seam is
+  structural (W011/W021 pattern); src/ never imports the audit package.
+  The package.json dependency exists so bun resolves the import in the
+  test that PROVES the structural compatibility with W012's sink
+  adapter. Same-lane, so no gate concern either way.
+- **The isolation-harness view is a raw storage projection**:
+  `tenantScopedView` skips domain validation (the harness requires
+  reference-equal read-backs of pre-built profiles, which rebuilding
+  would break) but shares the store's REAL per-tenant partitions — the
+  harness verifies the actual partitioning, not a copy. `remove` exists
+  only on this storage-level view; the domain API has no removal
+  (revisions are append-only).
+- **Soft score vs hard gate separation**: unspecified raw factors
+  normalize to 0 (no observed demand) and lower confidence — they never
+  silently become hard requirements; hard guarantees live ONLY in
+  `WorkloadConstraints`. Security classification appears on BOTH sides
+  by design: the vector dim (soft, comparable) and the optional
+  constraint (hard ceiling) — a profile may set either or both.
+- **procurementRequired / subscriptionRequired are injected candidate
+  flags**, not inferences: the engine never guesses whether a class
+  needs purchasing or an app needs a subscription — the catalog declares
+  it (deterministic recommendation functions with injected inputs).
+- **Synthetic sentinels**: context-free error projections use W012's
+  canonical `tnt_system` / `cor_system` (imported from @fleetos/identity
+  — one definition per lane); a provided correlation id is always
+  preserved over the sentinel.
+- **bun.lock committed**: adding the workspace deps to the workloads
+  package.json updates the lockfile (the accepted W012/W021 pattern).
+- **The repo's minimal `types/bun-test.d.ts` shim** (tech-lead owned)
+  supports only a subset of matchers; the test suite sticks to
+  `toBe`/`toEqual`/`toContain`/`toHaveLength`/`toThrow` with boolean
+  pre-computation for ordering/closeness assertions (the accepted
+  packages' convention).
+
+### Known limitations
+
+- The in-memory store/ledger are reference seams; durable persistence
+  (PostgreSQL per ARCHITECTURE.md § Storage) is the infrastructure wave.
+- The anchor tables are globally frozen defaults; tenant-specific
+  normalization anchors would be a versioned model change
+  (REQUIREMENT_VECTOR_VERSION 2).
+- Aggregation is p90 per dimension; time-weighted or per-role weighting
+  belongs to the learning wave (W050B Arena).
+- The recommendation engine ranks by satisfaction only; cost/budget
+  ranking dimensions belong to procurement matching (W032), which also
+  owns demand aggregation and quote flows.
+- seatCount is fixed at 1 per proposed SoftwareSubscriptionIntent draft
+  (one seat for the workload's principal); fleet-level seat pooling is
+  W032's aggregation concern.

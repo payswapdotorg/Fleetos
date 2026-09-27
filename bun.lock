@@ -105,6 +105,11 @@
     "packages/workloads": {
       "name": "@fleetos/workloads",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/contracts": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+      },
     },
   },
   "packages": {
