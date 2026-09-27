@@ -72,7 +72,15 @@
     },
     "packages/integrations/adcos": {
       "name": "@fleetos/integration-adcos",
-      "version": "0.1.0",
+      "version": "0.2.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+        "@fleetos/policy": "workspace:*",
+      },
     },
     "packages/integrations/arena": {
       "name": "@fleetos/integration-arena",

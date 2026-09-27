@@ -3044,3 +3044,196 @@ individual contracts remain auditable.
   supplied window parameter (currently unimplemented).
 - apps/web/maintenance is NOT started (a later work item, per the work
   order).
+
+## W050A — Lane A: ADCOS adapter
+
+Work order: W050A (`packages/integrations/adcos/**` only; branch
+`work/w050a` off `integration/wave0`). Base: the W042 acceptance commit
+(1523 baseline tests green before any change). All five module
+deliverables (D1-D5) implemented; 1639 tests green on the branch
+(1523 baseline + 116 new); `bun run check` / `typecheck` green; the
+ownership gate stays green with ZERO cross-lane src imports (src/
+imports only `@fleetos/contracts`).
+
+### D1 — Bidirectional connectivity-intent translation
+
+- The FROZEN `ConnectivityIntentPayload` (`sourceDeviceId?`,
+  `targetDeviceId?`, `outcome`) is consumed VERBATIM through the frozen
+  envelope arm (never re-declared, never widened). The richer facets
+  the spec's FleetOS->ADCOS direction names (required properties, hard
+  constraints, duration, budget/policy refs, security requirements) are
+  caller-supplied as a typed `ConnectivityIntentRequirements` profile —
+  the frozen payload carries the intent-side facet; the profile carries
+  the requirement-side facet. **Judgment call:** the spec's sentence
+  "ConnectivityIntent containing tenant, target device/workload,
+  required properties, ..." describes the full request; the frozen
+  payload is the intent-side subset, so the requirement profile is a
+  separate typed input joined at translation. Nothing is defaulted — a
+  missing facet is a machine-stable refusal.
+- **Canonical outcome vocabulary (judgment call):** the frozen payload's
+  `outcome` is an OPEN string. The adapter recognizes EXACTLY the four
+  outcomes `spec/integration/ADCOS.md` names (low-latency local device
+  group; secure private connectivity; high-throughput transfer;
+  resilient connectivity) via deterministic token normalization
+  (lowercase, trim, whitespace/hyphen folding to `_`). Anything else is
+  refused `unsupported_outcome` — never a guess, never a silent
+  passthrough (an untypable outcome cannot become a typed request).
+  Each outcome class REQUIRES its defining facet (maxLatencyMs /
+  encryption+private isolation / minThroughputMbps / redundancy) —
+  refused with `outcome_requires_*` reasons, never defaulted.
+- Refusal vocabulary (machine-stable, path+reason pairs): wrong_intent_kind,
+  invalid_tenant (the frozen grammar), invalid_version, not_iso, empty,
+  no_target_ref (at least one device/workload ref required),
+  unsupported_outcome, invalid_union, not_positive, out_of_range,
+  conflicting_zones, conflicting_duration, required — collected
+  exhaustively (never fail-fast).
+- The reverse direction validates + normalizes the provider-reported
+  status into typed FleetOS shapes: opaque ID, accepted-requirements
+  echo (validated with the same invariants — never trusted blindly),
+  execution lifecycle PROVISIONING/ACTIVE/TERMINATING/TERMINATED with
+  the termination<->TERMINATED biconditional, evidence-ref-carrying
+  measurements (typed kinds + the frozen `EvidenceRef`), machine-stable
+  degradation taxonomy (non-none only on ACTIVE execution) and failure
+  taxonomy, typed termination reasons. Normalization is deterministic:
+  measurements sorted (kind, measuredAt, evidence.key), set-like facets
+  sorted+deduplicated — report permutations digest identically.
+- Pure `unmetRequirements` diff: the machine-stable path list where the
+  provider's acceptance fails the request (surfacing sugar — adoption
+  records the acceptance verbatim, never re-gates).
+
+### D2 — The provider-neutral boundary (ARCH-LOCK 7-8)
+
+- The ONLY provider-originated value type in the public surface is the
+  opaque `AdcosProviderHandle` — a branded string (compile-time opacity,
+  zero provider structure). Everything else crossing the seam is
+  provider-neutral plain data.
+- The boundary is ASSERTED by tests (plain-data walks over every value
+  the reference transport produces; a denied-key denylist — topology,
+  credential, sdk, token, secret, password, apikey, privatekey,
+  endpoint, hostname, url; SDK class instances, functions, undefined
+  holes and cycles are violations) AND ENFORCED at runtime: the gate
+  checks the outbound request and the inbound acceptance; the adoption
+  path refuses non-neutral reports with machine-stable
+  `provider_boundary` — a leaked SDK object is never recorded.
+- ALL transport goes through the injected typed `AdcosTransportPort`
+  (submit / fetchStatus / terminate) with a machine-stable
+  provider-refusal taxonomy. The in-memory deterministic reference
+  implementation (content-digested handles/connectivity ids, programmed
+  refusal script, invocation recording) satisfies the port STRUCTURALLY
+  — no real network I/O, no clock reads (every timestamp injected). The
+  real ADCOS provider binding is W051 (a later work item).
+
+### D3 — Policy-gated submission + versioned outcome adoption
+
+- The Guardian routing honors the W040-disclosed STRUCTURAL seam
+  (`AdcosGuardianEvaluateFn<R>`): the seam's request/options are
+  structural subtypes of the engine's parameters, the engine's return
+  is a subtype of the seam's outcome; the REAL
+  `evaluateGuardianRequest` + REAL compiled rule sets are injected at
+  the binding site (test/) and every decision path is proven through
+  the real engine. The ownership gate forbids the cross-lane src import
+  of `@fleetos/policy` — src/ imports only `@fleetos/contracts`.
+- **Judgment call — uniform gating:** the gate evaluates EVERY
+  submission (fail-closed policy authority). The consequential
+  properties (budget, duration, security-relevant constraints) ride the
+  submission record and its audit trail (the proposed record carries
+  budgetRef/policyRefCount/encryption/privateRouting; the submitted
+  record carries the decision context), while the engine-matchable
+  facets (action `connectivity.request`, tenant, device, workload,
+  network zone, time) ride the evaluation. ONE uniform action kind —
+  rules gate by action/device/workload/zone/principal without
+  fragmenting the action space.
+- **Judgment call — network facet:** the engine's network zone is a
+  closed five-value union; the gate carries the request's zone
+  constraint ONLY when it is a single canonical zone. Multi-zone or
+  non-canonical zone constraints omit the facet (the union cannot
+  represent them — never a guess).
+- ALLOW submits (dispatch + SUBMITTED revision + seeded connectivity
+  record revision 1 bound to the intent); WARN submits non-blocking per
+  the FROZEN `isBlockingDecision` (reasons + matched rules ride the
+  revision + audit); REQUIRE_APPROVAL parks (the transport is NEVER
+  reached — proven by call-log); BLOCK rejects with the engine's
+  machine-stable reasons. NEVER auto-submit. The human-approval step
+  (approve → dispatch; reject → terminal) is the explicit grant.
+- Deterministic submission identity
+  (`adcos-sub-<fnv1a(tenantId|intentId|requestDigest)>`): resubmitting
+  the same intent + requirements is an idempotent REPLAY — proven with
+  a DIFFERENT rule set on replay (the outcome cannot change).
+- Status adoption: versioned append-only records — every adopted report
+  appends revision prior+1 with a deterministic content digest over the
+  report-derived facets, hash-linked via `priorDigest`; prior revisions
+  are NEVER rewritten. **Judgment call:** adoption is idempotent by
+  REPORT CONTENT digest (the adoption instant is excluded), so
+  re-adopting identical content replays without appending or auditing.
+  Degradation/termination adoptions emit their own audit records.
+
+### D4 — Audit + tenancy
+
+- The injected `AdcosAuditSink` seam is the W011/W021/W022/W031/W032/
+  W040/W041 pattern, structurally satisfied by `@fleetos/audit`'s REAL
+  sink adapter — proven by test into the hash-chained AuditLog (chain
+  verifies; per-tenant chains separate; the full consequential action
+  set emitted by the complete lifecycle). Pure reads and translation
+  refusals never audit (no state was created — the frozen error
+  taxonomy carries its own trace).
+- Tenant isolation by construction: `AdcosTenantScope` (the structural
+  TenantContext twin) FIRST on every store operation; per-tenant
+  partitions; runtime guards rejecting context-free / invalid-grammar
+  access with the types bypassed; cross-tenant submission refused
+  `tenant_mismatch`; foreign ids INDISTINGUISHABLE from unknown
+  (identical DomainError results — no existence side channel; tested
+  exhaustively across the submission store, record store, gate,
+  adoption, sync, terminate and approval flows).
+
+### D5 — Tests + docs
+
+- 116 new tests (117 incl. the kept W001 placeholder marker):
+  outcomes 5, translation 20, status-model 10, provider-boundary 12,
+  submission-gate 16, adoption 13, tenant-isolation 8, determinism 5,
+  contract-conformance 8 (all in src/ — gate-safe, only
+  `@fleetos/contracts` imports) + guardian-gate 8, audit 5, binding 6
+  (in test/ — the cross-lane binding proofs with the REAL policy
+  engine, the REAL hash-chained audit log and the REAL identity
+  TenantContext).
+- Contract conformance via `@fleetos/contracts/testing`: makeIntent
+  (the ConnectivityIntent payload shapes — incl. the frozen default
+  `connected-<seed>` outcome proven refused `unsupported_outcome`),
+  makeAllIntents (exactly one ConnectivityIntent arm; the other eight
+  refused `wrong_intent_kind`), makeTenantId, makeDeviceId,
+  makeTimestamp, makeIntentId, makeCorrelationId, makeCausationId,
+  makeGuardianDecision, makeAllGuardianDecisions, FIXTURE_TIME_ANCHOR;
+  frozen helpers exercised: CONNECTIVITY_INTENT_KIND, isBlockingDecision,
+  validateTenantRef, asTenantId, asCorrelationId, toApiError.
+- Byte-identical determinism: same-input translation replays; input
+  permutations (zone/policy/compliance order; report measurement order)
+  digest identically; the FULL lifecycle (submit → degraded sync →
+  recovered sync → terminate) replayed from scratch twice produces
+  identical ids, revision digests and audit action sequences.
+
+### Line-stop findings
+
+- None for the frozen contracts: the `ConnectivityIntentPayload` was
+  consumed verbatim; the 150-export snapshot gate passes unchanged.
+- ONE root-config observation (NOT a line-stop; disclosed for the
+  Tech Lead): the ROOT `tsconfig.json` include covers
+  `packages/*/test/**/*.ts` but NOT `packages/integrations/*/test/**`
+  — the integration-lane binding tests are outside the root typecheck
+  (they still run under `bun test`, and the package's own tsconfig
+  includes `test/**` so the package-level `tsc --noEmit` covers them).
+  Fixing the root tsconfig is a Tech-Lead-owned shared-file change.
+
+### Known limitations
+
+- No real provider binding: the transport is the in-memory
+  deterministic reference implementation; the real ADCOS provider
+  binding is W051 (integration convergence).
+- No durable persistence: the stores are the in-memory reference
+  implementations (the W011/W021/.../W042 pattern); the durable storage
+  wave binds the same interfaces.
+- Adoption requires the connectivity to be known to the tenant (bound
+  to a submission); adopting provider-initiated/externally-provisioned
+  connectivity is a later wave.
+- A second terminate request re-audits `adcos.termination.requested`
+  even when the adoption replays (the tenant REQUEST is consequential);
+  the transport-side terminate itself is idempotent.
+- apps/web/connectivity surfaces are NOT started (W060C, a later wave).
