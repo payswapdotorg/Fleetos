@@ -1570,3 +1570,257 @@ REQUIRE_APPROVAL (the module-map integration).
   only decides.
 - LOW findings do not degrade the posture status in model v1
   (documented; counts still surface them).
+
+## W020 — Lane A: endpoint adapter SDK
+
+Implemented by W020 (worker-a) on branch `work/w020`, base
+`integration/wave0` @ `ec59328` (the W031 acceptance commit — past the
+Wave 1 acceptances; the required W010 runtime-contract artifacts
+`packages/device-adapters/src/{checkin,capabilities,observations,commands,policy-cache}.ts`
+and `apps/agent/src/runtime.ts` are present, and the W022/W031 lane-B/C
+code does not intersect lane A). Deliverables landed in
+`packages/device-adapters/src/` (the SDK surface) plus the composition
+extension in `apps/agent/src/`:
+
+- `seams.ts`         D2 — the platform seam TYPES for the three desktop
+                       families named in ARCHITECTURE.md § Device
+                       adapters. Each platform declares a typed command
+                       execution channel (Windows: PowerShell; macOS:
+                       shell + MDM `profiles` for enforce/update; Linux:
+                       shell + package manager for update), typed
+                       observation sources (Windows: WMI + event log;
+                       macOS: system_profiler + unified log; Linux:
+                       procfs + journald) and a capability probe — every
+                       typed surface EXTENDS the normalized boundaries
+                       (`execute()`, `poll()`, `probe()`) the
+                       platform-agnostic adapter routes through.
+                       Platform-specific types stay INSIDE this package
+                       (the seam is where platform meets the normalized
+                       surface by design; they never enter the frozen
+                       core contracts).
+- `seams-inmemory.ts` D2 — in-memory deterministic REFERENCE
+                       implementations of the three seams (fakes; no real
+                       OS integration in this lane). Scripted per-
+                       capability outcomes (first match wins;
+                       unscripted capabilities succeed deterministically),
+                       scripted observation records per source, scripted
+                       probe result; every invocation is recorded
+                       (`calls()` / `reset()`) so tests can prove the SDK
+                       never reaches the seam on refusal. Evidence is
+                       content-addressed over the canonical JSON of the
+                       platform command (FNV-1a — a test hash, never for
+                       security). No clock, no entropy: two fakes built
+                       with the same options behave identically
+                       (byte-for-byte, verified by test).
+- `adapter.ts`      D1/D3 — the normalized `EndpointAdapter` contract:
+                       ONE platform-agnostic interface with one METHOD
+                       per normalized capability (identify, observe,
+                       diagnose, enforce, remediate, lock, locate, wipe,
+                       reboot, update, health) plus the generic
+                       `invoke()` router. Built on the W010 pieces: the
+                       capability record (`declareAgentCapabilities`),
+                       the observation producer (the adapter owns an
+                       `ObservationCollector`; `observe` polls the seam's
+                       sources, records, and flushes a valid batch with
+                       mid-observe back-pressure flushes and fail-closed
+                       malformed-source handling), and the failure mapper
+                       (`mapAgentFailure` — seam failures become
+                       first-class FleetErrors). D3 enforcement lives
+                       INSIDE every method: W010 `negotiateCapability`
+                       (frozen `assertSupported` inside) refuses
+                       unsupported capabilities and destructive
+                       capabilities without an explicit, cache-fresh
+                       grant — and the platform seam is NEVER invoked on
+                       refusal (verified by exhaustive tests over all 11
+                       capabilities × {declared, undeclared} and all 7
+                       destructive × {grant, no-grant, stale-cache}).
+                       Cross-tenant invocation is refused with an
+                       AuthorizationError at the action boundary.
+                       Construction throws on programmer error (platform
+                       mismatch between descriptor and seams, empty
+                       descriptor fields, non-ISO declaredAt). Also:
+                       `probeCapabilities` + `reconcileProbedCapabilities`
+                       (probe is DISCOVERY; the declared record stays the
+                       routing authority — mismatch surfaced for audit).
+- `registry.ts`     D4 — the tenant-scoped `AdapterRegistry`.
+                       Registration structurally validates the adapter
+                       (descriptor fields, platform ∈ {windows, macos,
+                       linux}, capability record, invoke function — all
+                       failures collected with field paths) and enforces
+                       uniqueness (adapterId unique per tenant; one
+                       adapter per (tenant, device) endpoint — both
+                       ConflictError). Lookup by adapterId / device /
+                       platform, listing in registration order. Tenant
+                       isolation is STRUCTURAL: per-tenant nested-map
+                       namespaces (no composite keys, so even ids
+                       containing separators cannot cross tenants);
+                       foreign lookups are indistinguishable from
+                       unknown (verified by test, including
+                       unregister).
+- `dispatch.ts`     D4 — the capability-aware command dispatcher
+                       composing the W010 tracker + the registry + the
+                       adapter. Pipeline: injected-timestamp sanity ->
+                       frozen `validateCommand` (malformed inputs never
+                       reach admission; mirrors the tracker's own
+                       refusal) -> command-type -> capability mapping
+                       (`device.command.<capability>`, the frozen
+                       contracts `<module>.<subject>.<verb>` convention;
+                       unknown types are born-rejected as unroutable) ->
+                       adapter resolution (explicit adapterId, then
+                       device, then singleton fallback; zero/ambiguous
+                       registrations are refusals) -> PRE-negotiation
+                       with the resolved adapter's declared capabilities
+                       (born-rejected receipts: the tracker's
+                       rejectReason vocabulary "unsupported" /
+                       "unauthorized" is used, and the seam is never
+                       invoked) -> idempotent admission (W010
+                       `acknowledge`: a replay returns the ORIGINAL
+                       receipt and result and is NEVER re-executed —
+                       idempotency wins over a later capability/grant
+                       change, verified by test; a different command
+                       under the same key is a ConflictError) ->
+                       capability-aware execution through
+                       `adapter.invoke` (which re-enforces the same
+                       negotiation — defense in depth over the frozen
+                       `assertSupported`) -> status lifecycle transitions
+                       (accepted -> executing -> succeeded | failed; or
+                       born-rejected) -> result envelope with FleetError
+                       mapping. A replayed command without a terminal
+                       result fails SAFE (incomplete; never re-executed).
+
+`apps/agent/src/runtime.ts` extends the W010 composition: the
+`AgentRuntime` now owns an `AdapterRegistry` (construction-time
+`options.adapters`, registered with validation — a failure throws) and
+exposes `dispatchCommand(command, inputs)` delegating to the dispatcher
+wired to the runtime's OWN receipt tracker. Runtime-injected defaults:
+target device = the runtime's identity device; policy-cache readiness =
+derived from the runtime's own local signed-policy cache at `executedAt`
+(fresh + signature-verified => ready; anything else => destructive
+default-deny — a fresh `SignedPolicyDocument` put flips it, verified by
+test); policy grant = false unless passed (fail-closed). All additions
+are optional/backward-compatible: the W010 runtime tests pass unchanged.
+
+### Test suite
+
+154 new tests across 6 files:
+- `packages/device-adapters/test/seams.test.ts` — 19 tests (routing to
+  platform-typed methods, scripted outcomes, sources/probe, recording,
+  determinism)
+- `packages/device-adapters/test/adapter.test.ts` — 76 tests
+  (construction, the exhaustive refusal matrix — 11 capabilities ×
+  declared/undeclared, 7 destructive × grant matrix, 4 non-destructive
+  no-grant, unknown capability, tenant mismatch, FleetError mapping,
+  observe/collector behavior incl. back-pressure + fail-closed, probe
+  helpers, cross-platform parity)
+- `packages/device-adapters/test/registry.test.ts` — 13 tests
+  (registration, conflicts, structural validation, tenant isolation,
+  unregister)
+- `packages/device-adapters/test/dispatch.test.ts` — 24 tests (mapping
+  round trip, happy path + lifecycle, idempotent replay + refused-replay
+  + conflict, born-rejected refusals, resolution fallbacks, malformed
+  inputs, execution failures, exhaustive 11-type dispatch)
+- `packages/device-adapters/test/adapter-conformance.test.ts` — 11
+  tests (contract conformance via @fleetos/contracts/testing fixtures)
+- `apps/agent/test/dispatch.test.ts` — 11 tests (runtime composition:
+  registry, defaults, derived policy-cache readiness, replay,
+  shared-tracker semantics)
+
+Full suite after W020: 976 pass, 0 fail (822 baseline + 154 new).
+
+### Binding protocol
+
+Unchanged from W010: `packages/device-adapters/package.json` declares
+`"@fleetos/contracts": "workspace:*"`; `apps/agent/package.json`
+declares both `@fleetos/contracts` and `@fleetos/device-adapters`
+(same lane). No relative imports cross a package boundary (ownership
+gate green).
+
+### Judgment calls
+
+- **Command-type mapping is lane-local**: the frozen contracts
+  `CommandType` is an open namespaced-string convention
+  (`<module>.<subject>.<verb>`); the frozen testing fixture's default
+  `device.command.lock` is the precedent. The SDK defines the
+  `device.command.<capability>` table for the eleven normalized
+  capabilities in `dispatch.ts` (`CAPABILITY_COMMAND_TYPES`) — a
+  lane-local mapping over the frozen convention, NOT a contracts
+  change. Unknown types are born-rejected (routable = mapped).
+- **Born-rejected vs accepted-then-rejected**: pre-negotiation and
+  adapter-resolution refusals happen BEFORE admission, so the receipt is
+  born-rejected through the tracker's `rejectReason` vocabulary
+  ("unsupported" for unroutable/unmapped/no-adapter/undeclared,
+  "unauthorized" for destructive grant failures). Adapter-side
+  negotiation refusals that occur AFTER admission (unreachable via the
+  dispatcher — same inputs, same frozen logic — but reachable calling
+  `adapter.invoke` directly) would transition accepted -> rejected. The
+  receipt vocabulary is the W010 tracker's; no new statuses.
+- **No-adapter refusals are "unsupported"-flavored**: the tracker's
+  rejectReason vocabulary is only
+  malformed/unauthorized/unsupported; "no adapter for this device" is
+  recorded as receipt reason "unsupported" while the RESULT carries the
+  precise AdapterError (`agent.adapter.not_found`). The result is the
+  audit-grade record; the receipt reason is coarse by W010 design.
+- **Idempotency beats capability state**: a redelivery of an already
+  terminal command replays the ORIGINAL result even if the adapter's
+  capabilities or the grant state changed in between (the
+  duplicate-suppression contract). Verified by test (refused-then-
+  regranted wipe still replays the rejection; the seam is never
+  invoked).
+- **Declared capabilities are authoritative over the probe**: the seam
+  probe is discovery (for manifests/check-in/audit). A declared-but-
+  not-probed capability still routes (the declaration is the explicit
+  support contract per ARCHITECTURE.md); `reconcileProbedCapabilities`
+  surfaces the mismatch (`declaredOnly`) for audit. A real platform
+  failure then surfaces at execution as a FleetError.
+- **Observe is passive**: the observe operation polls the seam's
+  observation sources and NEVER executes a platform command (the
+  normalized `poll()` boundary). The other ten capabilities route
+  through the seam's `execute()`.
+- **The macOS/Linux channel routing differentiates the platforms**:
+  macOS routes enforce/update through MDM `profiles` (the managed-
+  preferences tool) and everything else through shell; Linux routes
+  update through the distribution package manager and everything else
+  through shell. This makes the typed boundaries genuinely platform-
+  specific while the adapter stays platform-agnostic.
+- **Seam evidence hashes are FNV-1a (test hash)**: the in-memory
+  reference seams derive `EvidenceRef` values with FNV-1a over the
+  canonical JSON of the platform command and label the algorithm
+  explicitly ("fnv1a32"). A production seam hashes with sha256; the
+  contracts `EvidenceRef.hashAlgorithm` field carries the name so this
+  stays honest.
+- **Runtime policy-cache readiness is derived, not caller-asserted**:
+  `AgentRuntime.dispatchCommand` computes `policyCacheReady` from its
+  OWN signed-policy cache at `executedAt` unless the caller overrides
+  it — a real composition of the W010 cache with the W020 dispatch
+  (an empty/stale cache default-denies destructive capabilities even
+  WITH a grant; a fresh signed document unlocks them).
+- **Registry namespaces are per-tenant nested maps**: no composite
+  string keys — tenant ids are opaque branded strings, so composite
+  keys could theoretically collide across tenants if ids contained
+  separators. Nested maps make the isolation structural.
+- **No new contract changes**: the lane does NOT modify
+  `packages/contracts/**` (frozen, snapshot-gated). The 150-export
+  snapshot is unchanged (verified by `tools/check-contracts.mjs`).
+
+### Known limitations
+
+- No real OS integration: the seam reference implementations are
+  in-memory fakes. A production Windows/macOS/Linux integration
+  (PowerShell/WMI, profiles/system_profiler, package managers/procfs)
+  is a later infrastructure wave; the typed seam interfaces are the
+  contract it implements.
+- The dispatcher is synchronous: the seam execution surface returns a
+  terminal result per invocation. Long-running platform operations
+  (update, wipe) need an async/deferred execution model in a later
+  wave; the receipt lifecycle already carries the executing status for
+  it.
+- `AdapterId` is a plain string (registry-local identifier, not a
+  cross-lane branded contract id). The registry enforces uniqueness
+  per tenant; global uniqueness across tenants is not claimed.
+- The capability probe is a point-in-time snapshot; the SDK does not
+  re-probe automatically (the runtime may call `probeCapabilities` at
+  check-in/manifest time).
+- W030 scope (mobile + printer/copier adapter contracts) is NOT
+  started; `AdapterPlatform` is deliberately the three desktop
+  platforms. Recovery/adcos/web-device paths (lane A's later items)
+  are NOT started.

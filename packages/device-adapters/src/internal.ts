@@ -172,6 +172,15 @@ export const ERROR_CODES = {
   policyCacheStale: "agent.policy_cache.stale",
   policyCacheSignatureInvalid: "agent.policy_cache.signature_invalid",
   policyCacheDefaultDeny: "agent.policy_cache.default_deny",
+  // W020 — endpoint adapter SDK (adapter surface, registry, dispatch)
+  adapterTenantMismatch: "agent.adapter.tenant_mismatch",
+  adapterNotFound: "agent.adapter.not_found",
+  adapterUnknownCapability: "agent.adapter.unknown_capability",
+  adapterUnknownCommandType: "agent.adapter.unknown_command_type",
+  adapterRegistrationConflict: "agent.adapter.registration_conflict",
+  adapterRegistrationInvalid: "agent.adapter.registration_invalid",
+  dispatchIncomplete: "agent.dispatch.incomplete",
+  dispatchTargetUnresolved: "agent.dispatch.target_unresolved",
 } as const;
 
 /** Traceability fields every device-adapters error must carry. */

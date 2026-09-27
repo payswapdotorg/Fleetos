@@ -1,5 +1,5 @@
 /**
- * @fleetos/agent — AgentRuntime composition layer (W010).
+ * @fleetos/agent — AgentRuntime composition layer (W010 + W020).
  *
  * A thin composition layer wiring the device-adapters runtime contract
  * modules into a single `AgentRuntime` entry type. The runtime is the
@@ -7,6 +7,14 @@
  * capabilities, observation collector, command receipt tracker, and
  * local signed-policy cache, and exposes the operations an agent
  * performs against the control plane.
+ *
+ * W020 extends the composition with the endpoint adapter SDK: the
+ * runtime owns an `AdapterRegistry` (registration + lookup of endpoint
+ * adapters) and exposes `dispatchCommand` — capability-aware, idempotent
+ * command dispatch to the registered adapters (see
+ * `@fleetos/device-adapters` dispatch.ts). The runtime supplies the
+ * defaults the SDK requires: the target device (its own identity) and
+ * the policy-cache freshness signal (its own signed-policy cache).
  *
  * The runtime is intentionally THIN: every operation delegates to one
  * of the device-adapters modules. The runtime does NOT add domain
@@ -23,6 +31,7 @@ import {
   type CommandEnvelope,
   type CommandId,
   type CorrelationId,
+  type DeviceId,
   type EventEnvelope,
   type IdempotencyKey,
   type ObservationBatch,
@@ -45,7 +54,13 @@ import {
   type PolicySignatureVerifier,
   type PolicyStalenessRules,
   type SessionToken,
+  type AdapterId,
+  type AdapterDispatchOutcome,
+  type AdapterRegistry,
+  type EndpointAdapter,
   CHECKIN_COMMAND_TYPE,
+  createAdapterCommandDispatcher,
+  createAdapterRegistry,
   createCommandReceiptTracker,
   createObservationCollector,
   createPolicyCache,
@@ -147,6 +162,31 @@ export interface AgentRuntime {
    * the device-adapters helper.
    */
   deriveBatchIdempotencyKey(batch: ObservationBatch): IdempotencyKey;
+
+  // -----------------------------------------------------------------------
+  // W020 — endpoint adapter SDK composition
+  // -----------------------------------------------------------------------
+
+  /**
+   * The endpoint adapter registry (W020 D4). Adapters may be registered
+   * at construction (`options.adapters`) or later through this handle.
+   */
+  readonly adapterRegistry: AdapterRegistry;
+
+  /**
+   * Dispatch a command envelope to the adapter fronting its target
+   * device. Capability-aware and idempotent: unsupported or unauthorized
+   * destructive commands are refused before any platform call (never
+   * emulated); a redelivery replays the ORIGINAL result and never
+   * re-executes. The runtime injects its own defaults: the target device
+   * is its identity's device, and the policy-cache readiness signal is
+   * derived from its own signed-policy cache at `executedAt` unless the
+   * caller overrides it.
+   */
+  dispatchCommand(
+    command: CommandEnvelope<unknown>,
+    inputs: AgentDispatchCommandInputs,
+  ): AdapterDispatchOutcome;
 }
 
 // ---------------------------------------------------------------------------
@@ -185,6 +225,44 @@ export interface AgentRuntimeOptions {
   readonly observationIdSeed?: string;
   /** Optional observation collector max batch size (default: 500). */
   readonly maxBatchSize?: number;
+  /**
+   * W020: endpoint adapters registered into the runtime's adapter
+   * registry at construction (default: none — register later through
+   * `runtime.adapterRegistry`).
+   */
+  readonly adapters?: readonly EndpointAdapter[];
+}
+
+/**
+ * Inputs a `dispatchCommand` call needs beyond the command envelope.
+ * Every timestamp is INJECTED (never the system clock).
+ */
+export interface AgentDispatchCommandInputs {
+  /** ISO 8601 timestamp the command was received (receipt time). */
+  readonly receivedAt: string;
+  /** ISO 8601 timestamp execution began. */
+  readonly executedAt: string;
+  /** ISO 8601 timestamp the terminal result completed. */
+  readonly completedAt: string;
+  /**
+   * Target device override (default: the runtime's identity device).
+   * The registry resolves the adapter fronting the device.
+   */
+  readonly deviceId?: DeviceId;
+  /** Target adapter id (takes precedence over deviceId). */
+  readonly adapterId?: AdapterId;
+  /**
+   * Explicit policy grant for a destructive capability (default: false —
+   * fail-closed).
+   */
+  readonly policyGrant?: boolean;
+  /**
+   * Policy-cache readiness override. When absent, the runtime derives it
+   * from its own local signed-policy cache at `executedAt` (fresh +
+   * signature-verified => true; anything else => false, which
+   * default-denies destructive capabilities).
+   */
+  readonly policyCacheReady?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -193,10 +271,13 @@ export interface AgentRuntimeOptions {
 
 /**
  * Create an `AgentRuntime`. Wires together the device-adapters modules
- * into a single composition root.
+ * into a single composition root. W020: the runtime also owns an
+ * adapter registry and a capability-aware command dispatcher wired to
+ * the runtime's receipt tracker.
  *
  * @throws Error when construction options are invalid (delegated to the
- *   underlying factories: observation collector, policy cache).
+ *   underlying factories: observation collector, policy cache), or when
+ *   an adapter in `options.adapters` fails registry validation.
  */
 export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   const declaredCapabilities = declareAgentCapabilities({
@@ -220,6 +301,22 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     tenantId: options.identity.tenantId,
     verifier: options.policyVerifier,
     staleness: options.policyStaleness,
+  });
+
+  // W020: the endpoint adapter registry + the capability-aware command
+  // dispatcher wired to the runtime's receipt tracker.
+  const adapterRegistry = createAdapterRegistry();
+  for (const adapter of options.adapters ?? []) {
+    const registration = adapterRegistry.register(adapter);
+    if (!registration.ok) {
+      throw new Error(
+        `createAgentRuntime: adapter "${adapter.descriptor.adapterId}" failed registry validation: ${registration.error.message}`,
+      );
+    }
+  }
+  const dispatcher = createAdapterCommandDispatcher({
+    registry: adapterRegistry,
+    tracker: receipts,
   });
 
   function composeCheckInCommand(inputs: CheckInCommandInputs):
@@ -260,6 +357,20 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     flushObservations: (observedAt, correlationId) =>
       collector.flush(observedAt, correlationId),
     deriveBatchIdempotencyKey: (batch) => deriveBatchIdempotencyKey(batch),
+
+    adapterRegistry,
+    dispatchCommand: (command, inputs) =>
+      dispatcher.dispatch(command, {
+        receivedAt: inputs.receivedAt,
+        executedAt: inputs.executedAt,
+        completedAt: inputs.completedAt,
+        deviceId: inputs.deviceId ?? options.identity.deviceId,
+        adapterId: inputs.adapterId,
+        policyGrant: inputs.policyGrant ?? false,
+        policyCacheReady:
+          inputs.policyCacheReady ??
+          policyCache.staleness(inputs.executedAt) === "fresh",
+      }),
   };
 }
 

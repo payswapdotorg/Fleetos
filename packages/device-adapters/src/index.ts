@@ -2,8 +2,8 @@
  * @fleetos/device-adapters — Public API.
  *
  * Lane A (worker-a) implementation of the device-side agent runtime
- * contract (W010). The lane builds the runtime contract for the
- * device-side agent using the frozen `@fleetos/contracts` surface:
+ * contract (W010) and the endpoint adapter SDK (W020). The lane builds
+ * against the frozen `@fleetos/contracts` surface:
  *
  *   checkin.ts        D1 — agent check-in / registration handshake
  *                          (identity, version, session token, ack)
@@ -35,6 +35,36 @@
  *                          helpers, FleetError constructors mapped onto
  *                          the contracts taxonomy, stable error codes
  *
+ * W020 — endpoint adapter SDK (built on the W010 runtime pieces):
+ *
+ *   seams.ts          D2 — Windows/macOS/Linux platform seam TYPES:
+ *                          typed per-platform command execution surfaces
+ *                          (PowerShell / shell+MDM profiles / shell+pkg
+ *                          manager), observation sources (WMI+event log /
+ *                          system_profiler+unified log / procfs+journald)
+ *                          and capability probes, each extending the
+ *                          normalized boundaries the adapter routes
+ *                          through
+ *   seams-inmemory.ts D2 — in-memory deterministic reference
+ *                          implementations of the platform seams (fakes
+ *                          for tests; no real OS integration)
+ *   adapter.ts        D1/D3 — the normalized EndpointAdapter contract:
+ *                          one platform-agnostic interface (one method
+ *                          per normalized capability + the invoke
+ *                          router) the platform seams implement; every
+ *                          method enforces capability negotiation and
+ *                          REFUSES unsupported / unauthorized
+ *                          destructive commands before any seam call
+ *   registry.ts       D4 — tenant-scoped adapter registry:
+ *                          registration (structural validation +
+ *                          conflict detection), lookup by
+ *                          adapter/device/platform
+ *   dispatch.ts       D4 — capability-aware command dispatch: command
+ *                          type -> capability mapping, adapter
+ *                          resolution, idempotent receipt (replay never
+ *                          re-executes), status lifecycle transitions,
+ *                          result envelope with FleetError mapping
+ *
  * Cross-lane domain types come from @fleetos/contracts only
  * (`tools/check-ownership.mjs` enforced). No `any` in public signatures.
  * No runtime dependencies. No clock reads — every timestamp is injected
@@ -55,6 +85,24 @@ export * from "./commands";
 
 // D5 — Local signed-policy cache
 export * from "./policy-cache";
+
+// W020 D2 — Platform seams (Windows/macOS/Linux typed boundary interfaces)
+export * from "./seams";
+
+// W020 D2 — In-memory deterministic reference seam implementations (fakes)
+export * from "./seams-inmemory";
+
+// W020 D1/D3 — Normalized endpoint adapter contract (capability
+// negotiation + refusal inside every method; never emulates unsupported
+// destructive behavior)
+export * from "./adapter";
+
+// W020 D4 — Adapter registry (tenant-scoped registration + lookup)
+export * from "./registry";
+
+// W020 D4 — Capability-aware command dispatch (idempotent receipt +
+// result envelope with FleetError mapping)
+export * from "./dispatch";
 
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).
