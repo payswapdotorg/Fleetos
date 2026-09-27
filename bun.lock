@@ -11,6 +11,10 @@
     "apps/agent": {
       "name": "@fleetos/agent",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+        "@fleetos/device-adapters": "workspace:*",
+      },
     },
     "apps/web": {
       "name": "@fleetos/web",
@@ -35,6 +39,9 @@
     "packages/device-adapters": {
       "name": "@fleetos/device-adapters",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
     },
     "packages/device-model": {
       "name": "@fleetos/device-model",

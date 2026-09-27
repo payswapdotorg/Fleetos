@@ -950,3 +950,228 @@ proposal-only boundary).
   durable home via W011's `TwinInterpretation` + `updateTwinSection`).
 - Hypothesis confidence does not yet decay with evidence age; time-weighted
   confidence is a learning-wave refinement.
+
+## W010 — Lane A: device agent / runtime contract
+
+Implemented by W010 (worker-a) on branch `work/w010`, base
+`integration/wave0` @ `9dfde29` (the W021 acceptance commit — the branch
+had advanced past the W003 commit named in the work order; the required
+harness artifacts `tools/check-contracts.mjs` and
+`packages/contracts/src/testing.ts` are present, and the W021 lane-B code
+does not intersect lane A). Deliverables D1-D5 landed in
+`packages/device-adapters/src/` (the runtime-contract surface) plus a
+thin composition layer in `apps/agent/src/`:
+
+- `internal.ts`     — internal helpers (NOT re-exported): canonical JSON,
+                       FNV-1a digest, ISO sanity, frozen helpers,
+                       FleetError constructors mapped onto the contracts
+                       taxonomy, stable error codes.
+- `checkin.ts`      D1 — agent check-in / registration handshake:
+                       AgentIdentity (DeviceId + tenant binding),
+                       AgentVersionInfo, SessionToken (opaque to the
+                       agent), SessionState (active/expired/revoked),
+                       CheckInCommandPayload + CheckInAckEventPayload
+                       (envelope-compatible: the lane delegates to the
+                       frozen makeCommand / makeEnvelope — it does NOT
+                       duplicate the envelope shapes), pure validators
+                       for payload + end-to-end command/ack envelopes,
+                       session-state predicates (isSessionActive,
+                       needsRefresh).
+- `capabilities.ts` D2 — capability discovery + negotiation. Built on
+                       the frozen AdapterCapabilities; the lane adds
+                       adapterFamily + supported/unsupported enumerable
+                       sets + declaredAt. `negotiateCapability` REFUSES
+                       unsupported destructive behavior (never emulates
+                       it) with three refusal modes: `unsupported`
+                       (AdapterError), `destructive_unauthorized`
+                       (PolicyError REQUIRE_APPROVAL — no explicit grant),
+                       and `destructive_offline_default_deny` (PolicyError
+                       BLOCK — local policy cache stale/offline; this is
+                       the D5 seam surfaced at the capability-negotiation
+                       boundary per ARCHITECTURE-LOCK.md item 16).
+- `observations.ts` D3 — agent-side observation collector. Assembles
+                       valid `ObservationBatch` values (contracts shape)
+                       with deterministic sequencing
+                       (`<idSeed>-seq-<n>` ObservationId; the same
+                       `(idSeed, seq)` produces the same id every run).
+                       The producer NEVER emits a batch the contracts
+                       invariants would reject: every batch is validated
+                       by `validateObservationBatch` before emission;
+                       on validation failure (a programmer-error
+                       indicator), `flush()` returns an error result and
+                       pending observations are preserved for diagnostics.
+                       Bad records (bad kind / bad schemaVersion /
+                       non-JSON-serializable payload) are refused at
+                       `record()` time. The lane also exposes
+                       `deriveBatchIdempotencyKey` for deterministic
+                       batch-level idempotency-key derivation
+                       (FNV-1a of the canonical-JSON batch).
+- `commands.ts`     D4 — command receipt + execution result. The
+                       `CommandReceiptTracker` enforces the contracts
+                       duplicate-suppression contract: same
+                       `(tenantId, idempotencyKey)` + same command =>
+                       replay the ORIGINAL receipt/result (referential
+                       equality); same key + DIFFERENT command =>
+                       ConflictError. Status lifecycle:
+                       accepted -> executing -> succeeded | failed;
+                       accepted -> rejected (early refusal). Illegal
+                       transitions are refused with a DomainError.
+                       `recordResult` is idempotent (replay returns the
+                       original). `mapAgentFailure` is the single seam
+                       where agent-internal failure kinds
+                       (malformed_payload, unauthorized,
+                       unsupported_capability, destructive_unauthorized,
+                       destructive_offline_default_deny, adapter_internal,
+                       timeout, unknown) become first-class `FleetError`
+                       values for the control plane's audit trail — all
+                       six FleetError subclasses are reachable through
+                       this seam. Tenant isolation: lookup is scoped by
+                       `tenantId`; a tenant-A lookup cannot observe a
+                       tenant-B entry (verified by test).
+- `policy-cache.ts` D5 — local signed-policy cache. Versioned
+                       `SignedPolicyDocument` (version >= 1, opaque
+                       payload, detached signature, signatureAlgorithm
+                       name). The `PolicySignatureVerifier` is INJECTED —
+                       the lane has NO crypto runtime dependency. Staleness
+                       rules: `maxAgeMs` (default 5min) and
+                       `mustRefetchMs` (default 1h, null disables).
+                       Staleness statuses: `fresh` / `stale` /
+                       `must_refetch` / `empty` / `signature_invalid`.
+                       CRITICAL: `authorizeConsequential` returns `ok:
+                       true` ONLY when the cache is `fresh`; for any
+                       other status it returns `ok: false` with a
+                       `PolicyError` carrying `decision: "BLOCK"`
+                       (default-deny for consequential actions per
+                       ARCHITECTURE-LOCK.md item 16). An
+                       invalid-signature `put` does NOT overwrite a
+                       previously-stored valid entry (the cache surfaces
+                       `signature_invalid` until the next successful
+                       `put`). A verifier that throws is treated as
+                       `false` (defend in depth — never throw). Clock
+                       skew (`at < fetchedAt`) is treated as
+                       `must_refetch` (fail safe). The verifier supports
+                       both sync and async verify() (e.g. ed25519 over
+                       network).
+
+`apps/agent/src/runtime.ts` is a thin composition layer: `createAgentRuntime`
+wires `identity`, `agent`, `declaredCapabilities`, `collector`,
+`receipts`, `policyCache` into a single `AgentRuntime` entry type and
+exposes the operations an agent performs against the control plane
+(composeCheckInCommand, projectCheckInAck, negotiateCapability,
+authorizeConsequential, acknowledgeCommand, flushObservations,
+deriveBatchIdempotencyKey). Every operation delegates to one of the
+device-adapters modules; the runtime does NOT add domain logic. The
+runtime is tenant-scoped at construction (its identity, collector, and
+policyCache share one tenantId — verified by test). MODULE_NAME and
+MODULE_VERSION exports are preserved for the W001 baseline tests.
+
+### Test suite
+
+115 new tests across 6 files:
+- `packages/device-adapters/test/checkin.test.ts` — 18 tests
+- `packages/device-adapters/test/capabilities.test.ts` — 14 tests
+- `packages/device-adapters/test/observations.test.ts` — 17 tests
+- `packages/device-adapters/test/commands.test.ts` — 17 tests
+- `packages/device-adapters/test/policy-cache.test.ts` — 26 tests
+- `packages/device-adapters/test/contract-conformance.test.ts` — 13 tests
+  (uses the @fleetos/contracts/testing fixture builders:
+  makeTenantId, makeDeviceId, makeCommandId (via makeCommandEnvelope),
+  makeEventId, makeObservationId, makePolicyId, makeCorrelationId,
+  makeIdempotencyKey, makeTimestamp, makeEventEnvelope,
+  makeCommandEnvelope, makeObservationBatch, makeAdapterCapabilities,
+  makeFleetError — plus the frozen validators validateEnvelope,
+  validateCommand, validateObservationBatch, validateTenantRef,
+  assertSupported, isSupported, isDestructive, toApiError)
+- `apps/agent/test/runtime.test.ts` — 10 tests (composition delegation)
+
+Full suite after W010: 587 pass, 0 fail (472 baseline + 115 new).
+
+### Binding protocol (W003-resolved, applied here)
+
+Per the W003 Line-stop resolution (carried forward in PROJECT-STATE.md):
+`packages/device-adapters/package.json` and `apps/agent/package.json`
+declare `"@fleetos/contracts": "workspace:*"` (and the agent also
+declares `"@fleetos/device-adapters": "workspace:*"`). `bun install`
+symlinks `node_modules/@fleetos/contracts` and
+`node_modules/@fleetos/device-adapters` in each consumer; both `tsc`
+and `bun test` resolve the module specifiers. No relative imports
+cross a package boundary in this lane (the ownership gate is green).
+
+### Judgment calls
+
+- **Envelope compatibility without duplication**: the lane reuses the
+  frozen `makeCommand` and `makeEnvelope` constructors via
+  `wrapCheckInCommand` and `wrapCheckInAck` helpers. The
+  CheckInCommandPayload and CheckInAckEventPayload are the
+  agent-specific payloads carried INSIDE the envelopes; the envelopes
+  themselves are the frozen shapes (verified by a byte-identical
+  comparison test against `makeCommand` directly).
+- **D2 precedence: `destructive_unauthorized` wins over
+  `destructive_offline_default_deny`**: when the policy grant is
+  missing, the frozen `assertSupported` returns
+  `destructive_unauthorized` first; the cache-staleness check is only
+  reached when the grant IS present. This is the correct precedence: a
+  missing grant is a definitive refusal regardless of cache state.
+- **D3 idempotency-key derivation**: `deriveBatchIdempotencyKey` is a
+  deterministic FNV-1a of the canonical-JSON batch, scoped by deviceId.
+  Two batches with the same content produce the same key; the runtime
+  MAY use this helper to assign an idempotency key to a check-in
+  command carrying an observation batch.
+- **D4 status table**: the agent-side table is distinct from the
+  IntentStatus lifecycle (which spans the full control loop). The agent
+  only sees its slice: accepted -> executing -> succeeded | failed, plus
+  accepted -> rejected (early refusal). Terminal statuses have no
+  outgoing transitions.
+- **D5 `isStale` semantics**: `isStale` returns `true` for any
+  non-fresh status (including `empty` and `signature_invalid`). An
+  empty cache IS effectively offline (no policy available); a
+  signature-invalid cache cannot be trusted. This is the basis for
+  default-deny at the consequential-action seam.
+- **D5 invalid-signature behavior**: a failed `put` sets the
+  `signatureInvalid` flag, which surfaces as the
+  `signature_invalid` staleness status until the next successful `put`
+  clears it. The previously-stored valid entry is no longer trusted
+  once a failed `put` has been attempted (defense in depth: a
+  signature failure may indicate key compromise, not just a malformed
+  document).
+- **D5 verifier seam supports async**: `verify()` may return
+  `Promise<boolean>` (e.g. for ed25519 verification over a network
+  HSM). The cache awaits it at `put` time. The verifier MUST NOT
+  throw — internal errors are surfaced as `false` (default-deny).
+- **Lane-local FleetError constructors**: the `internal.ts` module
+  centralizes the taxonomy mapping (mirrors W011/W012's pattern). The
+  error codes are dotted strings following the
+  `<domain>.<error>` convention (`agent.checkin.*`,
+  `agent.capability.*`, `agent.observations.*`, `agent.command.*`,
+  `agent.policy_cache.*`).
+- **No new contract changes**: the lane does NOT modify
+  `packages/contracts/**` (frozen, snapshot-gated). All cross-lane
+  types come from `@fleetos/contracts`. The 150-export snapshot is
+  unchanged (verified by `tools/check-contracts.mjs`).
+
+### Known limitations
+
+- The lane provides the runtime-contract surface and a thin composition
+  layer; it does NOT execute network I/O. The deployment layer (a
+  future infrastructure wave) wires the runtime to actual transport
+  (HTTP, MQTT, etc.).
+- The `CommandReceiptTracker` and `PolicyCache` are in-memory; durable
+  persistence across agent restarts is the runtime's responsibility
+  (e.g. a SQLite-backed implementation in a future wave).
+- The `ObservationCollector`'s sequence counter is per-instance; an
+  agent restart resets the counter unless the caller injects a
+  per-boot `idSeed` and a non-default `startSeq`. The runtime exposes
+  both options.
+- The `PolicyCache` holds ONE entry per tenant (the cache is
+  tenant-scoped at construction). A multi-tenant agent (rare; most
+  agents run under one tenant) would instantiate multiple caches.
+- The signature verifier is injected but the lane ships no
+  production verifier implementation (only `ACCEPT_ALL_VERIFIER` and
+  `REJECT_ALL_VERIFIER` for tests). A production ed25519 verifier is
+  the deployment layer's responsibility.
+- D1's `validateCheckInAck` is structural (tenantId is structural
+  tenant isolation). Cross-tenant flow detection at the data-shape
+  boundary is not enforced; the runtime layer is responsible for
+  rejecting cross-tenant flows at the action boundary (this is the
+  contract: tenant isolation is enforced at the action boundary, not
+  at the data-shape boundary).
