@@ -1,24 +1,31 @@
 /**
- * @fleetos/device-adapters — W020 D2: Platform seams (Windows/macOS/Linux).
+ * @fleetos/device-adapters — W020 D2 (+ W030 extension): Platform seams
+ * (Windows/macOS/Linux + the mobile and printer/copier families).
  *
  * Typed boundary interfaces per platform. A platform seam is the set of
- * surfaces a REAL operating-system integration would implement for the
- * endpoint adapter SDK:
+ * surfaces a REAL operating-system/device integration would implement
+ * for the endpoint adapter SDK:
  *
  *   - a command execution surface   (typed per platform: PowerShell on
  *     Windows, shell + MDM profiles on macOS, shell + package manager on
- *     Linux — each ALSO exposing the normalized `execute()` boundary the
- *     platform-agnostic adapter routes through),
+ *     Linux, Apple MDM / Android Enterprise on mobile, SNMP + vendor API
+ *     on printer/copier — each ALSO exposing the normalized `execute()`
+ *     boundary the platform-agnostic adapter routes through),
  *   - observation sources           (typed per platform: WMI + event log on
  *     Windows, system_profiler + unified logging on macOS, procfs +
- *     journald on Linux — each ALSO exposing the normalized `poll()`
- *     boundary),
+ *     journald on Linux, battery/OS/compliance/location evidence on
+ *     mobile, consumables/page counts/error states on printer/copier —
+ *     each ALSO exposing the normalized `poll()` boundary),
  *   - a capability probe            (`probe()` reports the frozen
  *     `AdapterCapabilities` the platform integration can actually back).
  *
- * This module declares INTERFACES ONLY. The in-memory deterministic
- * reference implementations live in `seams-inmemory.ts` (tests; no real
- * OS integration is shipped in this lane — W020 scope).
+ * This module declares the DESKTOP seam interfaces (W020) and the
+ * platform identifiers/union (extended by W030). The mobile family seam
+ * types live in `seams-mobile.ts`; the printer/copier seam types live in
+ * `seams-printer.ts`. The in-memory deterministic reference
+ * implementations live in `seams-inmemory.ts` (desktop, W020) and
+ * `seams-inmemory-mobile.ts` / `seams-inmemory-printer.ts` (W030) —
+ * tests only; no real OS/device integration is shipped in this lane.
  *
  * Platform-specific types stay INSIDE this package (the platform seam is
  * where platform meets the normalized capability surface by design); they
@@ -28,23 +35,40 @@
  *
  * No runtime dependencies. No `any` in public signatures. Strict TS.
  * No clock reads — every timestamp is injected by the caller.
+ *
+ * W030 note: `AdapterPlatform` and `ADAPTER_PLATFORMS` were EXTENDED with
+ * the mobile (ios/ipados/android) and printer-copier family ids — the
+ * family seams' typed boundaries live in `seams-mobile.ts` /
+ * `seams-printer.ts` and join the `PlatformSeams` union below. The
+ * generic network/IoT adapter boundary arrives with a later wave.
  */
 
 import type { AdapterCapabilities, EvidenceRef } from "@fleetos/contracts";
 import type { ObservationRecord } from "./observations";
+import type { IosSeam, IpadOsSeam, AndroidSeam } from "./seams-mobile";
+import type { PrinterCopierSeam } from "./seams-printer";
 
 // ---------------------------------------------------------------------------
 // D2.1 — Platform identifiers
 // ---------------------------------------------------------------------------
 
 /**
- * The endpoint platforms this SDK ships seam types for. W020 scope is the
+ * The endpoint platforms this SDK ships seam types for. W020 landed the
  * three desktop platforms named in `spec/ARCHITECTURE.md` § Device
- * adapters ("Initial adapter families: Windows, macOS, Linux"); mobile,
- * printer/copier and network-device families arrive with W030 and later
- * waves and MUST NOT be added here.
+ * adapters ("Initial adapter families: Windows, macOS, Linux"); W030
+ * added the mobile family ids (iOS/iPadOS management, Android
+ * Enterprise) and the printer/copier family id — a family id IS the
+ * platform literal the family's seam is discriminated on. The generic
+ * network/IoT adapter boundary arrives with a later wave.
  */
-export type AdapterPlatform = "windows" | "macos" | "linux";
+export type AdapterPlatform =
+  | "windows"
+  | "macos"
+  | "linux"
+  | "ios"
+  | "ipados"
+  | "android"
+  | "printer-copier";
 
 /**
  * The canonical list of platforms this SDK knows (frozen re-export for
@@ -54,6 +78,10 @@ export const ADAPTER_PLATFORMS: readonly AdapterPlatform[] = Object.freeze([
   "windows",
   "macos",
   "linux",
+  "ios",
+  "ipados",
+  "android",
+  "printer-copier",
 ] as const);
 
 // ---------------------------------------------------------------------------
@@ -337,8 +365,19 @@ export interface LinuxSeam {
  * The union of the platform seams this SDK defines. Discriminated by the
  * `platform` literal; the endpoint adapter validates that the seam's
  * platform matches its descriptor's platform at construction.
+ *
+ * W030: the union grew by the mobile family seams (iOS / iPadOS /
+ * Android — `seams-mobile.ts`) and the printer/copier seam
+ * (`seams-printer.ts`). The W020 desktop members are unchanged.
  */
-export type PlatformSeams = WindowsSeam | MacOsSeam | LinuxSeam;
+export type PlatformSeams =
+  | WindowsSeam
+  | MacOsSeam
+  | LinuxSeam
+  | IosSeam
+  | IpadOsSeam
+  | AndroidSeam
+  | PrinterCopierSeam;
 
 /**
  * Pure predicate: is the given value a platform this SDK knows?

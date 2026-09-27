@@ -134,9 +134,11 @@ describe("W020 D4: registry structural validation", () => {
 
   test("an unknown platform is refused", () => {
     const registry = createAdapterRegistry();
+    // W030 extended the platform union (ios/ipados/android/printer-copier
+    // are valid now); "sunos" stays unknown.
     const broken = {
       ...adapter("adp_badplatform", TENANT_A, DEVICE_1),
-      descriptor: { ...adapter("adp_badplatform", TENANT_A, DEVICE_1).descriptor, platform: "ios" },
+      descriptor: { ...adapter("adp_badplatform", TENANT_A, DEVICE_1).descriptor, platform: "sunos" },
     };
     const result = registry.register(broken as unknown as EndpointAdapter);
     expect(result.ok).toBe(false);

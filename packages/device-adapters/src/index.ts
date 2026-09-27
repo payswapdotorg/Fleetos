@@ -104,6 +104,44 @@ export * from "./registry";
 // result envelope with FleetError mapping)
 export * from "./dispatch";
 
+// W030 D1/D2 — Adapter family descriptors + capability profiles
+// (mobile + printer/copier; explicit, typed, never-emulated refusals)
+export * from "./families";
+
+// W030 — Payload validation primitives (the family payload vocabulary)
+export * from "./payload-validation";
+
+// W030 D1 — Mobile family command payload contracts (MDM-shaped)
+export * from "./mobile-commands";
+
+// W030 D1 — Mobile observation source contracts (battery, OS version,
+// compliance, geolocation-as-evidence)
+export * from "./mobile-observations";
+
+// W030 D2 — Printer/copier command payload contracts (SNMP + vendor)
+export * from "./printer-commands";
+
+// W030 D2 — Printer/copier consumable/usage observation contracts
+export * from "./printer-observations";
+
+// W030 D1/D2 — Mobile + printer/copier family seam TYPES
+export * from "./seams-mobile";
+export * from "./seams-printer";
+
+// W030 D3 — Shared in-memory family seam machinery (scripting,
+// recording, content-addressed evidence)
+export * from "./inmemory-shared";
+
+// W030 D3 — In-memory reference mobile family seams (fakes)
+export * from "./seams-inmemory-mobile";
+
+// W030 D3 — In-memory reference printer/copier family seam (fake)
+export * from "./seams-inmemory-printer";
+
+// W030 D3/D4 — Family adapter factories (family profile -> construction
+// envelope validation -> W020 negotiation inside every method)
+export * from "./family-adapters";
+
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).
 export const MODULE_NAME = "device-adapters" as const;

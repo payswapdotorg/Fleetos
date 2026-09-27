@@ -256,12 +256,18 @@ describe("W020 D2: cross-platform determinism", () => {
     }
   });
 
-  test("isAdapterPlatform accepts the three SDK platforms and nothing else", () => {
+  test("isAdapterPlatform accepts the SDK platforms (desktop + W030 families) and nothing else", () => {
     expect(isAdapterPlatform("windows")).toBe(true);
     expect(isAdapterPlatform("macos")).toBe(true);
     expect(isAdapterPlatform("linux")).toBe(true);
-    expect(isAdapterPlatform("ios")).toBe(false);
-    expect(isAdapterPlatform("android")).toBe(false);
+    // W030: the mobile + printer/copier family ids joined the union.
+    expect(isAdapterPlatform("ios")).toBe(true);
+    expect(isAdapterPlatform("ipados")).toBe(true);
+    expect(isAdapterPlatform("android")).toBe(true);
+    expect(isAdapterPlatform("printer-copier")).toBe(true);
+    // Unknown/typo platforms stay refused.
     expect(isAdapterPlatform("printer")).toBe(false);
+    expect(isAdapterPlatform("network-iot")).toBe(false);
+    expect(isAdapterPlatform("sunos")).toBe(false);
   });
 });

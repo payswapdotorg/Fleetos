@@ -2345,3 +2345,343 @@ emissions through the adapter sink).
   this package). The actions package stops at the proposal-gated
   boundary — APPROVED is terminal from the policy-gate perspective;
   the execution handoff is downstream.
+
+---
+
+## W030 — Lane A: mobile + printer/copier adapter contracts
+
+Implemented by W030 (worker-a) on branch `work/w030`, base
+`integration/wave0` @ `f88bfbc` (the W041 acceptance commit — past the
+Wave 3 acceptances; the required W020 endpoint-adapter-SDK artifacts
+`packages/device-adapters/src/{adapter,seams,seams-inmemory,registry,dispatch}.ts`
+are present, and the W031/W032/W041 lane-B/C code does not intersect
+lane A). Deliverables D1-D5 landed entirely in
+`packages/device-adapters/**` (the frozen lane; no real MDM/SNMP
+integration — both are CONTRACT boundaries: pure typed shapes +
+injected seams). `packages/contracts/**` untouched (150-export snapshot
+unchanged, verified by the gate).
+
+### D1 — Mobile adapter family contracts
+
+- `src/families.ts` — the family identifiers (`ios` / `ipados` /
+  `android` / `printer-copier`), the mobile family descriptors
+  (iOS/iPadOS = Apple MDM protocol; Android = Android Enterprise), and
+  the EXPLICIT TYPED capability profiles: the mobile envelope carries
+  the typical MDM set (lock/locate/wipe/update/observe/identify/health)
+  PLUS diagnose (device-info/bugreport queries) and enforce
+  (passcode/restrictions/managed apps) — `remediate`/`reboot` are
+  OUTSIDE the envelope this wave (disclosed below). Profiles are built
+  by `buildFamilyCapabilityProfile` (frozen flag set + derived
+  supported/unsupported enumerables over the frozen canonical
+  `ALL_ADAPTER_CAPABILITIES` — the W010 `declareAgentCapabilities`
+  discipline), so the profile and its enumerables cannot desynchronize.
+- `src/mobile-commands.ts` — the MDM-shaped command payload contracts:
+  managed-app commands (install/remove + managed configuration),
+  OS-update policies (target version, deferral, notify),
+  LOST-MODE with REQUIRED message + phone on enable (the work order's
+  named shape), device lock (optional 4-8 digit PIN), wipe
+  (scope full vs ENTERPRISE — work profile / org erase, the BYOD-safe
+  default), locate requests (accuracy + max age; `locate` is
+  destructive per the frozen `DESTRUCTIVE_CAPABILITIES`), and mobile
+  enforcement (passcode policy with bounded length / restrictions
+  profile). Every payload has a parse-don't-validate parser
+  (`unknown` -> narrowed typed payload, tagged failure with field
+  path); the contracts are CLOSED-WORLD (unknown fields fail the
+  parse — no silent field dropping, no payload smuggling across
+  kinds). `MOBILE_CAPABILITY_PAYLOAD_KINDS` is the lane-local
+  capability -> accepted-payload-kinds map (enforce -> managed-app |
+  mobile-enforce; update -> os-update-policy; lock -> lost-mode |
+  device-lock; locate -> locate-request; wipe -> wipe) and
+  `parseMobileCommandPayload` is the deterministic unified parser
+  (canonical kind order, first match wins, machine-stable failure
+  reasons).
+- `src/mobile-observations.ts` — the mobile observation source
+  contracts: battery (`mobile.battery`), OS version
+  (`mobile.os-version`, incl. Android security-patch level),
+  compliance state (`mobile.compliance`, machine-stable violation
+  codes), and GEOLOCATION-AS-EVIDENCE (`mobile.location-evidence`) —
+  a captured fix with provenance (fix source, accuracy, capturedAt,
+  capturedWhileLostMode collection context). Privacy boundary
+  respected by construction: observable evidence only, NEVER inferred
+  intent (no movement/dwell/behavioral fields). Kinds follow the
+  frozen contracts' documented `<family>.<subject>` convention
+  ("mobile" is the family group — disclosed below). Each payload has
+  a parser + a record builder (kind + schemaVersion 1) that flows
+  through the W010 collector and the frozen
+  `validateObservationBatch` (proven by test).
+- `src/seams-mobile.ts` — the mobile family seam TYPES: the Apple MDM
+  command channel for iOS/iPadOS (typed `AppleMdmCommand` union —
+  DeviceInformation, Install/RemoveApplication, InstallProfile,
+  ScheduleOSUpdate, Enable/DisableLostMode, DeviceLock, EraseDevice,
+  Location), the Android Enterprise channel (typed
+  `AndroidEnterpriseCommand` union — device-info, managed-app
+  install/remove/hide, apply-policy, set-update-policy, lock-screen
+  WITH the lost-mode presentation carried through it, wipe device vs
+  work-profile, request-location), and the SHARED mobile observation
+  source set (the four mobile observables are protocol-independent;
+  each extends the normalized `execute()` / `poll()` / `probe()`
+  boundaries from `seams.ts`).
+
+### D2 — Printer/copier adapter family contracts
+
+- `families.ts` (printer section) — the printer/copier family profile
+  is observe/health/diagnose-centric with LIMITED enforce:
+  identify/observe/diagnose/health/enforce is the base envelope;
+  `lock` / `locate` / `wipe` are FORBIDDEN (an explicit frozen list —
+  refused at adapter CONSTRUCTION and at every runtime invocation,
+  never emulated); `reboot` / `update` are VENDOR-MODEL-OPTIONAL — a
+  vendor model descriptor declares which it backs, and the factory
+  refuses an optional capability the model does not declare.
+  `createPrinterVendorModelDescriptor` validates vendor/model ids,
+  connector boundaries (`snmp` and/or `vendor-api`), and enforces that
+  optional capabilities require the `vendor-api` boundary (an
+  SNMP-only model cannot back them — that would be emulated
+  behavior). `printerCopierFamilyEnvelopeFor(vendorModel)` is the pure
+  per-model envelope (base + optional).
+- `src/printer-commands.ts` — the SNMP + vendor boundary command
+  payload contracts: SNMP get (dotted-OID query — an ad-hoc query is a
+  DIAGNOSTIC; observe stays passive per W020), SNMP set (typed OID
+  assignments with string/integer/gauge/counter values — the
+  limited-enforce write boundary), and the vendor command payloads
+  (cancel-job, clear-queue, apply-config, reboot, firmware-update).
+  Vendor actions are CAPABILITY-SCOPED (`VENDOR_ACTIONS_FOR_CAPABILITY`):
+  enforce accepts cancel-job/clear-queue/apply-config, reboot accepts
+  only reboot, update accepts only firmware-update — a vendor action
+  cannot be smuggled into the wrong capability (verified by test).
+  All parsers are closed-world and fail-closed.
+- `src/printer-observations.ts` — the consumable/usage observation
+  contracts: consumables (`printer.consumable` — toner/ink/drum/
+  waste-toner/maintenance-kit with color and remaining percent + page
+  estimate), page counts (`printer.page-counts` — total/mono/color/
+  duplex/scanned counters), error states (`printer.error-state` —
+  device status + machine-stable error entries with severity).
+- `src/seams-printer.ts` — the printer/copier seam TYPES: one command
+  channel extending the normalized `execute()` boundary with the SNMP
+  read/write entry points and the vendor API entry point (there is
+  deliberately NO lock/locate/wipe surface), and the observation
+  source set extending `poll()` with the three typed evidence
+  readers.
+
+### D3 — Family conformance seams
+
+- `src/seams-inmemory-mobile.ts` / `src/seams-inmemory-printer.ts` +
+  the shared machinery in `src/inmemory-shared.ts` (mirrors the W020
+  fakes' discipline without touching the accepted W020 module): the
+  in-memory reference seams for ios / ipados / android /
+  printer-copier with deterministic INJECTED scripting (per-capability
+  command outcomes, per-source observation records, capability
+  probe), invocation recording (`calls()` / `reset()`), and
+  content-addressed evidence (FNV-1a over the canonical JSON of the
+  TYPED family command — a test hash, never for security). No clock
+  reads, no entropy, no network: timestamps are injected by the
+  caller at the adapter boundary; two fakes built with the same
+  options behave identically, byte-for-byte (verified by test).
+- The payload contracts are enforced AT the seam: the normalized
+  `execute()` parses the opaque payload with the unified family
+  parsers and maps it to the typed platform command; a malformed
+  payload (or a capability/payload mismatch) FAILS CLOSED — a failed
+  platform command with an `adapter_internal` failure, never an
+  emulated success, and the typed channel is never invoked.
+- `src/family-adapters.ts` — the family adapter factories:
+  `createMobileFamilyAdapter` (platform must be ios/ipados/android,
+  seam must match, capabilities must be a SUBSET of the mobile
+  envelope — a BYOD profile without wipe is a first-class subset) and
+  `createPrinterCopierFamilyAdapter` (platform printer-copier,
+  capabilities subset of base + the VENDOR MODEL's optionals;
+  forbidden capabilities REFUSED AT CONSTRUCTION with the explicit
+  never-emulated message). Both delegate to the W020
+  `createEndpointAdapter` unchanged — capability negotiation (frozen
+  `assertSupported` semantics via W010 `negotiateCapability`) lives
+  INSIDE every method, tenant isolation at the action boundary, and
+  refusals NEVER reach the seam. Plus the family conformance
+  predicates (`familyConformanceFor`, `familyEnvelopeForPlatform`,
+  `isCapabilityInFamilyEnvelope`, `forbiddenCapabilitiesForPlatform`).
+
+### D4 — Registry integration
+
+Family adapters are ordinary W020 `EndpointAdapter`s: they register
+through `createAdapterRegistry` UNCHANGED (the registry's structural
+validation consumes the extended `ADAPTER_PLATFORMS` — ios/ipados/
+android/printer-copier register, conflict detection and the
+one-adapter-per-endpoint rule hold) and dispatch through
+`createAdapterCommandDispatcher` UNCHANGED (command type ->
+capability -> adapter resolution by device descriptor via
+`registry.forDevice`, pre-negotiation born-rejected receipts for
+family profile gaps — e.g. a wipe command against a printer is
+born-rejected with `agent.capability.unsupported` even WITH a grant —
+idempotent replay mirroring the ORIGINAL result, mixed-family fleets
+resolve per device). Zero changes to `registry.ts` / `dispatch.ts`:
+the composition is proven by tests, not by new code paths.
+
+### W020 surface changes (minimal, additive)
+
+- `seams.ts` — `AdapterPlatform` and `ADAPTER_PLATFORMS` extended with
+  the four family ids (the W020 file itself said the families "arrive
+  with W030"); `PlatformSeams` union extended with the four family
+  seams (TYPE-ONLY imports — no runtime coupling); module docs
+  updated. The three desktop seams are unchanged.
+- `adapter.ts` — the construction error message now derives from
+  `ADAPTER_PLATFORMS` instead of the hardcoded "windows/macos/linux"
+  string.
+- Two W020 baseline tests updated (intent preserved): the registry
+  "unknown platform" test used `"ios"` as its invalid-platform example
+  — now `"sunos"` (ios is valid post-W030); the seams platform
+  predicate test asserted exactly three platforms — now asserts the
+  seven W030 platforms plus still-invalid examples.
+
+### Test suite
+
+128 new tests across 8 files (full suite after W030: 1312 pass, 0
+fail — 1184 baseline + 128 new; repeated runs byte-stable):
+- `test/families.test.ts` — 25 (family ids, profiles, descriptors,
+  vendor models, envelope validators incl. forbidden/vendor-not-
+  backing/outside reasons, conformance predicates)
+- `test/mobile-contracts.test.ts` — 22 (every payload parser's
+  valid/invalid matrix, the capability map, the unified parser's kind
+  resolution + mismatch failures, observation payload validators,
+  record builders through the W010 collector + frozen
+  `validateObservationBatch`)
+- `test/printer-contracts.test.ts` — 13 (SNMP get/set, vendor command
+  discrimination + capability scoping, forbidden capabilities accept
+  nothing, observation validators, records through the frozen batch
+  validator)
+- `test/seams-mobile.test.ts` — 19 (Apple/Android typed routing per
+  payload kind, malformed fail-closed, scripted outcomes + evidence,
+  the four observation sources in fixed order, probe, reset, byte-
+  identical determinism)
+- `test/seams-printer.test.ts` — 15 (SNMP/vendor routing, default
+  device OIDs for identify/health, forbidden capabilities fail closed
+  at the seam, vendor-action smuggling refused, sources, probe,
+  determinism)
+- `test/family-adapters.test.ts` — 15 (construction gates incl. the
+  printer FORBIDDEN construction refusal, the exhaustive
+  11-capability x declared/undeclared ios matrix, the printer
+  exhaustive matrix over every grant state (lock/locate/wipe refused
+  even with grant + fresh cache), the Android destructive grant
+  matrix, iPadOS non-destructive, cross-tenant refusal, malformed
+  payload fails AFTER negotiation, observe over family sources, BYOD
+  subset)
+- `test/family-registry.test.ts` — 9 (registration through the W020
+  registry, conflicts, structural tenant isolation, dispatch by
+  device descriptor for mobile lock / printer enforce, printer wipe
+  born-rejected, mobile wipe without grant PolicyError-rejected,
+  idempotent replay never re-executes, mixed-family fleets +
+  cross-tenant dispatch refusal)
+- `test/family-contract-conformance.test.ts` — 10 (contract
+  conformance via @fleetos/contracts/testing fixture builders:
+  makeAdapterCapabilities / makeAdapterCapabilitiesSeeded / 
+  makeCommandEnvelope / makeObservationBatch / makeTenantId /
+  makeDeviceId / makeCorrelationId / makeTimestamp /
+  makeIdempotencyKey / FIXTURE_TIME_ANCHOR; frozen helpers
+  assertSupported / isSupported / isDestructive / validateCommand /
+  validateObservationBatch / validateTenantRef / toApiError; the
+  frozen toApiError maps the family refusal to 502 AdapterError —
+  same taxonomy as the fixture errors; byte-identical determinism
+  across family adapter + seam + payload construction)
+
+### Binding protocol
+
+Unchanged from W020: `packages/device-adapters/package.json` declares
+`"@fleetos/contracts": "workspace:*"`; no relative imports cross a
+package boundary (ownership gate green).
+
+### Judgment calls
+
+- **The mobile envelope includes diagnose + enforce beyond the work
+  order's "typically" seven**: the named seven (lock/locate/wipe/
+  update/observe/identify/health) are all in; diagnose (device-info /
+  bugreport queries) and enforce (passcode/restrictions/managed apps)
+  are first-class MDM surfaces the work order's D1 payload contracts
+  depend on (managed-app commands and passcode policies ARE enforce
+  payloads), so declaring them supported is the honest profile.
+  `remediate` and `reboot` stay OUTSIDE the envelope (no first-class
+  normalized MDM remediate/reboot command this wave; they arrive with
+  vendor-specific extensions if ever needed).
+- **A family id IS the adapter platform literal** (ios/ipados/
+  android/printer-copier): the W020 `EndpointAdapterDescriptor.platform`
+  is the only platform discriminator in the SDK, so family-conformant
+  adapters extend the platform union rather than parallel-track a
+  second discriminator. This is the additive W030 extension of the
+  W020 union the W020 notes anticipated ("families arrive with
+  W030"). The desktop members are unchanged; existing consumers are
+  unaffected (union growth is backward compatible).
+- **iOS and iPadOS are separate family ids** (ARCHITECTURE.md's
+  "iOS/iPadOS management" names one family; the work order names
+  "iOS/iPadOS + Android Enterprise"): they share the Apple MDM
+  channel type and the same capability profile but are distinct
+  family descriptors/platforms — iPadOS devices are a distinct
+  device class with distinct fleet semantics (shared-iPad adjacent),
+  and the registry/dispatch platform filtering works per family.
+- **Printer `reboot`/`update` are vendor-model-optional, never
+  family-wide**: the work order names the printer profile "observe/
+  health/diagnose-centric with limited enforce" — the base envelope
+  is exactly that; enterprise MFP vendor APIs genuinely back remote
+  restart + firmware update, so those two capabilities are declared
+  per VENDOR MODEL (and require the vendor-api connector boundary —
+  an SNMP-only model cannot declare them, which would be emulation).
+  Every other capability outside the base is outside the envelope.
+- **Observation kinds are family-group-prefixed** ("mobile.battery",
+  "printer.consumable", ...) following the frozen contracts'
+  documented `<family>.<subject>` convention (its own examples are
+  "windows.process.list", "macos.disk.health"): "mobile" is the
+  family group shared by ios/ipados/android (the payload schemas are
+  protocol-independent), "printer" the printer/copier family. The
+  canonical `device.*` kinds stay available to other families; the
+  open union tolerates both.
+- **Closed-world payload validation**: family payload parsers reject
+  unknown fields (no silent field dropping). This is what makes the
+  capability->payload-kind map's mismatch failures REAL — with
+  lenient parsing, an all-optional payload (device-lock) would
+  vacuously accept any object. Disclosed as the fail-closed reading
+  of "shapes only" + "fail-closed" discipline.
+- **Malformed family payloads fail at the SEAM, after negotiation**:
+  the W020 adapter treats payloads as opaque (by design — the SDK
+  stays platform-agnostic), so the family payload contracts are
+  enforced by the seam's normalized `execute()` (which the in-memory
+  reference seams implement via the unified parsers). A malformed
+  payload therefore produces a `failed` AdapterError outcome — not a
+  pre-negotiation rejection. Unsupported/destructive-unauthorized
+  refusals remain pre-negotiation rejections that never reach the
+  seam.
+- **The in-memory family seams duplicate ~60 lines of W020 fake
+  machinery in `inmemory-shared.ts`** rather than refactoring the
+  accepted `seams-inmemory.ts` — zero churn to the W020 module, and
+  the family fakes get the same discipline (scripting, recording,
+  content-addressed evidence) with family-specific routing.
+- **`identify`/`health` on printer-copier accept an optional snmp-get
+  payload, defaulting to the standard device OIDs** (sysDescr/sysName)
+  when absent; `diagnose` requires its query (an ad-hoc diagnostic
+  without a query is not a thing). Mobile identify/diagnose/health map
+  to DeviceInformation / device-info with no payload contract.
+- **Two W020 baseline tests updated** (registry unknown-platform
+  example ios->sunos; seams platform predicate extended to the seven
+  platforms): the tests' INTENT is preserved (unknown platforms are
+  still refused; the predicate still accepts exactly the SDK's
+  platforms) — the hardcoded pre-W030 platform list was the only
+  thing that changed.
+- **No new contract changes**: `packages/contracts/**` untouched
+  (150-export snapshot unchanged, gate-verified).
+
+### Known limitations
+
+- No real MDM/SNMP integration: the family seams' reference
+  implementations are in-memory fakes. A production Apple MDM /
+  Android Enterprise / SNMP / vendor-API connector is a later
+  infrastructure wave; the typed seam interfaces are the contract it
+  implements. No real network/device I/O anywhere in this wave.
+- `remediate`/`reboot` remain outside the MOBILE envelope this wave
+  (disclosed above); a vendor-specific extension would be a new
+  envelope revision, not a silent widening.
+- The generic network/IoT adapter boundary (ARCHITECTURE.md's fourth
+  initial family) is NOT started — it arrives with a later wave per
+  the W020 note.
+- The dispatcher is synchronous (the W020 limitation, inherited);
+  long-running MDM operations (wipe, OS update) need the deferred
+  execution model in a later wave — the receipt lifecycle already
+  carries `executing` for it.
+- BYOD/work-profile scoping nuances (per-enrollment capability
+  variation) are represented as adapter-level capability SUBSETS (a
+  first-class pattern, proven by test) — full enrollment-type-aware
+  scoping is W071 (privacy/security/tenant hardening).
+- W040 (recovery), W050A (ADCOS adapter) and UI surfaces are NOT
+  started (later waves).

@@ -50,7 +50,7 @@ import { createObservationCollector } from "./observations";
 import type { ObservationCollector, ObservationRecord } from "./observations";
 import { mapAgentFailure } from "./commands";
 import type { AdapterPlatform, PlatformSeams } from "./seams";
-import { isAdapterPlatform } from "./seams";
+import { ADAPTER_PLATFORMS, isAdapterPlatform } from "./seams";
 import {
   ERROR_CODES,
   canonicalJson,
@@ -297,7 +297,7 @@ export function createEndpointAdapter(options: EndpointAdapterOptions): Endpoint
   }
   if (!isAdapterPlatform(descriptor.platform)) {
     throw new Error(
-      `createEndpointAdapter: descriptor.platform must be one of windows/macos/linux (got "${descriptor.platform}")`,
+      `createEndpointAdapter: descriptor.platform must be one of ${ADAPTER_PLATFORMS.join("/")} (got "${descriptor.platform}")`,
     );
   }
   if (seams.platform !== descriptor.platform) {
