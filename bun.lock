@@ -81,6 +81,19 @@
     "packages/integrations/aurum": {
       "name": "@fleetos/integration-aurum",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/actions": "workspace:*",
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/contracts": "workspace:*",
+        "@fleetos/device-adapters": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+        "@fleetos/maintenance": "workspace:*",
+        "@fleetos/policy": "workspace:*",
+        "@fleetos/procurement": "workspace:*",
+        "@fleetos/recovery": "workspace:*",
+        "@fleetos/security": "workspace:*",
+        "@fleetos/vendors": "workspace:*",
+      },
     },
     "packages/learning": {
       "name": "@fleetos/learning",

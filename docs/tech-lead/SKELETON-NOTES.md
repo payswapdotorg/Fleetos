@@ -3044,3 +3044,179 @@ individual contracts remain auditable.
   supplied window parameter (currently unimplemented).
 - apps/web/maintenance is NOT started (a later work item, per the work
   order).
+
+## W050C — Lane C: the Aurum adapter
+
+Implemented by W050C (worker-c) on branch `work/w050c`, base
+`integration/wave0` @ 06ef354 (the W042 acceptance). All five
+deliverables (D1-D5) landed in `packages/integrations/aurum`
+(`@fleetos/integration-aurum`) ONLY; 107 new tests (1630 total green,
+0 failed; 1523 baseline intact); `bun run check` / `typecheck` green;
+the ownership gate stays green with ZERO cross-lane src imports (src/
+imports only `@fleetos/contracts` + the same-lane `@fleetos/identity`
+— the W042 precedent).
+
+The AURUM.md invariant — "Aurum returns delivery/outcome metadata and
+cannot mutate FleetOS truth except through explicitly authorized
+FleetOS action APIs" — is the package's organizing principle
+(ARCHITECTURE-LOCK items 6-7, 10, 17).
+
+### D1 — Outbound communication intents (`src/content.ts`, `src/intents.ts`, `src/outbox.ts`)
+
+- SIX provider-neutral message kinds, each built by a PURE builder
+  from an injected STRUCTURAL seam: maintenance notices (W042
+  work-order events: created/revised), incident warnings (W031
+  security findings, severity→priority table), approval requests
+  (THREE parked surfaces: W041 parked action plans, W040 parked
+  destructive recovery requests, W031 REQUIRE_APPROVAL Guardian
+  decisions — a non-parked record is refused `decision_not_parked`,
+  never a guess), recovery messages (W040 case revisions: v1 = opened,
+  v>1 = transitioned; status validated against the W040 status set),
+  procurement updates (W032 quote events with event⇔status binding +
+  demand creations), manager briefings (aggregated summaries with
+  adapter-side dedup/sort and deterministic deadline classification
+  overdue/due/later against the window).
+- Message CONTENT is derived deterministically — never free text the
+  caller must format: title/summary are templates over the kind +
+  machine-stable discriminants ONLY, and the structured body is an
+  ordered `{key, value, sensitivity}` field list rendered by the
+  kind's template. Priorities derive from machine-stable tables
+  (severity, case status, quote event, overdue deadlines, briefing
+  composition).
+- The REDACTION POLICY is a typed record applied before emission:
+  rules target one field by key or a whole sensitivity class
+  (reference/identity); MACHINE fields are non-redactable by
+  construction (a rule targeting one is refused
+  `rule_targets_machine_field`), which makes redaction SOUND: title/
+  summary never embed redactable values, so no policy can leak through
+  them (proven by test — redact-everything leaves title/summary
+  byte-identical). Redacted values become the stable `[redacted]`
+  marker; redacted keys ride the intent; the digest binds the
+  POST-redaction content.
+- The OUTBOX LEDGER is versioned + append-only with deterministic
+  ids/digests: per-tenant 1-based GAPLESS sequences (the audit-log
+  discipline); `messageId` = fnv1a32 of (tenant, kind, subjectRef,
+  recipient, at, correlationId, contentDigest) — CONTENT-ADDRESSED
+  identity: re-emitting the identical message is an idempotent
+  duplicate (nothing appended, nothing re-sent, nothing audited), two
+  DIFFERENT messages about the same source at the same instant coexist
+  (e.g. work-order revision-1-created + revision-2-revised in one
+  request context), and a hand-forged id collision with different
+  content is refused `content_digest_mismatch` (defense in depth —
+  proven by test at the ledger level).
+
+### D2 — Delivery/outcome metadata ingestion (`src/delivery.ts`)
+
+- Typed delivery records: (message ref, delivery attempt >= 1, state,
+  recipient metadata, outcome disposition, injected instant + trace).
+  The lifecycle is a machine-stable typed table
+  (queued→sent→delivered→read; failed/undeliverable from queued/sent)
+  with a derived+VALIDATED disposition (a mismatching disposition is
+  refused `disposition_mismatch`).
+- Idempotent by (message ref, delivery attempt): same content = a
+  duplicate no-op; same pair with different content = `delivery_conflict`.
+- Unknown refs are REFUSED `unknown_message_ref` — never a guess — and
+  a FOREIGN tenant's ref is indistinguishable from an unknown one (no
+  existence side channel; proven by test with byte-equal reasons).
+  Recipient metadata must match the emitted recipient
+  (`recipient_mismatch`); terminal states (read/undeliverable) absorb
+  further records (`message_terminal`) while re-reporting the same
+  terminal record stays an idempotent duplicate; failed attempts may
+  be followed by new attempts (retry semantics).
+
+### D3 — The authority boundary (`src/index.ts`, `src/emission.ts`, `src/transport.ts`)
+
+- The return path is METADATA-ONLY: the public surface is exhaustively
+  pure builders + emission into the adapter's OWN ledger + ingestion
+  into the adapter's OWN ledger + read-only queries + the injected
+  seams. The authority-boundary test asserts the exact value-export
+  allowlist byte-for-byte, scans src/ for domain-package imports
+  (none: only contracts + identity), forbids domain-mutation naming,
+  and proves end-to-end that an emission+ingestion round mutates ONLY
+  the adapter's own ledgers + the audit trail.
+- ALL transport is an INJECTED seam (`EmissionTransport`): the
+  in-memory deterministic reference records emissions (with optional
+  scripted refusals); an unbound transport refuses
+  `transport_not_bound` (an unbound emission is never silently
+  "delivered"); a transport refusal does NOT undo the outbox append
+  (the outbox is the durable record of what FleetOS asked Aurum to
+  send; retries are W051's convergence).
+- No clock reads anywhere: every timestamp is injected.
+
+### D4 — Audit + tenancy (`src/audit-seam.ts`, both ledgers)
+
+- Consequential mutations emit through the injected `AurumAuditSink`
+  (the W011/.../W042 structural pattern):
+  `aurum.message.emitted`, `aurum.redaction.applied` (when redaction
+  fired at emission), `aurum.delivery.ingested`,
+  `aurum.message.refused` / `aurum.delivery.refused` (machine-stable
+  reasons ride `details.reason`). Idempotent duplicates audit NOTHING
+  (nothing mutated). Proven by test into the REAL W012 hash-chained
+  AuditLog via `@fleetos/audit`'s sink adapter (the type-level binding
+  is in the test suite; the chain verifies; per-tenant chains stay
+  separate).
+- Tenant isolation by construction: every operation takes the acting
+  `TenantContext` FIRST; partitioned per-tenant storage; the identity
+  runtime guard rejects context-free and invalid-grammar access WITH
+  THE TYPES BYPASSED (proven by test); W012's reusable
+  `runTenantIsolationSuite` runs green over BOTH ledgers' raw KV views
+  (the same two-partition judgment call as W032/W042 — documented in
+  the ledger factory).
+
+### D5 — Tests + docs
+
+- 107 new tests across 9 suites (in `test/`, NOT `src/` — the
+  ownership gate scans only src/, so the cross-lane binding proofs
+  live in test/: the disclosed W040/W042 pattern). Contract
+  conformance via `@fleetos/contracts/testing` fixture builders
+  (makeTenantId, makeDeviceId, makeCorrelationId, makeCausationId,
+  makeEventId, makeTimestamp, makeGuardianDecision, makeAllGuardianDecisions,
+  makeIntent, makeAllIntents, makeEventEnvelope, validateEnvelope via
+  the main entry, FIXTURE_TIME_ANCHOR, rng; frozen constants
+  REQUIRE_APPROVAL / ALL_INTENT_KINDS / asCausationId). BINDING-SITE
+  proofs: the REAL W042 ServiceWorkOrder, W031 SecurityFinding (via
+  the real assessSecurityPosture), W041 parked ActionPlanTemplate (via
+  the real createActionPlan + submitActionPlan + the REAL Guardian),
+  W040 parked DestructiveRequestRecord (via the real
+  requestDestructiveAction + the REAL engine + a REAL W020
+  EndpointAdapter over the in-memory Windows seam — the parked request
+  never reaches the adapter, proven by the empty call log), the REAL
+  REQUIRE_APPROVAL GuardianDecision, W040 RecoveryCaseRecords
+  (opened/escalated/closed), W032 Quote + ProcurementDemand, REAL
+  @fleetos/vendors buildVendor, and the REAL audit log. Determinism:
+  byte-identical full-pipeline runs; permutation invariance (briefing
+  id arrays, deadline arrays, redaction rule order, input object key
+  insertion order, matched-rule order).
+
+### Line-stop findings
+
+- None. `packages/contracts/**` untouched (150-export snapshot
+  unchanged, gate-verified). One workspace-resolution note (NOT a
+  line-stop, disclosed as a judgment call): the ROOT `tsconfig.json`
+  include pattern predates integration test directories — it covers
+  `packages/*/test/**` but not `packages/integrations/*/test/**`.
+  The root tsconfig is outside this lane, so the aurum package's OWN
+  tsconfig includes `test/**` (its `bun run typecheck` covers
+  everything; the root `bun run typecheck` covers the package's src/).
+  A Tech-Lead ADR may add the integrations test glob to the root
+  include later.
+
+### Known limitations
+
+- No durable persistence: the outbox/delivery ledgers are the
+  in-memory reference implementations (the established pattern); the
+  durable storage wave binds the same interfaces.
+- No real Aurum connector: the transport seam's reference
+  implementation is in-memory (deterministic recording); a production
+  connector is a later infrastructure wave implementing the typed
+  `EmissionTransport` contract.
+- The manager briefing's aggregate inputs are injected (the caller
+  computes id sets + deadline refs from domain surfaces); a richer
+  standing-briefing scheduler (windows, cadence, subscriptions) is a
+  later wave.
+- Delivery-metadata ingestion validates the lifecycle table + terminal
+  absorption + per-attempt immutability but deliberately does NOT
+  enforce cross-attempt state coherence (out-of-order provider
+  metadata is normal; disclosed in the module header).
+- apps/web surfaces and W051 integration convergence are NOT started
+  (later work items, per the work order).
