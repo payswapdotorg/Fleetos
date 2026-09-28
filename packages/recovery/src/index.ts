@@ -87,6 +87,17 @@ export * from "./destructive-gate";
 // D4 — warranty-aware replacement escalation
 export * from "./replacement";
 
+// W071 — The data-minimization projection over recovery evidence
+// (location payloads dropped unless a typed disclosure grant is
+// present — approver + instant, never ambient; machine-stable
+// redaction reasons; disclosure + redaction audited).
+export * from "./minimization";
+
+// W071 — The destructive-intent review surface (every destructive
+// intent presented with its FULL §16 evidence bundle; a missing
+// evidence field refuses machine-stably BEFORE the W040 gate runs).
+export * from "./destructive-review";
+
 // The tenant-scope guard (public seam; declared in internal.ts)
 export type { RecoveryTenantScope } from "./internal";
 export { checkRecoveryTenantScope } from "./internal";
