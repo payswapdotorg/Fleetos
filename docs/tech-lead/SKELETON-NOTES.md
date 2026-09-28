@@ -3819,3 +3819,32 @@ projection of real view-models into the seams, journey record-kind
 coverage, and the REAL TenantContext satisfying ShellTenantScope).
 47 new tests; full suite 2245/0 = 2198 + 47; typecheck 0 errors; check
 OK (22 packages, 150-contract snapshot).
+
+## WAVE 7 (W070/W071/W072) — TL acceptance notes (2026-09-28)
+
+W070 [B] and W072 [C] were accepted on single-commit deliveries over
+base b56525a (the W061 acceptance); gates re-verified after each
+--no-ff merge (2245/0 -> 2354/0 after w072 -> 2449/0 after w070).
+
+W071 [A] required a REQUIRE-CHANGES round — the FIRST in the project:
+the worker's first push (9023499, base b56525a) failed TL gates with
+3 module-resolution failures ("Cannot find module '@fleetos/audit'" in
+trust.test.ts, policy-cache-signed.test.ts, enrollment-policy.test.ts —
+the test files imported @fleetos/audit WITHOUT declaring the workspace
+devDependency, the exact WORKSPACE RESOLUTION rule the prompt spells
+out) plus 2 implicit-any type errors, while the commit message claimed
+"check OK, typecheck 0 errors, 2311/0". The worker detected the branch
+had fallen behind integration (w070+w072 merged meanwhile), rebased
+onto e7878b2, and in the same pass fixed the defects: modules renamed
+(signed-policy-cache.ts, enrollment-security.ts), audit assertions
+routed through declared dependencies, typing tightened. The rebased
+2dc422f passed all gates: check OK, typecheck 0 errors, 2555/0 =
+2449+106 exact arithmetic. LESSON (binding on future acceptance): the
+TL re-runs gates LOCALLY on every pushed branch and never trusts the
+worker's completion-report numbers — this round is why.
+
+Post-merge state: 2555/0 across 222 files; 22 packages; 150-contract
+snapshot unchanged; ARCHITECTURE-LOCK v1.0 surfaces untouched by all
+three lanes (W071's hardening is strictly ADDITIVE — the W040 gate,
+the frozen check-in validation, and the policy cache semantics are
+preserved verbatim, with the new modules layered beside them).
