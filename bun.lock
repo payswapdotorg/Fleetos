@@ -220,6 +220,19 @@
     "packages/learning": {
       "name": "@fleetos/learning",
       "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "@fleetos/actions": "workspace:*",
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/health": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+        "@fleetos/integration-arena": "workspace:*",
+        "@fleetos/integration-aurum": "workspace:*",
+        "@fleetos/maintenance": "workspace:*",
+        "@fleetos/policy": "workspace:*",
+      },
     },
     "packages/maintenance": {
       "name": "@fleetos/maintenance",
