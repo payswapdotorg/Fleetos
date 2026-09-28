@@ -20,6 +20,35 @@
       "name": "@fleetos/web",
       "version": "0.1.0",
     },
+    "apps/web/commerce": {
+      "name": "@fleetos/web-commerce",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "@fleetos/integration-adcos": "workspace:*",
+        "@fleetos/integration-aurum": "workspace:*",
+        "@fleetos/maintenance": "workspace:*",
+        "@fleetos/procurement": "workspace:*",
+        "@fleetos/software": "workspace:*",
+        "@fleetos/vendors": "workspace:*",
+      },
+    },
+    "apps/web/workloads": {
+      "name": "@fleetos/web-workloads",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "@fleetos/integration-adcos": "workspace:*",
+        "@fleetos/maintenance": "workspace:*",
+        "@fleetos/procurement": "workspace:*",
+        "@fleetos/software": "workspace:*",
+        "@fleetos/workloads": "workspace:*",
+      },
+    },
     "packages/actions": {
       "name": "@fleetos/actions",
       "version": "0.1.0",
@@ -255,6 +284,10 @@
     "@fleetos/vendors": ["@fleetos/vendors@workspace:packages/vendors"],
 
     "@fleetos/web": ["@fleetos/web@workspace:apps/web"],
+
+    "@fleetos/web-commerce": ["@fleetos/web-commerce@workspace:apps/web/commerce"],
+
+    "@fleetos/web-workloads": ["@fleetos/web-workloads@workspace:apps/web/workloads"],
 
     "@fleetos/workloads": ["@fleetos/workloads@workspace:packages/workloads"],
 
