@@ -9,6 +9,7 @@ owners:
       - docs/tech-lead/
       - packages/contracts/
       - packages/integrations/convergence/
+      - packages/ops/
       - tools/
       - .github/
       - apps/web/

@@ -31,4 +31,4 @@ Worker ownership:
 - A: device truth/agent boundary
 - B: health/security/policy/action control plane
 - C: workload/commerce/service surfaces
-- TL: foundation, shared contracts, API composition, UI shell, integration wiring, CI and merge
+- TL: foundation, shared contracts, API composition, UI shell, integration wiring, CI and mergeops (TL, production readiness) -> contracts, audit, identity, integration-convergence, web-shell (test-scope bindings; src imports contracts only — the W071 pattern)

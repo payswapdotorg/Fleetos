@@ -3848,3 +3848,42 @@ snapshot unchanged; ARCHITECTURE-LOCK v1.0 surfaces untouched by all
 three lanes (W071's hardening is strictly ADDITIVE — the W040 gate,
 the frozen check-in validation, and the policy cache semantics are
 preserved verbatim, with the new modules layered beside them).
+
+## W080 [TL] — production readiness (the FINAL roadmap item, 2026-09-28)
+
+Delivered in-session as packages/ops (@fleetos/ops, tech-lead-owned —
+the W051/W061 precedent). Scope per WORK-ITEM-CATALOG: deployment,
+observability, backup/restore, migrations, E2E evidence, operator
+runbook, release gate — all seven surfaces in one additive package over
+the frozen architecture.
+
+Design rulings (binding on future waves, if any):
+- The release gate is the roadmap's terminal boundary and it is
+  FAIL-CLOSED with ACCUMULATED SORTED machine-stable reasons — eight
+  conditions, each independently testable, all must hold. The gate
+  NEVER auto-promotes: the verdict is evidence for the human operator
+  (the W040 human-grant discipline, now at the release boundary).
+- Backup verification is EVIDENCE, not intention: only a SUCCEEDED
+  digest-matching restore drill marks a backup verified; the ledger's
+  verifyBackup transition is the single path; FAILED drills verify
+  nothing; the freshness window is judged against the INJECTED now.
+- Migrations carry the FROZEN-SURFACE guard: a step targeting
+  @fleetos/contracts refuses `frozen_surface` — the shared seam changes
+  only through a TL ADR (ARCHITECTURE-LOCK). The runner uses a RUNNING
+  version cursor (the W071 lesson in miniature: judge each step against
+  current state, not a stale snapshot of it).
+- Operational health ports the W051 D3 discipline VERBATIM (unbound
+  expected component -> per-component UNKNOWN + snapshot DEGRADED) so
+  fail-closed composes: the binding test proves a DEGRADED convergence
+  aggregate (over a REAL adapter probe) blocks the release gate through
+  the ops layer.
+- The four REAL web-shell builtin journeys are the canonical E2E
+  coverage vocabulary (W061 -> W080 closure); the REAL identity
+  tnt_-grammar TenantContext satisfies the structural OpsTenantScope;
+  the REAL audit FNV-1a is byte-compatible with this package's digest
+  basis (asserted by test).
+
+86 new tests; full suite 2641/0 = 2555 + 86 (exact arithmetic);
+typecheck 0 errors; check OK (23 packages — the skeleton verifier and
+contracts checker both picked up the new package automatically; the
+150-contract snapshot is unchanged).

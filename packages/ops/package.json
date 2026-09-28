@@ -1,0 +1,20 @@
+{
+  "name": "@fleetos/ops",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@fleetos/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@fleetos/audit": "workspace:*",
+    "@fleetos/identity": "workspace:*",
+    "@fleetos/integration-convergence": "workspace:*",
+    "@fleetos/web-shell": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  }
+}

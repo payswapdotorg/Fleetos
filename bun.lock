@@ -246,6 +246,19 @@
         "@fleetos/workloads": "workspace:*",
       },
     },
+    "packages/ops": {
+      "name": "@fleetos/ops",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+        "@fleetos/integration-convergence": "workspace:*",
+        "@fleetos/web-shell": "workspace:*",
+      },
+    },
     "packages/policy": {
       "name": "@fleetos/policy",
       "version": "0.1.0",
@@ -350,6 +363,8 @@
     "@fleetos/learning": ["@fleetos/learning@workspace:packages/learning"],
 
     "@fleetos/maintenance": ["@fleetos/maintenance@workspace:packages/maintenance"],
+
+    "@fleetos/ops": ["@fleetos/ops@workspace:packages/ops"],
 
     "@fleetos/policy": ["@fleetos/policy@workspace:packages/policy"],
 
