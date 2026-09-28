@@ -165,6 +165,9 @@ export const ERROR_CODES = {
   aggregationInvalid: "maintenance.aggregation.invalid_request",
   aggregationDomain: "maintenance.aggregation.domain",
   workOrderStoreDomain: "maintenance.workorder.store",
+  // W072 — aggregation outcome measurement (READ-ONLY derivation).
+  outcomeInvalid: "maintenance.outcome.invalid_request",
+  outcomeDomain: "maintenance.outcome.domain",
 } as const;
 
 /** Traceability fields every maintenance error must carry. */

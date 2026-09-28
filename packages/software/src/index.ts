@@ -24,6 +24,17 @@
  *                        view for W012's reusable isolation harness,
  *                        and the AUDITED service boundary (subscription
  *                        allocated/revised emit to an injected sink).
+ *   reconciliation.ts W072 D2 — subscription commercial
+ *                        reconciliation: a READ-ONLY report pass over
+ *                        subscription -> agreed terms -> provision
+ *                        evidence chains consumed structurally (the
+ *                        SubscriptionChainFacts twin is satisfiable by
+ *                        the REAL SoftwareSubscription record);
+ *                        discrepancies classify machine-stably with the
+ *                        W072 five-kind vocabulary (price_mismatch,
+ *                        sla_breach, warranty_gap, undelivered,
+ *                        over_delivered) with the refs of BOTH sides
+ *                        verbatim; never a mutation path.
  *
  * Decision boundary (`spec/ARCHITECTURE.md` § Decision boundary): the
  * allocation engine PROPOSES subscriptions; the deterministic policy
@@ -47,6 +58,9 @@ export * from "./audit-seam";
 
 // D4 — The tenant-scoped store + the audited service boundary
 export * from "./store";
+
+// W072 D2 — Subscription commercial reconciliation (READ-ONLY report surface)
+export * from "./reconciliation";
 
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).

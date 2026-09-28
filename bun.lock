@@ -293,6 +293,11 @@
         "@fleetos/contracts": "workspace:*",
         "@fleetos/identity": "workspace:*",
       },
+      "devDependencies": {
+        "@fleetos/maintenance": "workspace:*",
+        "@fleetos/procurement": "workspace:*",
+        "@fleetos/software": "workspace:*",
+      },
     },
     "packages/workloads": {
       "name": "@fleetos/workloads",

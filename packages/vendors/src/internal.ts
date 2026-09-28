@@ -125,6 +125,12 @@ export const ERROR_CODES = {
   inventoryInvalid: "vendors.inventory.invalid_request",
   inventoryDomain: "vendors.inventory.domain",
   capabilityInvalid: "vendors.capability.invalid_request",
+  // W072 — vendor scorecards (outcome quality).
+  scorecardInvalid: "vendors.scorecard.invalid_request",
+  scorecardDomain: "vendors.scorecard.domain",
+  // W072 — marketplace-quality evidence packs.
+  evidencePackInvalid: "vendors.evidencepack.invalid_request",
+  evidencePackDomain: "vendors.evidencepack.domain",
 } as const;
 
 /** Traceability fields every vendors error must carry. */

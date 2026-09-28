@@ -25,6 +25,26 @@
  *                        W012's reusable isolation harness, and the
  *                        AUDITED service boundary (vendor created/revised
  *                        emit to an injected sink).
+ *   scorecard.ts     W072 D1 — vendor scorecards: versioned append-only
+ *                        records derived from CLOSED commercial
+ *                        interactions injected through STRUCTURAL seams
+ *                        over the frozen lane surfaces (W032 match
+ *                        outcomes + quote acceptances, W042 service
+ *                        work-order outcomes); machine-stable quality
+ *                        dimensions (fulfillment, SLA adherence,
+ *                        warranty honoring, quote accuracy); supersession
+ *                        discipline (new window -> new revision citing
+ *                        prior via supersedes); append-only per-tenant
+ *                        ledger.
+ *   evidence-pack.ts W072 D4 — marketplace-quality evidence packs: a
+ *                        typed, versioned, append-only evidence record
+ *                        per vendor composing scorecards + commercial
+ *                        reconciliation reports + aggregation outcome
+ *                        measurements through STRUCTURAL twins; every
+ *                        claim cites its source record refs verbatim
+ *                        (no uncited numbers, ever); PROPOSAL-grade
+ *                        (never auto-published — no publish path
+ *                        exists in this surface).
  *
  * Decision boundary (`spec/ARCHITECTURE.md` § Decision boundary): FleetOS
  * is the demand-side orchestrator; local vendors own inventory, pricing
@@ -45,6 +65,18 @@ export * from "./audit-seam";
 
 // D1/D4 — The tenant-scoped store + the audited service boundary
 export * from "./store";
+
+// W072 D1 — Vendor scorecards (outcome quality over closed commercial
+// interactions, injected through structural seams)
+export * from "./scorecard";
+
+// W072 D4 — Marketplace-quality evidence packs (fully-cited, PROPOSAL-grade)
+export * from "./evidence-pack";
+
+// W072 D5 — The outcome-quality audit emission seam (the W072 surfaces'
+// injected-sink interface; structurally satisfied by @fleetos/audit's
+// sink adapter — proven by test)
+export * from "./outcome-audit-seam";
 
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).

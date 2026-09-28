@@ -9,6 +9,11 @@
     "@fleetos/identity": "workspace:*",
     "@fleetos/audit": "workspace:*"
   },
+  "devDependencies": {
+    "@fleetos/procurement": "workspace:*",
+    "@fleetos/software": "workspace:*",
+    "@fleetos/maintenance": "workspace:*"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test"
