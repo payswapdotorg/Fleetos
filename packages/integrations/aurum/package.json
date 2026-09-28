@@ -4,6 +4,19 @@
   "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "dependencies": {
+    "@fleetos/contracts": "workspace:*",
+    "@fleetos/identity": "workspace:*",
+    "@fleetos/audit": "workspace:*",
+    "@fleetos/security": "workspace:*",
+    "@fleetos/recovery": "workspace:*",
+    "@fleetos/actions": "workspace:*",
+    "@fleetos/policy": "workspace:*",
+    "@fleetos/maintenance": "workspace:*",
+    "@fleetos/procurement": "workspace:*",
+    "@fleetos/vendors": "workspace:*",
+    "@fleetos/device-adapters": "workspace:*"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test"
