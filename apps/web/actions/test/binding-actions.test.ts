@@ -20,8 +20,8 @@ import {
   asCorrelationId,
   asDeviceId,
   isBlockingDecision,
-} from "../../../../packages/contracts/src/index";
-import { makeTenantId } from "../../../../packages/contracts/src/testing";
+} from "@fleetos/contracts";
+import { makeTenantId } from "@fleetos/contracts/testing";
 import {
   ACTION_PLAN_TRANSITIONS,
   ALL_PRINTER_CAPABILITIES,
@@ -36,13 +36,13 @@ import {
   submitActionPlan,
   supportsPrintFeatures,
   transitionActionPlan,
-} from "../../../../packages/actions/src/index";
+} from "@fleetos/actions";
 import {
   DECISION_PRECEDENCE_RANK,
   compileGuardianRuleSet,
   defineGuardianRule,
   evaluateGuardianRequest,
-} from "../../../../packages/policy/src/index";
+} from "@fleetos/policy";
 import type { SurfaceActionPlanRecord, SurfacePrintJobRecord } from "../src/surface-contracts";
 import {
   ALL_SURFACE_PRINTER_CAPABILITIES,

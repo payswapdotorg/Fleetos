@@ -33,7 +33,7 @@ import type {
   PolicyId,
   TenantId,
   UserId,
-} from "../../../../packages/contracts/src/index";
+} from "@fleetos/contracts";
 
 // ---------------------------------------------------------------------------
 // The acting tenant scope

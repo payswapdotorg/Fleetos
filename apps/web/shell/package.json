@@ -1,0 +1,22 @@
+{
+  "name": "@fleetos/web-shell",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@fleetos/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@fleetos/web-device": "workspace:*",
+    "@fleetos/web-recovery": "workspace:*",
+    "@fleetos/web-security": "workspace:*",
+    "@fleetos/web-actions": "workspace:*",
+    "@fleetos/web-workloads": "workspace:*",
+    "@fleetos/web-commerce": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  }
+}

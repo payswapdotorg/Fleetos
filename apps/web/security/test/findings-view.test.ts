@@ -11,7 +11,7 @@ import {
   SURFACE_SEVERITY_RANK,
   type FindingsListView,
 } from "../src/findings-view";
-import type { ObservationId, TenantId } from "../../../../packages/contracts/src/index";
+import type { ObservationId, TenantId } from "@fleetos/contracts";
 import type { SecurityFindingRecord } from "../src/surface-contracts";
 import type { SurfaceResult } from "../src/internal";
 import {

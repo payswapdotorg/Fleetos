@@ -16,8 +16,8 @@ import { test, expect } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** The shared-seam module path (the @fleetos/contracts package source). */
-const CONTRACTS_SEAM = "packages/contracts/src/index";
+/** The shared-seam module specifier (the @fleetos/contracts package). */
+const CONTRACTS_SEAM = "@fleetos/contracts";
 
 /** Every module specifier imported by a src file. */
 function importSpecs(text: string): string[] {
@@ -54,12 +54,17 @@ test("src/ files import ONLY the shared seam + intra-surface modules (never a do
         }
         continue;
       }
+      if (spec === "@fleetos/contracts") continue; // the shared seam
       if (!spec.startsWith(".")) {
-        violations.push(`${file} imports bare specifier "${spec}" — only relative specs are allowed`);
+        violations.push(`${file} imports bare specifier "${spec}" — only @fleetos/contracts + relative intra-surface specs are allowed`);
         continue;
       }
-      if (spec === "../../../../packages/contracts/src/index") continue; // the shared seam
-      if (spec.startsWith("./") || spec.startsWith("../")) continue; // intra-surface module
+      if (spec.startsWith("./") || spec.startsWith("../")) {
+        if (spec.startsWith("../../") || spec.includes("packages/")) {
+          violations.push(`${file} escapes the lane via "${spec}" — ownership-gate bypass`);
+        }
+        continue; // intra-surface module
+      }
       violations.push(`${file} imports "${spec}"`);
     }
   }
@@ -70,9 +75,8 @@ test("the shared seam import target IS the @fleetos/contracts package (no other 
   for (const file of srcFiles()) {
     const text = readFileSync(join(import.meta.dir, "..", "src", file), "utf8");
     for (const spec of importSpecs(text)) {
-      if (!spec.startsWith(".")) continue;
-      if (spec.endsWith("packages/contracts/src/index")) {
-        expect(spec).toBe(`../../../../${CONTRACTS_SEAM}`);
+      if (spec.startsWith("@fleetos/")) {
+        expect(spec).toBe(CONTRACTS_SEAM);
       }
     }
   }

@@ -11,15 +11,15 @@ import {
   makePolicyId,
   makeTenantId,
   makeTimestamp,
-} from "../../../../packages/contracts/src/testing";
+} from "@fleetos/contracts/testing";
 import type {
   CorrelationId,
   DeviceId,
   EvidenceRef,
   PolicyId,
   TenantId,
-} from "../../../../packages/contracts/src/index";
-import { asDeviceId, asUserId } from "../../../../packages/contracts/src/index";
+} from "@fleetos/contracts";
+import { asDeviceId, asUserId } from "@fleetos/contracts";
 import type {
   GuardianDecisionRecord,
   SurfaceActionPlanRecord,

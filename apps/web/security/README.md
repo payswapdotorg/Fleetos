@@ -40,14 +40,17 @@ Lane: `worker-b` (per `spec/worker-ownership.yaml`): `apps/web/security/`.
 
 ## Structural seams (the W040-disclosed pattern)
 
-`src/` imports the shared seam `@fleetos/contracts` ONLY. Because this
-directory is a nested surface lane (NOT a bun workspace member — the
-root workspace globs reach `apps/*`, not `apps/web/*`), the shared seam
-is bound via a relative import of the `@fleetos/contracts` package
-source (`../../../../packages/contracts/src/index`), which
-`tools/check-ownership.mjs` resolves to the shared-seam package and
-skips. No domain package (`@fleetos/security`, `@fleetos/policy`,
+`src/` imports the shared seam `@fleetos/contracts` ONLY. Since the W061
+[TL] normalization, this lane is a proper bun workspace member
+(`apps/web/*` is in the root workspaces array; `package.json` present),
+so the seam is imported by package specifier exactly like every other
+package. No domain package (`@fleetos/security`, `@fleetos/policy`,
 `@fleetos/actions`, ...) is imported from `src/`.
+
+(History: W060B originally shipped as a plain folder with the seam bound
+via a relative import of the contracts package source — a disclosed form
+deviation the Tech Lead normalized in the W061 acceptance; see
+`docs/tech-lead/SKELETON-NOTES.md` § Wave 6.)
 
 Domain shapes are consumed through locally-declared STRUCTURAL seam
 types (`src/surface-contracts.ts`) that the real domain records

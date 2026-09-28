@@ -1,17 +1,13 @@
 /**
- * W060B src-discipline tests (actions lane) — the structural-seam import contract,
- * proven mechanically on the lane's source files:
+ * W061 src-discipline tests — the structural-seam import contract,
+ * proven mechanically on the shell's source files (the W060 pattern):
  *
- *   1. every src/ import is the shared seam (@fleetos/contracts via the
- *      relative package path) or a relative intra-surface module —
- *      NEVER a domain package (the W060 work order: "src/ imports:
- *      @fleetos/contracts ONLY");
+ *   1. every src/ import is the shared seam (@fleetos/contracts) or a
+ *      relative intra-surface module — NEVER a surface/domain package;
  *   2. no `any` in src/ (strict TS);
- *   3. no wall clock, no randomness, no I/O tokens in src/ (pure,
- *      deterministic view-models);
+ *   3. no wall clock, no randomness, no I/O tokens in src/;
  *   4. the lane never re-exports a domain package's surface.
  */
-
 import { test, expect } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -41,14 +37,12 @@ function srcFiles(): string[] {
     .sort();
 }
 
-test("src/ files import ONLY the shared seam + intra-surface modules (never a domain package)", () => {
+test("src/ files import ONLY the shared seam + intra-surface modules (never a surface/domain package)", () => {
   const violations: string[] = [];
   for (const file of srcFiles()) {
     const text = readFileSync(join(import.meta.dir, "..", "src", file), "utf8");
     for (const spec of importSpecs(text)) {
       if (spec === "bun:test") {
-        // The house convention: colocated module tests live in
-        // src/index.test.ts (every package does this).
         if (!file.endsWith(".test.ts")) {
           violations.push(`${file}: bun:test is test-scope only — move this file to test/`);
         }
@@ -109,18 +103,22 @@ test("no wall clock, randomness, or I/O tokens appear in src/ (pure view-models)
   for (const file of srcFiles()) {
     const text = readFileSync(join(import.meta.dir, "..", "src", file), "utf8");
     for (const token of forbidden) {
-      if (text.includes(token)) offenders.push(`${file}: ${token}`);
+      if (text.includes(token)) {
+        offenders.push(`${file}: ${token}`);
+      }
     }
   }
   expect(offenders).toEqual([]);
 });
 
-test("the lane never re-exports a domain package's surface (no cross-lane passthrough)", () => {
-  const indexText = readFileSync(join(import.meta.dir, "..", "src", "index.ts"), "utf8");
-  expect(/export\s+\*\s+from\s+["']\.\.\/\.\.\/\.\.\/\.\.\/packages\//.test(indexText)).toBe(false);
-  for (const spec of importSpecs(indexText)) {
-    if (spec.startsWith(".")) {
-      expect(spec.startsWith("./")).toBe(true);
-    }
+test("src/index.ts never re-exports a domain or surface package surface", () => {
+  const text = readFileSync(join(import.meta.dir, "..", "src", "index.ts"), "utf8");
+  for (const spec of importSpecs(text)) {
+    expect(spec.startsWith(".")).toBe(true);
   }
+  // No export-from (or dynamic import) of any package specifier: the
+  // public surface is intra-surface only (the module's own doc header
+  // may NAME the sibling lanes, but it never IMPORTS them).
+  expect(text.includes('from "@fleetos/')).toBe(false);
+  expect(text.includes('import("@fleetos/')).toBe(false);
 });

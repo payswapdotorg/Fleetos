@@ -20,6 +20,17 @@
       "name": "@fleetos/web",
       "version": "0.1.0",
     },
+    "apps/web/actions": {
+      "name": "@fleetos/web-actions",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "@fleetos/actions": "workspace:*",
+        "@fleetos/policy": "workspace:*",
+      },
+    },
     "apps/web/commerce": {
       "name": "@fleetos/web-commerce",
       "version": "0.1.0",
@@ -57,6 +68,33 @@
         "@fleetos/device-adapters": "workspace:*",
         "@fleetos/policy": "workspace:*",
         "@fleetos/recovery": "workspace:*",
+      },
+    },
+    "apps/web/security": {
+      "name": "@fleetos/web-security",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "@fleetos/actions": "workspace:*",
+        "@fleetos/policy": "workspace:*",
+        "@fleetos/security": "workspace:*",
+      },
+    },
+    "apps/web/shell": {
+      "name": "@fleetos/web-shell",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "@fleetos/web-actions": "workspace:*",
+        "@fleetos/web-commerce": "workspace:*",
+        "@fleetos/web-device": "workspace:*",
+        "@fleetos/web-recovery": "workspace:*",
+        "@fleetos/web-security": "workspace:*",
+        "@fleetos/web-workloads": "workspace:*",
       },
     },
     "apps/web/workloads": {
@@ -309,11 +347,17 @@
 
     "@fleetos/web": ["@fleetos/web@workspace:apps/web"],
 
+    "@fleetos/web-actions": ["@fleetos/web-actions@workspace:apps/web/actions"],
+
     "@fleetos/web-commerce": ["@fleetos/web-commerce@workspace:apps/web/commerce"],
 
     "@fleetos/web-device": ["@fleetos/web-device@workspace:apps/web/device"],
 
     "@fleetos/web-recovery": ["@fleetos/web-recovery@workspace:apps/web/recovery"],
+
+    "@fleetos/web-security": ["@fleetos/web-security@workspace:apps/web/security"],
+
+    "@fleetos/web-shell": ["@fleetos/web-shell@workspace:apps/web/shell"],
 
     "@fleetos/web-workloads": ["@fleetos/web-workloads@workspace:apps/web/workloads"],
 

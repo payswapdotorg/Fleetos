@@ -21,15 +21,15 @@ import {
   asDeviceId,
   asObservationId,
   isBlockingDecision,
-} from "../../../../packages/contracts/src/index";
+} from "@fleetos/contracts";
 import {
   makeDeviceId,
   makeTenantId,
-} from "../../../../packages/contracts/src/testing";
+} from "@fleetos/contracts/testing";
 import {
   assessSecurityPosture,
   createInMemoryPostureFindingsLedger,
-} from "../../../../packages/security/src/index";
+} from "@fleetos/security";
 import {
   ACTION_PLAN_TRANSITIONS,
   PARKED,
@@ -37,13 +37,13 @@ import {
   createActionPlan,
   createInMemoryDeviceRegistryView,
   submitActionPlan,
-} from "../../../../packages/actions/src/index";
+} from "@fleetos/actions";
 import {
   DECISION_PRECEDENCE_RANK,
   compileGuardianRuleSet,
   defineGuardianRule,
   evaluateGuardianRequest,
-} from "../../../../packages/policy/src/index";
+} from "@fleetos/policy";
 import {
   APPROVAL_QUEUE_TRANSITIONS,
   DECISION_PRECEDENCE_RANK_VIEW,

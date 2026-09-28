@@ -18,7 +18,7 @@ import {
 } from "../src/guardian-decision-view";
 import type { SurfaceResult } from "../src/internal";
 import type { GuardianDecisionRecord, GuardianMatchedRuleView } from "../src/surface-contracts";
-import type { PolicyId } from "../../../../packages/contracts/src/index";
+import type { PolicyId } from "@fleetos/contracts";
 import {
   TENANT_A,
   TENANT_B,

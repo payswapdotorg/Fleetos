@@ -12,14 +12,14 @@ import {
   makeObservationId,
   makePolicyId,
   makeTenantId,
-} from "../../../../packages/contracts/src/testing";
+} from "@fleetos/contracts/testing";
 import type {
   DeviceId,
   EvidenceRef,
   PolicyId,
   TenantId,
-} from "../../../../packages/contracts/src/index";
-import { asUserId } from "../../../../packages/contracts/src/index";
+} from "@fleetos/contracts";
+import { asUserId } from "@fleetos/contracts";
 import type {
   GuardianDecisionRecord,
   GuardianEvaluationRecord,

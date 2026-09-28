@@ -3772,3 +3772,50 @@ Gates on the merged tree after every merge: check OK (22 packages,
 150-contract snapshot), typecheck 0 errors (full coverage), tests
 2198/0 = 1909 + 63 (W060A) + 162 (W060B) + 64 (W060C) — exact
 arithmetic.
+
+## W061 — the Control Tower (@fleetos/web-shell, TL-owned, 2026-09-28)
+
+`apps/web/shell` — the composition layer over the six UI surface
+lanes. Modules: navigation (frozen `SHELL_AREA_ORDER` +
+`SHELL_AREA_VIEWS`; route validation refuses `unknown_area` /
+`unknown_view`; sections/breadcrumbs/route table machine-stable;
+`checkSurfaceVocabulary` guards descriptor drift at the binding site),
+permissions (roles owner/operator/approver/auditor/viewer; interaction
+matrix escalates monotonically; `recovery/destructive` is owner-only —
+the W040 human-grant discipline mirrored at the presentation layer),
+journeys (four builtin cross-surface journeys — remediate-finding,
+service-device, recover-lost-device, onboard-connectivity; descriptive
+only, never mutating truth; FNV-1a digests over canonical forms;
+progress derivation surfaces ignored kinds), discoverability
+(deterministic ranking: title_exact > keyword_exact > title_prefix >
+keyword_prefix > title_token > keyword_token; ties by (area, recordId);
+empty/blank queries refuse distinctly), coherence (frozen band union,
+total band→tone mapping, per-area empty states, `presentationOf`
+refuses unknown bands/blank titles).
+
+### W060B normalization (landed with W061)
+
+`apps/web/security` + `apps/web/actions` promoted from plain folders to
+proper workspace packages (`@fleetos/web-security`,
+`@fleetos/web-actions`): package.json added; every relative
+package-source import rewritten to specifiers
+(`../../../../packages/contracts/src/index` → `@fleetos/contracts`,
+`.../testing` → `@fleetos/contracts/testing`, domain packages likewise
+for the test-scope bindings); the src-discipline tests updated and
+TIGHTENED (relative specs escaping the lane — `../../` or any
+`packages/` reference — are now violations); READMEs record the
+history. The contracts checker still counts `apps/web` as ONE package
+(the W001 container `@fleetos/web` — the walker stops at the first
+package.json), so the package count stays 22; the six lanes are
+sub-packages of the container by design.
+
+### Discipline
+
+src/ imports the shared contracts seam ONLY — mechanically proven by
+`test/src-discipline.test.ts`; REAL cross-lane bindings exclusively in
+test/ (binding-shell.test.ts imports the six REAL @fleetos/web-*
+packages and proves descriptor/vocabulary agreement, structural
+projection of real view-models into the seams, journey record-kind
+coverage, and the REAL TenantContext satisfying ShellTenantScope).
+47 new tests; full suite 2245/0 = 2198 + 47; typecheck 0 errors; check
+OK (22 packages, 150-contract snapshot).

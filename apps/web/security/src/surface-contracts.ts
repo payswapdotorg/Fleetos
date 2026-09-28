@@ -32,8 +32,8 @@ import type {
   SecurityRemediationIntentPayload,
   TenantId,
   UserId,
-} from "../../../../packages/contracts/src/index";
-import { SECURITY_REMEDIATION_INTENT_KIND } from "../../../../packages/contracts/src/index";
+} from "@fleetos/contracts";
+import { SECURITY_REMEDIATION_INTENT_KIND } from "@fleetos/contracts";
 
 // ---------------------------------------------------------------------------
 // The acting tenant scope

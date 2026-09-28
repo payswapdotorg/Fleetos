@@ -10,8 +10,8 @@
  * No runtime dependencies. No `any` in public signatures. Strict TS.
  */
 
-import { asCorrelationId, asTenantId } from "../../../../packages/contracts/src/index";
-import type { CorrelationId, TenantId } from "../../../../packages/contracts/src/index";
+import { asCorrelationId, asTenantId } from "@fleetos/contracts";
+import type { CorrelationId, TenantId } from "@fleetos/contracts";
 
 // ---------------------------------------------------------------------------
 // Freezing
