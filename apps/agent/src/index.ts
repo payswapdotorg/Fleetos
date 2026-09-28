@@ -27,6 +27,11 @@
 // AgentRuntime composition
 export * from "./runtime";
 
+// W071 — the agent trust-assertion layer over the dispatch surface
+// (machine-stable refusals: unknown_agent / capability_not_enrolled /
+// assertion_malformed; untrusted assertions never reach dispatch).
+export * from "./trust";
+
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).
 export const MODULE_NAME = "agent" as const;

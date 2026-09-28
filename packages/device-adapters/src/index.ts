@@ -142,6 +142,17 @@ export * from "./seams-inmemory-printer";
 // envelope validation -> W020 negotiation inside every method)
 export * from "./family-adapters";
 
+// W071 — The signature-verified policy cache wrapper (entries carry a
+// deterministic content digest + an injected HMAC-style verifier seam;
+// unsigned/mismatched entries are refused machine-stably and never
+// served; the existing cache's staleness behavior delegated verbatim).
+export * from "./signed-policy-cache";
+
+// W071 — Enrollment security + BYOD scoping (typed ownership classes
+// riding the check-in validation; BYOD refuses capabilities outside
+// the allow-set; replayed enrollments refused by enrollment digest).
+export * from "./enrollment-security";
+
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).
 export const MODULE_NAME = "device-adapters" as const;
