@@ -1,0 +1,22 @@
+{
+  "name": "@fleetos/integration-convergence",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@fleetos/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@fleetos/audit": "workspace:*",
+    "@fleetos/identity": "workspace:*",
+    "@fleetos/policy": "workspace:*",
+    "@fleetos/integration-adcos": "workspace:*",
+    "@fleetos/integration-arena": "workspace:*",
+    "@fleetos/integration-aurum": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  }
+}

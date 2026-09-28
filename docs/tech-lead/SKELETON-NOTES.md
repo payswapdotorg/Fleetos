@@ -3646,3 +3646,85 @@ FleetOS action APIs" — is the package's organizing principle
   metadata is normal; disclosed in the module header).
 - apps/web surfaces and W051 integration convergence are NOT started
   (later work items, per the work order).
+
+## W051 — [TL]: integration convergence (`packages/integrations/convergence`)
+
+The tech-lead-owned convergence layer over the Wave 5 adapter trio —
+delivered in-session on `integration/wave0` (`@fleetos/integration-convergence`,
+added to `spec/worker-ownership.yaml` tech-lead paths; the first tech-lead
+package under `packages/integrations/`).
+
+### D1 — Contract compatibility (the `test/` binding site)
+
+`test/binding-{adcos,arena,aurum}.test.ts` bind the REAL sibling packages —
+`@fleetos/integration-adcos`, `@fleetos/integration-arena`,
+`@fleetos/integration-aurum` — to the REAL W031 Contract Guardian engine
+(`@fleetos/policy`'s `evaluateGuardianRequest` + `compileGuardianRuleSet`)
+with REAL compiled rule sets, the REAL `@fleetos/identity`
+`makeTenantContext` (structurally satisfying this package's
+`ConvergenceTenantScope`), and the REAL `@fleetos/audit` hash-chained
+AuditLog + `createAuditSinkAdapter`. Proven invariants: ALLOW/WARN submit
+through the real engine; REQUIRE_APPROVAL parks (the transport is NEVER
+reached — never auto-executes) on BOTH guardian-gated adapters; BLOCK
+rejects with the engine's machine-stable reasons; cross-tenant rule
+sets/requests refuse (`policy.guardian.tenant_mismatch` /
+`tenant_mismatch`); Aurum emissions land exactly once (one outbox append,
+one transport delivery) and identical re-emissions are idempotent
+duplicates (the transport is never re-invoked).
+
+### D2 — Retries + idempotency (`src/retry.ts`)
+
+The neutral `RetryPolicy` + `backoffDelayMs`/`backoffSchedule`
+(deterministic exponential ladder with a ceiling) + the neutral
+`IntegrationOutcome` classification (ACCEPTED / DUPLICATE / REFUSED /
+RETRYABLE / UNKNOWN) + the `classifyRetry` fold (STOP_OK on
+ACCEPTED/DUPLICATE; STOP_REFUSED on REFUSED — never retried blind — and
+on UNKNOWN, fail-closed; STOP_EXHAUSTED at the last attempt carrying the
+machine-stable `retry.exhausted` code) + `driveWithRetry` (the decision
+core — the delays are computed, never awaited here) + the namespaced
+`deriveIdempotencyKey` (`idem_<adapter>_<fnv1a32(canon(tenant, adapter,
+intentKind, subject))>`). The D2 binding test drives the driver against
+the REAL Aurum emission boundary: it converges in exactly ONE effect
+(one outbox entry, one transport delivery); a transport-refused emission
+stops after ONE call (`retry.refused`); exhaustion runs exactly
+`maxAttempts` operations.
+
+### D3 — Adapter health (`src/health.ts`)
+
+The neutral `AdapterHealth` + the injected `AdapterHealthProbe` seams +
+the fail-closed `aggregateIntegrationHealth`: worst-wins aggregation
+(DEGRADED > UNKNOWN > HEALTHY); an expected adapter with NO bound probe
+is reported UNKNOWN (`probe_unbound`) and DEGRADES the whole snapshot
+(absence of evidence is never health); throwing probes and
+shape-invalid/mismatched probe returns are DEGRADED (`probe_threw` /
+`probe_shape_invalid`); nothing at all bound → UNKNOWN
+(`no_probes_bound`) — never silently HEALTHY. The evaluation instant is
+injected (no clock reads).
+
+### D4 — Integration evidence (`src/evidence.ts`)
+
+The append-only, per-tenant, hash-chained evidence ledger:
+`createIntegrationEvidenceLedger()` → `recorderFor(scope)` /
+`readerFor(scope)` close over exactly ONE tenant partition — there is NO
+foreign-tenant API on the surface (isolation by construction; the
+scopes accept the REAL identity TenantContext structurally). Every
+record carries the FNV-1a canonical-JSON `payloadDigest` (over
+`details`) and `recordHash` (over the record content incl. the prior
+hash — genesis-anchored). `verifyEvidenceChain(reader)` walks the chain
+and detects tampering with machine-stable reasons:
+`payload_digest_mismatch` (mutated details), `record_hash_mismatch`
+(forged content), `prior_hash_mismatch` (forged linkage),
+`sequence_gap` (dropped/spliced records), `tenant_mismatch`. The digest
+is byte-compatible with the REAL `@fleetos/audit` FNV-1a reference
+(Math.imul 32-bit arithmetic — asserted by test).
+
+### Discipline
+
+`src/` imports `@fleetos/contracts` ONLY (the ownership gate's
+cross-lane rule; every REAL cross-lane edge lives in `test/`); the
+canonical JSON + FNV-1a live in `src/internal.ts` (no runtime deps, no
+clock reads, no entropy, strict TS, no `any`). Package-local typecheck
+GREEN including the shared `types/bun-test.d.ts` plus a test-only local
+`types/bun-test-augment.d.ts` (the numeric matchers — the W050C aurum
+precedent for augmenting the minimal ambient declarations). 51 new
+tests; full suite 1909/0.

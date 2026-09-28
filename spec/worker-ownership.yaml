@@ -8,6 +8,7 @@ owners:
       - spec/
       - docs/tech-lead/
       - packages/contracts/
+      - packages/integrations/convergence/
       - tools/
       - .github/
       - apps/web/

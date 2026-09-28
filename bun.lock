@@ -72,7 +72,7 @@
     },
     "packages/integrations/adcos": {
       "name": "@fleetos/integration-adcos",
-      "version": "0.2.0",
+      "version": "0.1.0",
       "dependencies": {
         "@fleetos/contracts": "workspace:*",
       },
@@ -109,6 +109,21 @@
         "@fleetos/recovery": "workspace:*",
         "@fleetos/security": "workspace:*",
         "@fleetos/vendors": "workspace:*",
+      },
+    },
+    "packages/integrations/convergence": {
+      "name": "@fleetos/integration-convergence",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+        "@fleetos/integration-adcos": "workspace:*",
+        "@fleetos/integration-arena": "workspace:*",
+        "@fleetos/integration-aurum": "workspace:*",
+        "@fleetos/policy": "workspace:*",
       },
     },
     "packages/learning": {
@@ -220,6 +235,8 @@
     "@fleetos/integration-arena": ["@fleetos/integration-arena@workspace:packages/integrations/arena"],
 
     "@fleetos/integration-aurum": ["@fleetos/integration-aurum@workspace:packages/integrations/aurum"],
+
+    "@fleetos/integration-convergence": ["@fleetos/integration-convergence@workspace:packages/integrations/convergence"],
 
     "@fleetos/learning": ["@fleetos/learning@workspace:packages/learning"],
 
