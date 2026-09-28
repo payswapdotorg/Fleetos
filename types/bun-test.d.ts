@@ -64,3 +64,21 @@ declare module "bun:test" {
     };
   };
 }
+
+// Minimal ambient declarations for the node built-in modules used by
+// test files (the src-discipline tests read their lane's own sources).
+//
+// The workspace deliberately ships NO @types/node (see header above); these
+// declare ONLY the surface actually used by tests:
+//   - node:fs.readFileSync(path, "utf8") / readdirSync(path)
+//   - node:path.join(...parts)
+// Per-package augmentations (apps/web/*/types/bun-test-augment.d.ts) may
+// re-declare identical members — interface/declaration merging is exact.
+declare module "node:fs" {
+  export function readFileSync(path: string, encoding: "utf8"): string;
+  export function readdirSync(path: string): string[];
+}
+
+declare module "node:path" {
+  export function join(...parts: string[]): string;
+}

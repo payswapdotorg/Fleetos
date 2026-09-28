@@ -3728,3 +3728,47 @@ GREEN including the shared `types/bun-test.d.ts` plus a test-only local
 `types/bun-test-augment.d.ts` (the numeric matchers — the W050C aurum
 precedent for augmenting the minimal ambient declarations). 51 new
 tests; full suite 1909/0.
+
+## Wave 6 — UI surface packages (W060A/W060B/W060C, accepted 2026-09-28)
+
+Six UI surface packages landed as pure TypeScript view-models + state
+machines + surface contracts (no rendered app — the shell arrives with
+W061):
+
+- `@fleetos/web-device` + `@fleetos/web-recovery` (W060A, work/w060a
+  98f6ac8) — proper workspace packages (`apps/web/*` added to the root
+  workspaces array).
+- `apps/web/security` + `apps/web/actions` (W060B, work/w060b 556488f) —
+  FORM DEVIATION (disclosed): NO package.json; plain source folders with
+  the contracts seam reached via the RELATIVE path
+  `../../../../packages/contracts/src/index`. The lane's discipline is
+  MECHANICALLY PROVEN by `test/src-discipline.test.ts` (enumerates every
+  import specifier of every src file: shared seam + intra-surface
+  relative only; no `any`; no clock/random/IO; no domain re-exports).
+  Normalization into real workspace packages is a W061 [TL] action —
+  until then the contracts checker does not count them (still 22
+  packages).
+- `@fleetos/web-workloads` + `@fleetos/web-commerce` (W060C, work/w060c
+  3496f3a) — proper workspace packages; W060C also extended the ROOT
+  tsconfig include to `apps/web/*/src/**` + `apps/web/*/test/**`, which
+  is what made root typecheck actually cover the apps/web tree (before
+  that, none of the Wave 6 files were in the root program — the per-
+  branch "typecheck OK" of W060A/W060B was vacuous for their new files).
+
+### TL convergence fixes (acceptance commit)
+
+1. Root `tsconfig.json` include gains `apps/web/*/types/*.d.ts` — the
+   per-package `bun-test-augment.d.ts` files enter the root program
+   (fixes `import.meta.dir` + numeric-matcher errors: 45 → 6).
+2. Root `types/bun-test.d.ts` (TL-owned) gains minimal ambient
+   `declare module "node:fs"` / `"node:path"` declarations — the
+   augmentation anchor the per-package augments need (they use
+   `export {}`, so their `declare module` blocks are AUGMENTATIONS, not
+   ambient declarations; with no `@types/node` in the workspace the
+   modules had nothing to augment). Identical-member interface merging
+   keeps the per-package augments valid. Fixes the remaining 6 errors.
+
+Gates on the merged tree after every merge: check OK (22 packages,
+150-contract snapshot), typecheck 0 errors (full coverage), tests
+2198/0 = 1909 + 63 (W060A) + 162 (W060B) + 64 (W060C) — exact
+arithmetic.
