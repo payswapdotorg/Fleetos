@@ -78,6 +78,9 @@ export const ERROR_CODES = {
   subscriptionDomain: "software.subscription.domain",
   allocationInvalid: "software.allocation.invalid_request",
   allocationDomain: "software.allocation.domain",
+  // W072 — subscription commercial reconciliation (READ-ONLY report surface).
+  reconciliationInvalid: "software.reconciliation.invalid_request",
+  reconciliationDomain: "software.reconciliation.domain",
 } as const;
 
 export interface ErrorTrace {

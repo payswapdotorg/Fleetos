@@ -44,6 +44,16 @@
  *                                pattern; structurally satisfied by
  *                                @fleetos/audit's sink adapter — proven
  *                                by test, no cross-lane wiring in src/).
+ *   outcome.ts             W072 D3 — aggregation outcome measurement:
+ *                                per-aggregate and per-contract
+ *                                completion evidence over the W042
+ *                                aggregated service orders (coverage
+ *                                ratios with machine-stable denominators
+ *                                — a zero-aggregate refuses
+ *                                empty_aggregation; deadline adherence
+ *                                from INJECTED timestamps only; per-
+ *                                vendor contribution breakdowns
+ *                                deterministic under input permutations).
  *
  * Decision boundary (`spec/ARCHITECTURE.md` § Decision boundary): the
  * matching engine PROPOSES vendor matches; the deterministic policy
@@ -76,6 +86,9 @@ export * from "./store";
 
 // D4 — The audit emission seam (W012's pattern)
 export * from "./audit-seam";
+
+// W072 D3 — Aggregation outcome measurement (READ-ONLY derivation)
+export * from "./outcome";
 
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).

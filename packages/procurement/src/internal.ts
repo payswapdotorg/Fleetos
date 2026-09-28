@@ -98,6 +98,9 @@ export const ERROR_CODES = {
   quoteDomain: "procurement.quote.domain",
   aggregationInvalid: "procurement.aggregation.invalid_request",
   aggregationDomain: "procurement.aggregation.domain",
+  // W072 — commercial reconciliation (READ-ONLY report surface).
+  reconciliationInvalid: "procurement.reconciliation.invalid_request",
+  reconciliationDomain: "procurement.reconciliation.domain",
 } as const;
 
 export interface ErrorTrace {

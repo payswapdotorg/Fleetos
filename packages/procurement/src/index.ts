@@ -32,6 +32,16 @@
  *   audit-seam.ts    D4 — the injected audit sink interface (W012's
  *                       pattern; structurally satisfied by @fleetos/audit's
  *                       sink adapter — proven by test, no cross-lane wiring).
+ *   reconciliation.ts W072 D2 — commercial reconciliation: a READ-ONLY
+ *                       report pass over demand->quote->acceptance->
+ *                       delivery chains consumed structurally (typed
+ *                       commercial facts: agreed price/SLA/warranty vs
+ *                       delivered evidence); discrepancies classify
+ *                       machine-stably (price_mismatch, sla_breach,
+ *                       warranty_gap, undelivered, over_delivered) with
+ *                       the refs of BOTH sides verbatim; never a
+ *                       mutation path (the audit emission is the only
+ *                       side effect).
  *
  * Decision boundary (`spec/ARCHITECTURE.md` § Decision boundary): the
  * matching engine PROPOSES vendor matches; the deterministic policy
@@ -59,6 +69,9 @@ export * from "./quotes";
 
 // D4 — The audit emission seam (W012's pattern)
 export * from "./audit-seam";
+
+// W072 D2 — Commercial reconciliation (READ-ONLY report surface)
+export * from "./reconciliation";
 
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).
