@@ -40,3 +40,12 @@ W061 -> W072 [C] vendor/commercial outcome quality and reconciliation
 W070,W071,W072 -> W080 [TL] production readiness
 
 Rule: never activate more than one item per worker unless the Tech Lead records a justified split. Every active item has one owner and a disjoint file scope. A/B/C work consumes frozen shared contracts rather than editing them.
+
+Wave 8 - rendered console, parallel workers
+W061,W080 -> W090A [A] rendered Device/Recovery/Enrollment console
+W061,W080 -> W090B [B] rendered Security/Policies/Actions/Learning console
+W061,W080 -> W090C [C] rendered Workload/Commerce console
+W090A,W090B,W090C -> W091 [TL] rendered Control Tower + journey convergence
+W091,W080 -> W092 [TL] free-tier staging deployment + release rehearsal
+
+Wave 8 rule: W090A/B/C may run concurrently on disjoint worker-owned UI packages. The Tech Lead owns the Next.js root runtime, cross-surface composition, shared design system, Evidence & Audit composition, deployment configuration and release acceptance.
