@@ -56,6 +56,23 @@ export * from "./lifecycle";
 // D3 — the Device Doctor detail view-model + the panel state machine
 export * from "./doctor";
 
+// D5 (W090A) — the existing-fleet enrollment journey view-model
+// (initiate -> review -> confirm -> verified, with evidence)
+export * from "./enrollment";
+
+// W090A — the local console design tokens + status vocabulary
+export * from "./ui/tokens";
+export * from "./ui/status";
+
+// W090A — the local shadcn-style component vocabulary (plain React + CSS)
+export * from "./ui/primitives";
+
+// W090A — the rendered screens (presentational, fully controlled)
+export * from "./screens/device-fleet-screen";
+export * from "./screens/device-doctor-screen";
+export * from "./screens/device-lifecycle-screen";
+export * from "./screens/enrollment-screen";
+
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).
 export const MODULE_NAME = "web-device" as const;

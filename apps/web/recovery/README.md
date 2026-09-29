@@ -5,8 +5,11 @@
 Typed, provider-neutral, test-first UI surface modules for Find My
 Device, the recovery cases, the Fleet Action plans, and the destructive
 recovery actions: pure TypeScript view-models + state machines +
-surface contracts. **NOT a rendered app** — the shell arrives with
-W061 [TL]; these are the typed surface modules the shell binds.
+surface contracts. Since W090A the package ALSO ships the RENDERED
+recovery screens (presentational React components over the same frozen
+view-models — `src/screens/`, `src/ui/`): the runtime/shell/routes are
+W091 Tech-Lead composition work; these are renderable component
+libraries.
 
 ## Ownership
 
@@ -21,6 +24,8 @@ Lane: `worker-a` (per `spec/worker-ownership.yaml`: `apps/web/recovery/`).
 | `src/recovery-case.ts`    | D2 | The recovery case view-models: the PROPOSAL-gated transitions surfaced read-only (injected table), the versioned append-only history, the evidence basis (typed refs), machine-stable closure reasons, and the VISIBLE destructive-gate precondition (`gating.acceptsDestructive`). |
 | `src/fleet-actions.ts`    | D3 | The Fleet Action surfaces (W041): the group-selection display (recursive selector tree), the policy-gated plan state machines with the REQUIRE_APPROVAL PARKED states VISIBLE, and the plan list with the parked human-approval queue first. |
 | `src/destructive-actions.ts` | D4 | The destructive action surfaces: lock/locate/wipe/reboot displayed with the W031 Guardian decision context and the GATED-PATH-ONLY affordance — there is NO direct-execution variant; the surface contracts make one-click execution unrepresentable (ARCHITECTURE-LOCK items 16 + 19). |
+| `src/ui/` | W090A | The LOCAL console design tokens (`tokens.tsx`, per `spec/ui/CONSOLE-DESIGN.md`), the status-vocabulary mapping (`status.ts`), and the local shadcn-style component vocabulary implemented in plain React + CSS (`primitives.tsx`) — no external UI library dependency. |
+| `src/screens/` | W090A | The RENDERED recovery screens (fully controlled, presentational): the cases list + Sheet detail (`recovery-cases-screen.tsx`), Find My Device (`find-my-device-screen.tsx`), and the gated destructive-action presentation with the LOST-device flow timeline (`destructive-action-screen.tsx`). Browser-facing tests run against happy-dom (see `test/dom.preload.ts` + the root `bunfig.toml` preload). |
 
 ## Design rules (frozen by this surface contract)
 

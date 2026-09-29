@@ -1,9 +1,16 @@
 {
   "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
   "include": [
     "apps/*/src/**/*.ts",
+    "apps/*/src/**/*.tsx",
     "apps/web/*/src/**/*.ts",
+    "apps/web/*/src/**/*.tsx",
     "apps/web/*/test/**/*.ts",
+    "apps/web/*/test/**/*.tsx",
     "apps/web/*/types/*.d.ts",
     "packages/*/src/**/*.ts",
     "packages/*/test/**/*.ts",

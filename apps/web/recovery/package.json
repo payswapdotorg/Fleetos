@@ -11,7 +11,15 @@
     "@fleetos/actions": "workspace:*",
     "@fleetos/device-adapters": "workspace:*",
     "@fleetos/policy": "workspace:*",
-    "@fleetos/recovery": "workspace:*"
+    "@fleetos/recovery": "workspace:*",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "happy-dom": "^20.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
