@@ -137,14 +137,19 @@ function routeFromLocation(): { ok: true; route: ShellRoute } | { ok: false } {
 // ---------------------------------------------------------------------------
 
 export interface ConsoleAppProps {
-  /** The initial route (server-rendered from the path; controlled). */
-  readonly initialRoute?: ShellRoute;
+  /**
+   * The initial route (server-rendered from the path; controlled).
+   * `null` means the initial path REFUSED the route vocabulary — the
+   * app renders the safe-failure state (never a silent redirect).
+   */
+  readonly initialRoute?: ShellRoute | null;
 }
 
 export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
   const [route, setRoute] = useState<ShellRoute>(
     initialRoute ?? { area: "overview", view: "home" },
   );
+  const [initialRefused] = useState<boolean>(initialRoute === null);
 
   // History integration: popstate returns to the route; navigate() pushes.
   useEffect(() => {
@@ -228,7 +233,7 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
   const content = renderRoute({
     route,
     navigate,
-    routeValid: pathToRouteCurrent(route),
+    routeValid: !initialRefused && pathToRouteCurrent(route),
     towerView: DEMO.towerView,
     evidenceIndex: DEMO.evidenceIndex,
     evidenceTrails: DEMO.evidenceTrails,

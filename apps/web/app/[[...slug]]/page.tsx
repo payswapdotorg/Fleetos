@@ -18,6 +18,8 @@ interface PageProps {
 export default function Page({ params }: PageProps): React.JSX.Element {
   const { slug } = use(params);
   const check = pathToRoute(slug ?? []);
-  const initial: ShellRoute = check.ok ? check.route : { area: "overview", view: "home" };
+  // A refused path renders the SAFE-FAILURE state (never a silent
+  // redirect to Home — the vocabulary is closed and says so).
+  const initial: ShellRoute | null = check.ok ? check.route : null;
   return <ConsoleApp initialRoute={initial} />;
 }
