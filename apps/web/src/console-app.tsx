@@ -70,6 +70,7 @@ import {
   policiesView,
   learningViews,
 } from "./runtime/demo-fleet";
+import { environmentLabel } from "./runtime/env";
 
 // ---------------------------------------------------------------------------
 // Route <-> path mapping (the final route vocabulary's URL form)
@@ -260,7 +261,7 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
       onNavigate={navigate}
       role="owner"
       tenantLabel="W091 Demo Fleet"
-      environmentLabel="staging"
+      environmentLabel={environmentLabel()}
       records={DEMO.searchRecords}
       onSearchLanding={onSearchLanding}
     >

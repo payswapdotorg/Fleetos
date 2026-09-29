@@ -1,20 +1,32 @@
-name: CI
+# FleetOS CI (W092 [TL]) — the gates on every push/PR to the
+# integration branch, plus the console production build (the Vercel
+# staging deployment's build evidence).
+name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [integration/wave0]
   pull_request:
-    branches: [main]
+    branches: [integration/wave0]
 
 jobs:
-  ci:
+  gates:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.2.21"
-      - run: bun install
-      - run: bun run check
-      - run: bun run typecheck
-      - run: bun test
+          bun-version: latest
+      - name: Install (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Gate 1 — architecture / ownership / skeleton / contracts
+        run: bun run check
+      - name: Gate 2 — typecheck
+        run: bun run typecheck
+      - name: Gate 3 — the full test suite
+        run: bun test
+      - name: Gate 4 — the console production build
+        run: bun run build
+        working-directory: apps/web
+      - name: Materialize the deployment manifest digest
+        run: node tools/deployment-manifest.mjs --env staging
