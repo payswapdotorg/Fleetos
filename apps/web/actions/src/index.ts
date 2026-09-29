@@ -29,6 +29,19 @@
  *                           refusals visible, never emulated) + the
  *                           capability-gate mirror.
  *
+ * W090B — the RENDERED layer (presentational, fully controlled):
+ *   ui/                     the LOCAL console design tokens, the
+ *                           nine-state status vocabulary, and the
+ *                           local shadcn-style component vocabulary;
+ *   screens/fleet-actions-screen.tsx  the first-class fleet-action
+ *                           journey (intent -> proposal -> Guardian
+ *                           gate -> approval -> execution ->
+ *                           verification) rendered as a Timeline;
+ *   screens/print-screen.tsx          the end-to-end print
+ *                           orchestration journey (intent, queue, job
+ *                           state, verification, routing refusals
+ *                           visible).
+ *
  * Decision boundary: the deterministic policy layer (the Contract
  * Guardian) remains AUTHORITATIVE; the W041 actions package owns the
  * plan lifecycle and print routing. This surface presents observable
@@ -51,6 +64,17 @@ export * from "./action-plans-view";
 
 // The print orchestration surface.
 export * from "./print-routing-view";
+
+// W090B — the local console design tokens + status vocabulary.
+export * from "./ui/tokens";
+export * from "./ui/status";
+
+// W090B — the local shadcn-style component vocabulary (plain React + CSS).
+export * from "./ui/primitives";
+
+// W090B — the rendered screens (presentational, fully controlled).
+export * from "./screens/fleet-actions-screen";
+export * from "./screens/print-screen";
 
 // The tagged error/result contract of every builder.
 export type { SurfaceError, SurfaceResult, SurfaceValidationFailure } from "./internal";

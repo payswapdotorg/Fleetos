@@ -33,15 +33,35 @@ function importSpecs(text: string): string[] {
   return specs;
 }
 
-/** List the lane's src .ts files (stable order). */
+/** List the lane's src .ts/.tsx files (stable order). */
 function srcFiles(): string[] {
   const dir = join(import.meta.dir, "..", "src");
-  return readdirSync(dir)
-    .filter((name) => name.endsWith(".ts"))
-    .sort();
+  const files: string[] = [];
+  function walk(rel: string): void {
+    const abs = join(dir, rel);
+    let entries: string[];
+    try {
+      entries = readdirSync(abs);
+    } catch {
+      return;
+    }
+    for (const name of entries.sort()) {
+      const subRel = rel === "" ? name : `${rel}/${name}`;
+      if (name === "node_modules" || name === "dist") continue;
+      // Distinguish files from directories: happy-dom-free discipline —
+      // directories on POSIX never carry a "." in the final segment.
+      if (name.endsWith(".ts") || name.endsWith(".tsx")) {
+        files.push(subRel);
+      } else if (!name.includes(".")) {
+        walk(subRel);
+      }
+    }
+  }
+  walk("");
+  return files.sort();
 }
 
-test("src/ files import ONLY the shared seam + intra-surface modules (never a domain package)", () => {
+test("src/ files import ONLY the shared seam + intra-surface modules + react (never a domain package)", () => {
   const violations: string[] = [];
   for (const file of srcFiles()) {
     const text = readFileSync(join(import.meta.dir, "..", "src", file), "utf8");
@@ -55,8 +75,11 @@ test("src/ files import ONLY the shared seam + intra-surface modules (never a do
         continue;
       }
       if (spec === "@fleetos/contracts") continue; // the shared seam
+      // W090B: the RENDERED screens (.tsx) may import react — the one
+      // presentational runtime (no UI library, no provider SDK).
+      if (spec === "react" && file.endsWith(".tsx")) continue;
       if (!spec.startsWith(".")) {
-        violations.push(`${file} imports bare specifier "${spec}" — only @fleetos/contracts + relative intra-surface specs are allowed`);
+        violations.push(`${file} imports bare specifier "${spec}" — only @fleetos/contracts, react (.tsx) + relative intra-surface specs are allowed`);
         continue;
       }
       if (spec.startsWith("./") || spec.startsWith("../")) {

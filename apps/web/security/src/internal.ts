@@ -191,3 +191,10 @@ export function isNonEmptyString(value: unknown): value is string {
 export function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 1;
 }
+
+/** Machine-stable surface error codes (W090B — the policies surface). */
+export const POLICY_SURFACE_ERROR_CODES = frozen({
+  scopeInvalid: "surface.scope_invalid",
+  tenantMismatch: "surface.tenant_mismatch",
+  policyInvalid: "surface.policy_invalid",
+} as const);

@@ -1,11 +1,12 @@
 # FleetOS test configuration.
 #
-# The W090A browser-facing render tests run against happy-dom. Several
-# testing libraries capture browser globals at module-load time, so the
-# happy-dom window must be installed BEFORE any test module is loaded —
-# this is the `bun test` preload mechanism (sanctioned by the W090A work
-# order). Each owned UI lane ships its own guarded preload file; the
-# global marker inside them makes double installation a no-op.
+# The W090A/W090B browser-facing render tests run against happy-dom.
+# Several testing libraries capture browser globals at module-load
+# time, so the happy-dom window must be installed BEFORE any test
+# module is loaded — this is the `bun test` preload mechanism
+# (sanctioned by the W090A/W090B work orders). Each owned UI lane
+# ships its own guarded preload file; the global marker inside them
+# makes double installation a no-op.
 #
 # The preload is environment-only (no framework/domain code) and is
 # inert for the pure-logic test suites across the workspace.
@@ -13,4 +14,8 @@
 preload = [
   "./apps/web/device/test/dom.preload.ts",
   "./apps/web/recovery/test/dom.preload.ts",
+  "./apps/web/security/test/dom.preload.ts",
+  "./apps/web/actions/test/dom.preload.ts",
+  "./apps/web/learning/test/dom.preload.ts",
 ]
+

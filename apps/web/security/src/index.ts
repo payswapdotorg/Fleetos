@@ -28,6 +28,12 @@
  *   approvals-queue-view.ts   D3 — the parked approvals queue
  *                              (REQUIRE_APPROVAL items with their
  *                              human-gated approval transitions).
+ *   policies-view.ts          D1.2 (W090B) — Policies as a FIRST-CLASS
+ *                              area: the frozen policy surfaces (rule
+ *                              sets, rules, decision history) rendered
+ *                              read-only through structural seams over
+ *                              @fleetos/policy's GuardianRule /
+ *                              GuardianRuleSet records.
  *
  * Decision boundary: the deterministic policy layer (the Contract
  * Guardian, `@fleetos/policy`) remains AUTHORITATIVE. This surface
@@ -50,6 +56,23 @@ export * from "./guardian-decision-view";
 
 // D3 — the parked approvals queue.
 export * from "./approvals-queue-view";
+
+// D1.2 (W090B) — the first-class Policies surface (read-only).
+export * from "./policies-view";
+
+// W090B — the local console design tokens + status vocabulary.
+export * from "./ui/tokens";
+export * from "./ui/status";
+
+// W090B — the local shadcn-style component vocabulary (plain React + CSS).
+export * from "./ui/primitives";
+
+// W090B — the rendered screens (presentational, fully controlled).
+export * from "./screens/findings-screen";
+export * from "./screens/guardian-decisions-screen";
+export * from "./screens/approvals-queue-screen";
+export * from "./screens/security-doctor-screen";
+export * from "./screens/policies-screen";
 
 // The tagged error/result contract of every builder.
 export type { SurfaceError, SurfaceResult, SurfaceValidationFailure } from "./internal";
