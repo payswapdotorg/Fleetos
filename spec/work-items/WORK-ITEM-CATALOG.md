@@ -80,3 +80,22 @@ W080 - Production readiness
 TL. Deployment, observability, backup/restore, migrations, E2E evidence, operator runbook and release gate.
 
 Every item is done only with contract conformance, invariant tests, boundary integration tests, audit evidence, docs, ownership compliance and green CI.
+
+# Post-roadmap console + deployment extension
+
+W090A - Rendered Device/Recovery/Enrollment console
+A. Turn the accepted W060A view-models into real React UI inside the worker-owned web surface packages. Implement fleet enrollment/onboarding entry points, device list/Doctor/lifecycle, Find My Device, recovery cases, gated destructive-action presentation and browser journey tests.
+
+W090B - Rendered Security/Policies/Actions/Learning console
+B. Turn the accepted W060B view-models plus W070 learning capabilities into real React UI. Implement Security Doctor, findings, Contract Guardian/policies, approvals, Fleet Actions, Print, Learning/Arena views and browser journey tests.
+
+W090C - Rendered Workload/Commerce console
+C. Turn the accepted W060C view-models into real React UI. Implement workload planning/recommendations, procurement, software, vendors, maintenance, connectivity and Aurum communication outcome views plus browser journey tests.
+
+W091 - Rendered Control Tower + journey convergence
+TL. Create the Next.js application, responsive ShareNet-inspired shell, Control Tower, global search, breadcrumbs, shared design tokens/primitives, Evidence & Audit area, complete route vocabulary, onboarding composition and end-to-end browser journey harness. Expand the four W061 journey descriptors into complete product journeys without changing domain authority boundaries.
+
+W092 - Free-tier staging deployment + release rehearsal
+TL. Bind the rendered app to Neon PostgreSQL, Upstash Redis and Cloudflare R2; add Vercel staging configuration, environment templates, build/deploy CI, deployment manifests, post-deploy health/evidence checks and W080 release-gate integration. Vercel Hobby is staging/demo only because it is restricted to personal/non-commercial use; commercial production requires a commercial plan.
+
+New-work acceptance rule: W090A/B/C require browser-visible rendering, accessible interaction states, tenant/authorization semantics, empty/loading/error/blocked/approval states and journey evidence. W091 requires all architecture-level capabilities to be reachable from navigation or global search. W092 requires reproducible staging deployment and release-gate evidence. The frozen architecture/contracts remain unchanged unless a genuine architectural change is proposed through an ADR.
