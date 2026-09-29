@@ -1,15 +1,15 @@
 # FleetOS Project State
 
-STATUS: WAVE 8 RENDER PHASE — W090A ACCEPTED (5bbcce0); W090B ACCEPTED (153b22e); W090C PENDING (worker lane — dispatch on operator login); W091 [TL] DELIVERED (rendered Control Tower + Next.js runtime + global search + Evidence & Audit + journey convergence + responsive shell); W092 [TL] NEXT (free-tier staging deployment)
+STATUS: WAVE 8 RENDER PHASE — W090A ACCEPTED (5bbcce0); W090B ACCEPTED (153b22e); W090C PENDING (worker lane — queued on operator login; auto-dispatch armed); W091 [TL] DELIVERED (rendered Control Tower + Next.js runtime + global search + Evidence & Audit + journey convergence + responsive shell); W092 [TL] IN PROGRESS — credential-free half DELIVERED (env separation module, health route, deployment manifest generator, post-deploy acceptance check — all verified against the local production server) + release-gate rehearsal PROVEN (pre-deployment verdict fail-closed with honest reasons; dress-rehearsal verdict approved via the REAL W080 gate machinery); the live provider actions (Neon/Upstash/R2/Vercel Hobby) await operator token provision
 Architecture: FROZEN v1.0
 Current source of truth: integration/wave0
-Current checkpoint: the W091 delivery (this merge)
-Latest verification: 2772 tests passed, 0 failed; typecheck 0; architecture/ownership/contract checks green; 150-contract snapshot unchanged; next build compiles + serves (home/area/unknown paths 200)
+Current checkpoint: the W092 prep + release-rehearsal delivery (6fe0883)
+Latest verification: 2776 tests passed, 0 failed; typecheck 0; architecture/ownership/contract checks green; 150-contract snapshot unchanged; production build compiles + serves (home/area/unknown paths 200); console browser-verified end-to-end (render, ten-area navigation, global search landing on records, evidence trails, safe unknown-route refusal, responsive mobile shell, zero console errors)
 Rendered console: LIVE — the Next.js runtime (apps/web) composes the REAL domain packages over the deterministic demo fleet; the shell chrome (AppShell) renders the TEN-area route vocabulary with responsive mobile navigation, global command search, breadcrumbs, and the safe unknown-route refusal
 Next actions:
-- dispatch W090C [C] (rendered Workload/Commerce) — queued for operator login
+- dispatch W090C [C] (rendered Workload/Commerce) — queued for operator login; a resident login-watch daemon auto-dispatches the moment the operator authenticates on the replay console
 - after W090C acceptance, bind its screens into the runtime route tree
-- execute W092 [TL]: free-tier staging deployment (Neon/Upstash/R2/Vercel Hobby — non-commercial staging) + release-gate rehearsal per docs/tech-lead/FREE-TIER-DEPLOYMENT.md
+- execute the W092 live half [TL]: free-tier staging deployment (Neon/Upstash/R2/Vercel Hobby — non-commercial staging) per docs/tech-lead/FREE-TIER-DEPLOYMENT.md, then run the proven release-gate rehearsal against the live deployment
 - use docs/tech-lead/UX-JOURNEY-SIMULATION.md and spec/ui/CONSOLE-DESIGN.md as the UX acceptance source
 Worker limit: 3
 
