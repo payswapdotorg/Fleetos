@@ -1,6 +1,6 @@
 # FleetOS Project State
 
-STATUS: WAVE 8 RENDER PHASE — W090A ACCEPTED (5bbcce0); W090B ACCEPTED (153b22e); W090C PENDING (worker lane — queued on operator login; auto-dispatch armed); W091 [TL] DELIVERED (rendered Control Tower + Next.js runtime + global search + Evidence & Audit + journey convergence + responsive shell); W092 [TL] IN PROGRESS — credential-free half DELIVERED (env separation module, health route, deployment manifest generator, post-deploy acceptance check — all verified against the local production server) + release-gate rehearsal PROVEN (pre-deployment verdict fail-closed with honest reasons; dress-rehearsal verdict approved via the REAL W080 gate machinery); the live provider actions (Neon/Upstash/R2/Vercel Hobby) await operator token provision
+STATUS: WAVE 8 RENDER PHASE — W090A ACCEPTED (5bbcce0); W090B ACCEPTED (153b22e); W090C IN FLIGHT (worker generating in the live session; corrected w090c_watch armed on push/report detection); W091 [TL] DELIVERED (rendered Control Tower + Next.js runtime + global search + Evidence & Audit + journey convergence + responsive shell); W092 [TL] DEPLOYED + ACCEPTED (2026-09-29): the FleetOS staging console is LIVE at https://fleetos-staging-flame.vercel.app (Vercel Hobby project fleetos-staging prj_tY1B5b7x9X13THwsZMh8HtXfIk52, production deployments from integration/wave0, all NINE frozen staging secrets set incl. the operator-supplied R2 S3 pair; post-deploy acceptance accepted:true — console-loads, unknown-route-safe, health-healthy, no-credential-leak; health route reports all nine secrets present; manifest digest 1a3dea65...; bindings record in docs/tech-lead/STAGING-BINDINGS.md: Neon live-verified, Upstash PONG-verified (dedicated rate-limit DB NXDOMAIN — substitution + swap procedure documented), R2 SigV4 round-trip verified)
 Architecture: FROZEN v1.0
 Current source of truth: integration/wave0
 Current checkpoint: the W092 prep + release-rehearsal delivery (6fe0883)
@@ -9,7 +9,8 @@ Rendered console: LIVE — the Next.js runtime (apps/web) composes the REAL doma
 Next actions:
 - dispatch W090C [C] (rendered Workload/Commerce) — queued for operator login; a resident login-watch daemon auto-dispatches the moment the operator authenticates on the replay console
 - after W090C acceptance, bind its screens into the runtime route tree
-- execute the W092 live half [TL]: free-tier staging deployment (Neon/Upstash/R2/Vercel Hobby — non-commercial staging) per docs/tech-lead/FREE-TIER-DEPLOYMENT.md, then run the proven release-gate rehearsal against the live deployment
+- harvest W090C when the worker pushes work/w090c [TL]: clone branch, re-run the three gates locally (never trust worker numbers), CONSOLE-DESIGN + journey + ownership review, merge --no-ff to integration/wave0, redeploy staging with the merged tip
+- swap the Upstash binding when the operator's dedicated rate-limit DB (meet-ewe-145933) resolves: upsert the two secrets + one redeploy
 - use docs/tech-lead/UX-JOURNEY-SIMULATION.md and spec/ui/CONSOLE-DESIGN.md as the UX acceptance source
 Worker limit: 3
 

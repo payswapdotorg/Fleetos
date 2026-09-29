@@ -23,6 +23,13 @@ with the deployment (tools/post-deploy-check.mjs + tools/deployment-manifest.mjs
   current rest token (re-derived via the Upstash management API through the
   operator's MCP API key).
 - Secrets: `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`.
+- 2026-09-29 note: the operator supplied a dedicated rate-limiting DB
+  (`meet-ewe-145933.upstash.io`) — NXDOMAIN at deploy time (not provisioned /
+  other-team scope; the free plan allows one DB per account, occupied by
+  `ADCOS`). The deploy therefore uses the verified account DB
+  `polished-yeti-167554.upstash.io` (REST PONG + SET/GET round-trip
+  verified). Swap procedure when the dedicated DB resolves: upsert the two
+  secrets on the Vercel project and redeploy (one command).
 
 ## Cloudflare R2 (evidence/artifacts)
 
@@ -33,14 +40,13 @@ with the deployment (tools/post-deploy-check.mjs + tools/deployment-manifest.mjs
   `w092-binding-probe.txt` (75 bytes) stored with etag
   `9e9f8c8dc94da543eca42db30479cb02` and version id
   `7e5f1196961337ac8acdc694058bf65e`.
-- Secrets: `R2_ACCOUNT_ID`, `R2_BUCKET` (above); `R2_ACCESS_KEY_ID` /
-  `R2_SECRET_ACCESS_KEY` require an R2 API token created in the Cloudflare
-  dashboard (object read & write scoped to this bucket) — recorded as a PENDING
-  operator action while absent, never faked: the health route reports
-  presence honestly and the deploy tool reports the gap fail-closed.
-- Interim note: account-scoped object read/write is ALSO proven through the
-  Cloudflare API directly (the round-trip above), so evidence export is
-  functional before the S3-style keys arrive.
+- Secrets: `R2_ACCOUNT_ID`, `R2_BUCKET` (above) + `R2_ACCESS_KEY_ID` /
+  `R2_SECRET_ACCESS_KEY` — the operator supplied the S3-style keys
+  (2026-09-29); a live SigV4 round-trip was verified from the TL sandbox
+  (`w092-final-binding-probe.txt` PUT 200 etag cc5119ecdc13e610e3c88e5...,
+  GET 200 body-match true). All five R2 secrets are now set on the project.
+- Earlier interim (superseded): account-scoped read/write was already proven
+  through the Cloudflare API directly before the keys arrived.
 
 ## Vercel Hobby (web/control plane)
 
@@ -51,7 +57,15 @@ with the deployment (tools/post-deploy-check.mjs + tools/deployment-manifest.mjs
   upsert the nine frozen staging secrets, deploy the integration ref, wait for
   READY, bake `FLEETOS_BASE_URL`, redeploy, then run the post-deploy
   acceptance). Requires a working `VERCEL_TOKEN` in the environment.
-- Status at authoring time: the Composio-hosted Vercel OAuth tokens return
-  403 for the personal scope ("ekonplacidegmailcoms-projects", SAML flag) —
-  a fresh token (operator re-auth or direct API token) is a PENDING operator
-  action. All other bindings are live (above).
+- Status: DEPLOYED + ACCEPTED (2026-09-29). The operator supplied a direct
+  `VERCEL_TOKEN` (payswaporg scope) which works: project
+  `prj_tY1B5b7x9X13THwsZMh8HtXfIk52` created, all nine secrets set
+  (`/v10/projects/<id>/env`), production deployments `dpl_N9UGh5WLsVgMvyB4Dc3Erwm7ssUJ`
+  and (after the `FLEETOS_BASE_URL` bake) `dpl_121D7aHTidgtdWTpBNVCbR7rLmHN`
+  both READY. Live URL: https://fleetos-staging-flame.vercel.app —
+  post-deploy acceptance `accepted: true` (console-loads, unknown-route-safe,
+  health-healthy, no-credential-leak); health route reports all nine secrets
+  present; deployment manifest digest
+  `1a3dea656038255e2b6e70bd3dc006ad1c25e2bb1ed5f4a98416f83b20e90c73`.
+  (Earlier Composio OAuth 403/SAML scope issue is moot for the direct-token
+  path; the Composio connections still authenticate for user-level calls.)
