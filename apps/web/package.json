@@ -5,7 +5,40 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {
+    "dev": "next dev -p 3101",
+    "build": "next build",
+    "start": "next start -p 3101",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
+  },
+  "description": "FleetOS console — the Next.js runtime (W091 [TL]): composition only over the public domain contracts.",
+  "dependencies": {
+    "@fleetos/contracts": "workspace:*",
+    "@fleetos/device-model": "workspace:*",
+    "@fleetos/security": "workspace:*",
+    "@fleetos/policy": "workspace:*",
+    "@fleetos/actions": "workspace:*",
+    "@fleetos/audit": "workspace:*",
+    "@fleetos/learning": "workspace:*",
+    "@fleetos/web-shell": "workspace:*",
+    "@fleetos/web-device": "workspace:*",
+    "@fleetos/web-recovery": "workspace:*",
+    "@fleetos/web-security": "workspace:*",
+    "@fleetos/web-actions": "workspace:*",
+    "@fleetos/web-learning": "workspace:*",
+    "@fleetos/web-workloads": "workspace:*",
+    "@fleetos/web-commerce": "workspace:*",
+    "next": "^15.5.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "20",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "happy-dom": "^20.0.0"
   }
 }

@@ -67,11 +67,33 @@ export function journeyDigest(descriptor: JourneyDescriptor): string {
 }
 
 /**
- * The built-in journeys (frozen). Each mirrors a domain flow the
- * surfaces already present — the shell's cross-surface composition of
- * the established W031/W040/W041/W042/W050 flows.
+ * The built-in journeys (frozen). W091 [TL] — EXPANDED from the W061
+ * four to the complete design-contract acceptance set (spec/ui/
+ * CONSOLE-DESIGN.md "Acceptance": every journey a human must be able to
+ * walk without knowing internal implementation names, plus the
+ * UX-JOURNEY-SIMULATION's required changes: enrollment, Fleet Action,
+ * Print, Evidence/Audit, Policies and Learning first-class). Each
+ * mirrors a domain flow the surfaces already present — the shell's
+ * cross-surface composition of the established W031/W040/W041/W042/
+ * W050/W070 flows.
  */
 export const BUILTIN_JOURNEYS: readonly JourneyDescriptor[] = frozenArray([
+  {
+    journeyId: "enroll-fleet",
+    title: "Enroll an Existing Fleet",
+    steps: [
+      { area: "device", view: "enrollment", recordKind: "device.enrollment", purpose: "prepare" },
+      { area: "device", view: "list", recordKind: "device.row", purpose: "verify" },
+    ],
+  },
+  {
+    journeyId: "inspect-device",
+    title: "Inspect a Device and Its Diagnosis",
+    steps: [
+      { area: "device", view: "list", recordKind: "device.row", purpose: "observe" },
+      { area: "device", view: "doctor", recordKind: "device.doctor", purpose: "verify" },
+    ],
+  },
   {
     journeyId: "remediate-finding",
     title: "Remediate a Security Finding",
@@ -96,8 +118,54 @@ export const BUILTIN_JOURNEYS: readonly JourneyDescriptor[] = frozenArray([
     title: "Recover a Lost Device",
     steps: [
       { area: "device", view: "list", recordKind: "device.row", purpose: "observe" },
-      { area: "recovery", view: "find-my", recordKind: "recovery.find-my", purpose: "verify" },
+      { area: "recovery", view: "find-my", recordKind: "recovery.find-my", purpose: "prepare" },
       { area: "recovery", view: "cases", recordKind: "recovery.case", purpose: "prepare" },
+      { area: "recovery", view: "destructive", recordKind: "recovery.destructive", purpose: "verify" },
+    ],
+  },
+  {
+    journeyId: "understand-guardian-decision",
+    title: "Understand a Contract Guardian Decision",
+    steps: [
+      { area: "security", view: "decisions", recordKind: "guardian.decision", purpose: "observe" },
+      { area: "policies", view: "list", recordKind: "policy.rule", purpose: "prepare" },
+    ],
+  },
+  {
+    journeyId: "approve-execute-action",
+    title: "Approve, Execute and Verify a Fleet Action",
+    steps: [
+      { area: "actions", view: "plans", recordKind: "action.plan", purpose: "observe" },
+      { area: "security", view: "approvals", recordKind: "approval.parked", purpose: "approve" },
+      { area: "actions", view: "plans", recordKind: "action.plan", purpose: "dispatch" },
+      { area: "actions", view: "plans", recordKind: "action.plan.progress", purpose: "verify" },
+    ],
+  },
+  {
+    journeyId: "route-print",
+    title: "Route a Print Job",
+    steps: [
+      { area: "actions", view: "print", recordKind: "print.job", purpose: "observe" },
+      { area: "actions", view: "print", recordKind: "print.route", purpose: "prepare" },
+      { area: "actions", view: "print", recordKind: "print.dispatch", purpose: "dispatch" },
+      { area: "actions", view: "print", recordKind: "print.result", purpose: "verify" },
+    ],
+  },
+  {
+    journeyId: "plan-workload",
+    title: "Plan a Workload and Its Software",
+    steps: [
+      { area: "workloads", view: "planning", recordKind: "workload.plan", purpose: "observe" },
+      { area: "workloads", view: "recommendations", recordKind: "workload.recommendation", purpose: "prepare" },
+      { area: "commerce", view: "software", recordKind: "software.subscription", purpose: "verify" },
+    ],
+  },
+  {
+    journeyId: "procure-vendor-quote",
+    title: "Request Procurement and Inspect Vendor/Quote Progress",
+    steps: [
+      { area: "commerce", view: "procurement", recordKind: "procurement.request", purpose: "prepare" },
+      { area: "commerce", view: "vendors", recordKind: "vendor.quote", purpose: "verify" },
     ],
   },
   {
@@ -107,6 +175,22 @@ export const BUILTIN_JOURNEYS: readonly JourneyDescriptor[] = frozenArray([
       { area: "workloads", view: "planning", recordKind: "workload.plan", purpose: "observe" },
       { area: "commerce", view: "connectivity", recordKind: "connectivity.request", purpose: "prepare" },
       { area: "commerce", view: "communication", recordKind: "communication.summary", purpose: "verify" },
+    ],
+  },
+  {
+    journeyId: "inspect-evidence",
+    title: "Inspect the Evidence Trail for a Consequential Record",
+    steps: [
+      { area: "evidence", view: "trail", recordKind: "evidence.trail", purpose: "observe" },
+      { area: "evidence", view: "trail", recordKind: "evidence.trail", purpose: "verify" },
+    ],
+  },
+  {
+    journeyId: "inspect-learning",
+    title: "Inspect Learning and Capability Adoption",
+    steps: [
+      { area: "learning", view: "cases", recordKind: "learning.case", purpose: "observe" },
+      { area: "learning", view: "adoption", recordKind: "learning.adoption", purpose: "verify" },
     ],
   },
 ]);

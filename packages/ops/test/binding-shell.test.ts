@@ -19,14 +19,23 @@ import { compileCoverageReport, compileE2EEvidence, type E2EEvidenceBundle } fro
 const NOW = "2026-09-28T12:00:00Z";
 
 describe("W080 binding — the REAL shell journeys define the E2E vocabulary", () => {
-  test("the four REAL builtin journeys are present with real record kinds", () => {
-    expect(BUILTIN_JOURNEYS).toHaveLength(4);
+  test("the REAL builtin journeys are present with real record kinds (W091 expanded set)", () => {
+    expect(BUILTIN_JOURNEYS).toHaveLength(13);
     const ids = BUILTIN_JOURNEYS.map((j) => j.journeyId).sort();
     expect(ids).toEqual([
+      "approve-execute-action",
+      "enroll-fleet",
+      "inspect-device",
+      "inspect-evidence",
+      "inspect-learning",
       "onboard-connectivity",
+      "plan-workload",
+      "procure-vendor-quote",
       "recover-lost-device",
       "remediate-finding",
+      "route-print",
       "service-device",
+      "understand-guardian-decision",
     ]);
     for (const j of BUILTIN_JOURNEYS) {
       expect(j.steps.length).toBeGreaterThan(0);
@@ -54,7 +63,7 @@ describe("W080 binding — the REAL shell journeys define the E2E vocabulary", (
       if (!bundle.ok) continue;
       bundles.push(bundle.bundle);
     }
-    expect(bundles).toHaveLength(4);
+    expect(bundles).toHaveLength(13);
 
     // The coverage report over ALL FOUR real journeys is COMPLETE.
     const report = compileCoverageReport(
@@ -63,12 +72,12 @@ describe("W080 binding — the REAL shell journeys define the E2E vocabulary", (
     );
     expect(report.complete).toBe(true);
     expect(report.missing).toHaveLength(0);
-    expect(report.covered).toHaveLength(4);
+    expect(report.covered).toHaveLength(13);
   });
 
   test("one missing REAL journey makes the coverage report incomplete (fail-closed)", () => {
     const bundles: E2EEvidenceBundle[] = [];
-    for (const journey of BUILTIN_JOURNEYS.slice(0, 3)) {
+    for (const journey of BUILTIN_JOURNEYS.slice(0, 12)) {
       const bundle = compileE2EEvidence({
         journeyId: journey.journeyId,
         recordKinds: journey.steps.map((s) => s.recordKind),
@@ -87,13 +96,13 @@ describe("W080 binding — the REAL shell journeys define the E2E vocabulary", (
       bundles,
     );
     expect(report.complete).toBe(false);
-    expect(report.missing).toEqual([BUILTIN_JOURNEYS[3].journeyId]);
+    expect(report.missing).toEqual([BUILTIN_JOURNEYS[12].journeyId]);
   });
 
   test("journey digests are stable across runs (deterministic evidence refs)", () => {
     const digests = BUILTIN_JOURNEYS.map((j) => journeyDigest(j));
     const again = BUILTIN_JOURNEYS.map((j) => journeyDigest(j));
     expect(digests).toEqual(again);
-    expect(new Set(digests).size).toBe(4); // all four distinct
+    expect(new Set(digests).size).toBe(13); // all distinct (W091 set)
   });
 });

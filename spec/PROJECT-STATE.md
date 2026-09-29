@@ -1,17 +1,16 @@
 # FleetOS Project State
 
-STATUS: POST-ROADMAP UX + DEPLOYMENT PHASE — W001-W080 COMPLETE; W090A/W090B/W090C READY FOR PARALLEL DISPATCH; W091/W092 FOLLOW-ON
+STATUS: WAVE 8 RENDER PHASE — W090A ACCEPTED (5bbcce0); W090B ACCEPTED (153b22e); W090C PENDING (worker lane — dispatch on operator login); W091 [TL] DELIVERED (rendered Control Tower + Next.js runtime + global search + Evidence & Audit + journey convergence + responsive shell); W092 [TL] NEXT (free-tier staging deployment)
 Architecture: FROZEN v1.0
 Current source of truth: integration/wave0
-Current W080 checkpoint: 503f6e6
-Original roadmap verification: 2641 tests passed, 0 failed; typecheck 0; architecture/ownership/contract checks green; 23 packages; 150-contract snapshot unchanged
-Rendered console: NOT YET IMPLEMENTED — current apps/web packages are UI contracts/view-models/state machines
+Current checkpoint: the W091 delivery (this merge)
+Latest verification: 2772 tests passed, 0 failed; typecheck 0; architecture/ownership/contract checks green; 150-contract snapshot unchanged; next build compiles + serves (home/area/unknown paths 200)
+Rendered console: LIVE — the Next.js runtime (apps/web) composes the REAL domain packages over the deterministic demo fleet; the shell chrome (AppShell) renders the TEN-area route vocabulary with responsive mobile navigation, global command search, breadcrumbs, and the safe unknown-route refusal
 Next actions:
-- dispatch W090A [A], W090B [B], W090C [C] in parallel
-- after all three accept, dispatch W091 [TL]
-- after W091 acceptance, execute W092 [TL] staging deployment + release rehearsal
+- dispatch W090C [C] (rendered Workload/Commerce) — queued for operator login
+- after W090C acceptance, bind its screens into the runtime route tree
+- execute W092 [TL]: free-tier staging deployment (Neon/Upstash/R2/Vercel Hobby — non-commercial staging) + release-gate rehearsal per docs/tech-lead/FREE-TIER-DEPLOYMENT.md
 - use docs/tech-lead/UX-JOURNEY-SIMULATION.md and spec/ui/CONSOLE-DESIGN.md as the UX acceptance source
-- use docs/tech-lead/FREE-TIER-DEPLOYMENT.md for provider setup
 Worker limit: 3
 
 ## Historical W080 acceptance ledger

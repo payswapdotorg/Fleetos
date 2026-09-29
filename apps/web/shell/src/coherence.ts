@@ -9,7 +9,7 @@
  * snapshot).
  */
 import type { ShellBandedSummary, ShellSurfaceArea } from "./seams";
-import { titleFromSlug } from "./internal";
+import { SHELL_AREA_LABELS } from "./navigation";
 
 /** The frozen status band union (the coherence vocabulary). */
 export type ShellStatusBand = "critical" | "high" | "medium" | "low" | "ok" | "neutral";
@@ -55,9 +55,12 @@ export const AREA_EMPTY_STATES: Readonly<Record<ShellSurfaceArea, string>> = {
   device: "No devices registered for this tenant yet.",
   recovery: "No recovery cases open — the fleet is where it should be.",
   security: "No security findings recorded for this tenant yet.",
+  policies: "No policy rules recorded yet — the Guardian's rule set is empty.",
   actions: "No action plans yet — proposals appear here once surfaces draft them.",
   workloads: "No workload plans recorded yet.",
   commerce: "No commerce records yet — procurement and service flows land here.",
+  evidence: "No audit records yet — consequential acts land on the evidence trail.",
+  learning: "No learning records yet — observed outcomes will appear here.",
 };
 
 /** Validate + derive the presentation for a banded summary. Frozen output. */
@@ -96,7 +99,9 @@ export function compareBands(a: ShellStatusBand, b: ShellStatusBand): number {
 /**
  * Derive an area's display label (the coherence twin of the navigation
  * label — the shell guarantees one spelling per area everywhere).
+ * W091: delegates to the frozen SHELL_AREA_LABELS ("Evidence & Audit",
+ * "Fleet Actions", ...) so navigation and coherence stay byte-identical.
  */
 export function areaLabel(area: ShellSurfaceArea): string {
-  return titleFromSlug(area);
+  return SHELL_AREA_LABELS[area];
 }

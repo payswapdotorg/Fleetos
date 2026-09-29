@@ -46,7 +46,9 @@ test("every area has a frozen empty state; labels agree with navigation", () => 
     expect(emptyStateFor(area).length).toBeGreaterThan(0);
   }
   expect(areaLabel("workloads")).toBe("Workloads");
-  expect(areaLabel("overview")).toBe("Overview");
+  expect(areaLabel("overview")).toBe("Control Tower");
+  expect(areaLabel("evidence")).toBe("Evidence & Audit");
+  expect(areaLabel("actions")).toBe("Fleet Actions");
 });
 
 test("band ordering is severity-descending and machine-stable", () => {
