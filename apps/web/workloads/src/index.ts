@@ -67,6 +67,21 @@ export * from "./resources";
 // The workload-surface state machine
 export * from "./state";
 
+// W090C D3 — the composite workload -> software -> procurement ->
+// VERIFIED-connectivity journey view-model + navigation machine
+export * from "./journey";
+
+// W090C — the local console design tokens + status vocabulary
+export * from "./ui/tokens";
+export * from "./ui/status";
+
+// W090C — the local shadcn-style component vocabulary (plain React + CSS)
+export * from "./ui/primitives";
+
+// W090C D1 — the rendered workload-planning screen (presentational,
+// fully controlled)
+export * from "./screens/workload-planning-screen";
+
 // Module markers (the workspace convention).
 export const MODULE_NAME = "web-workloads" as const;
 export const MODULE_VERSION = "0.1.0" as const;

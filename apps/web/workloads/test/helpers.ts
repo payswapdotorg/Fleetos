@@ -335,3 +335,19 @@ export function realParkedSubmission(): ConnectivitySubmissionRecord {
     ],
   };
 }
+
+/**
+ * A REAL-shaped W050A connectivity submission that was REJECTED — the
+ * blocked linkage state (the parked submission with the top-level
+ * status and the latest revision's status both REJECTED; the refusal
+ * reason stays provider-neutral).
+ */
+export function realRejectedSubmission(): ConnectivitySubmissionRecord {
+  const parked = realParkedSubmission();
+  return {
+    ...parked,
+    submissionId: "adcos-sub-w060c0002",
+    status: "REJECTED",
+    revisions: parked.revisions.map((revision) => ({ ...revision, status: "REJECTED" })),
+  };
+}
