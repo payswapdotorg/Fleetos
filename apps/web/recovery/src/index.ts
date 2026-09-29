@@ -66,6 +66,18 @@ export * from "./fleet-actions";
 // D4 — the destructive action surfaces (gated path ONLY)
 export * from "./destructive-actions";
 
+// W090A — the local console design tokens + status vocabulary
+export * from "./ui/tokens";
+export * from "./ui/status";
+
+// W090A — the local shadcn-style component vocabulary (plain React + CSS)
+export * from "./ui/primitives";
+
+// W090A — the rendered screens (presentational, fully controlled)
+export * from "./screens/recovery-cases-screen";
+export * from "./screens/find-my-device-screen";
+export * from "./screens/destructive-action-screen";
+
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).
 export const MODULE_NAME = "web-recovery" as const;
