@@ -83,3 +83,31 @@ Final acceptance:
 
 Decision discipline:
 Prefer frozen architecture; choose the smallest satisfying implementation; use ADRs for genuine architecture change; never use shortcuts that silently alter boundaries.
+
+## Follow-on phase after W080
+
+The W001-W080 roadmap is complete, but the repository's web layer is still a contract/view-model layer rather than a rendered browser console.
+
+The next implementation phase is governed by:
+- `docs/tech-lead/UX-JOURNEY-SIMULATION.md`
+- `spec/ui/CONSOLE-DESIGN.md`
+- `docs/tech-lead/CONSOLE-DEPLOYMENT-HANDOFF.md`
+- `docs/tech-lead/FREE-TIER-DEPLOYMENT.md`
+
+Dispatch exactly three workers:
+- A -> W090A rendered Device/Recovery/Enrollment UI
+- B -> W090B rendered Security/Policies/Actions/Learning UI
+- C -> W090C rendered Workload/Commerce UI
+
+Then the TL executes:
+- W091 rendered Control Tower + journey convergence
+- W092 free-tier staging deployment + release rehearsal
+
+Critical product finding:
+W061 proves navigation/discoverability/view-model semantics, but no actual Next.js/React console exists yet. The next phase must therefore optimize for product emergence rather than additional domain abstraction.
+
+Design source:
+Use the interaction qualities of `pectoraux/ShareNet` as inspiration — calm navigation, whitespace, typography, status-led presentation, drawers/sheets, responsive mobile navigation, and clear loading/empty/error states — without copying branding or implementation.
+
+Deployment source:
+Use Vercel Hobby only for non-commercial staging/demo, with Neon Free as authoritative Postgres, Upstash Redis Free for transient queue/cache/lock, and Cloudflare R2 for evidence/artifacts. The W080 release gate remains the production-control authority.
