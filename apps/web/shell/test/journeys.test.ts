@@ -13,7 +13,7 @@ test("every builtin journey validates against the route vocabulary", () => {
   for (const check of builtinJourneysValidate()) {
     expect(check.ok).toBe(true);
   }
-  expect(BUILTIN_JOURNEYS).toHaveLength(4);
+  expect(BUILTIN_JOURNEYS).toHaveLength(13);
 });
 
 test("journey descriptors with invalid steps refuse with the step index", () => {
@@ -75,9 +75,29 @@ test("record kinds are sorted and unique", () => {
   expect(new Set(kinds).size).toBe(kinds.length);
 });
 
-test("every builtin journey crosses at least two surfaces (cross-surface by construction)", () => {
+test("journey surface composition: cross-surface where the domain spans areas; single-area deep journeys are explicit (W091)", () => {
+  // The cross-surface journeys (the W061 four + the W091 expansions
+  // that compose areas) cross at least two surfaces.
+  const CROSS_SURFACE = new Set([
+    "remediate-finding",
+    "service-device",
+    "recover-lost-device",
+    "understand-guardian-decision",
+    "approve-execute-action",
+    "plan-workload",
+    "onboard-connectivity",
+  ]);
   for (const journey of BUILTIN_JOURNEYS) {
     const areas = new Set(journey.steps.map((s) => s.area));
-    expect(areas.size).toBeGreaterThan(1);
+    if (CROSS_SURFACE.has(journey.journeyId)) {
+      expect(areas.size).toBeGreaterThan(1);
+    } else {
+      // Deep single-area journeys (enroll, inspect device, print,
+      // procure/quote, evidence, learning) stay within their area by
+      // domain shape — every step still validates against the route
+      // vocabulary (asserted by builtinJourneysValidate above).
+      expect(areas.size).toBe(1);
+    }
   }
+  expect(CROSS_SURFACE.size).toBe(7);
 });

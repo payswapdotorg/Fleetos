@@ -20,7 +20,9 @@ import type { FindingsListItemView } from "@fleetos/web-security";
 import { MODULE_NAME as ACTIONS_MODULE } from "@fleetos/web-actions";
 import { MODULE_NAME as WORKLOADS_MODULE } from "@fleetos/web-workloads";
 import { MODULE_NAME as COMMERCE_MODULE } from "@fleetos/web-commerce";
+import { MODULE_NAME as LEARNING_MODULE } from "@fleetos/web-learning";
 import type { ShellBandedSummary, ShellRecordSummary, ShellSurfaceDescriptor } from "../src/seams";
+import { MODULE_NAME as SHELL_MODULE } from "../src/index";
 import { BUILTIN_JOURNEYS, journeyRecordKinds } from "../src/journeys";
 import { checkSurfaceVocabulary } from "../src/navigation";
 import { makeTenantId, makeDeviceId } from "@fleetos/contracts/testing";
@@ -29,38 +31,65 @@ import { presentationOf } from "../src/coherence";
 
 const TENANT = makeTenantId("w061-binding");
 
-test("every REAL surface module constructs a descriptor agreeing with the route vocabulary", () => {
+test("every REAL surface module constructs a descriptor agreeing with the route vocabulary (W091 ten areas)", () => {
   const descriptors: readonly ShellSurfaceDescriptor[] = [
-    { moduleName: DEVICE_MODULE, area: "device", views: ["list", "doctor", "lifecycle"], recordKinds: ["device.row", "device.doctor"] },
-    { moduleName: RECOVERY_MODULE, area: "recovery", views: ["cases", "find-my", "destructive"], recordKinds: ["recovery.case", "recovery.find-my"] },
-    { moduleName: SECURITY_MODULE, area: "security", views: ["findings", "decisions", "approvals"], recordKinds: ["security.finding", "approval.parked"] },
-    { moduleName: ACTIONS_MODULE, area: "actions", views: ["plans", "print"], recordKinds: ["action.plan", "action.plan.progress"] },
-    { moduleName: WORKLOADS_MODULE, area: "workloads", views: ["planning", "recommendations"], recordKinds: ["workload.plan"] },
-    { moduleName: COMMERCE_MODULE, area: "commerce", views: ["procurement", "maintenance", "connectivity", "communication"], recordKinds: ["maintenance.work-order", "procurement.match", "connectivity.request", "communication.summary"] },
+    { moduleName: DEVICE_MODULE, area: "device", views: ["list", "doctor", "lifecycle", "enrollment"], recordKinds: ["device.row", "device.doctor", "device.enrollment"] },
+    { moduleName: RECOVERY_MODULE, area: "recovery", views: ["cases", "find-my", "destructive"], recordKinds: ["recovery.case", "recovery.find-my", "recovery.destructive"] },
+    { moduleName: SECURITY_MODULE, area: "security", views: ["findings", "decisions", "approvals", "doctor"], recordKinds: ["security.finding", "approval.parked", "guardian.decision"] },
+    // The policies AREA is served by the security lane (W090B's
+    // PoliciesScreen) — one module may serve multiple areas.
+    { moduleName: SECURITY_MODULE, area: "policies", views: ["list"], recordKinds: ["policy.rule"] },
+    { moduleName: ACTIONS_MODULE, area: "actions", views: ["plans", "print"], recordKinds: ["action.plan", "action.plan.progress", "print.job", "print.route", "print.dispatch", "print.result"] },
+    { moduleName: WORKLOADS_MODULE, area: "workloads", views: ["planning", "recommendations"], recordKinds: ["workload.plan", "workload.recommendation"] },
+    { moduleName: COMMERCE_MODULE, area: "commerce", views: ["procurement", "software", "vendors", "maintenance", "connectivity", "communication"], recordKinds: ["maintenance.work-order", "procurement.match", "procurement.request", "vendor.quote", "software.subscription", "connectivity.request", "communication.summary"] },
+    { moduleName: LEARNING_MODULE, area: "learning", views: ["cases", "adoption"], recordKinds: ["learning.case", "learning.adoption"] },
+    // The evidence AREA is served by the shell itself (W091's
+    // evidence view-models over the audit log).
+    { moduleName: SHELL_MODULE, area: "evidence", views: ["trail"], recordKinds: ["evidence.trail"] },
   ];
   for (const descriptor of descriptors) {
     expect(checkSurfaceVocabulary(descriptor)).toEqual({ ok: true });
   }
+  // Module identities are unique per (module, area) pair; a module may
+  // serve multiple areas (security serves security + policies; the
+  // shell serves overview + evidence).
+  const pairs = descriptors.map((d) => `${d.moduleName}:${d.area}`);
+  expect(new Set(pairs).size).toBe(pairs.length);
   const names = descriptors.map((d) => d.moduleName);
-  expect(new Set(names).size).toBe(names.length);
   expect(names).toContain("web-device");
+  expect(names).toContain("web-learning");
 });
 
 test("every builtin journey's record kinds are covered by the surface descriptors", () => {
   const covered = new Set<string>([
     "device.row",
     "device.doctor",
+    "device.enrollment",
     "recovery.case",
     "recovery.find-my",
+    "recovery.destructive",
     "security.finding",
     "approval.parked",
+    "guardian.decision",
+    "policy.rule",
     "action.plan",
     "action.plan.progress",
+    "print.job",
+    "print.route",
+    "print.dispatch",
+    "print.result",
     "workload.plan",
+    "workload.recommendation",
     "maintenance.work-order",
     "procurement.match",
+    "procurement.request",
+    "vendor.quote",
+    "software.subscription",
     "connectivity.request",
     "communication.summary",
+    "learning.case",
+    "learning.adoption",
+    "evidence.trail",
   ]);
   for (const journey of BUILTIN_JOURNEYS) {
     for (const kind of journeyRecordKinds(journey)) {

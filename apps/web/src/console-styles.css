@@ -1,0 +1,10 @@
+/* The console's base document styles (the AppShell carries the full
+   design system via its frozen CONSOLE_CSS; this file only resets the
+   document shell so the app fills the viewport cleanly). */
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #faf8f4;
+  color: #2d2a26;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}

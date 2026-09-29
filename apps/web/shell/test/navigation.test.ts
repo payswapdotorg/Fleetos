@@ -17,9 +17,12 @@ test("the canonical area order is frozen and machine-stable", () => {
     "device",
     "recovery",
     "security",
+    "policies",
     "actions",
     "workloads",
     "commerce",
+    "evidence",
+    "learning",
   ]);
   expect(Object.isFrozen(SHELL_AREA_ORDER)).toBe(true);
 });
@@ -51,16 +54,18 @@ test("valid routes validate; unknown area/view refuse machine-stably", () => {
 test("sections derive in canonical order with title-cased labels", () => {
   const sections = shellSections();
   expect(sections.map((s) => s.area)).toEqual([...SHELL_AREA_ORDER]);
-  expect(sections[1]!.label).toBe("Device");
-  expect(sections[6]!.label).toBe("Commerce");
+  expect(sections[0]!.label).toBe("Control Tower");
+  expect(sections[1]!.label).toBe("Devices");
+  expect(sections[7]!.label).toBe("Commerce");
+  expect(sections[8]!.label).toBe("Evidence & Audit");
   expect(Object.isFrozen(sections)).toBe(true);
 });
 
 test("breadcrumbs: single crumb when view maps to the area label; two otherwise", () => {
   const home = breadcrumbsFor({ area: "overview", view: "home" });
   expect(home).toHaveLength(2);
-  expect(home[0]!.label).toBe("Overview");
-  expect(home[1]!.label).toBe("Overview / Home");
+  expect(home[0]!.label).toBe("Control Tower");
+  expect(home[1]!.label).toBe("Control Tower / Home");
   const single = breadcrumbsFor({ area: "actions", view: "plans" });
   expect(single).toHaveLength(2);
 });

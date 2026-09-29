@@ -7,6 +7,11 @@
   "include": [
     "apps/*/src/**/*.ts",
     "apps/*/src/**/*.tsx",
+    "apps/*/app/**/*.ts",
+    "apps/*/app/**/*.tsx",
+    "apps/*/next-env.d.ts",
+    "apps/web/test/**/*.ts",
+    "apps/web/test/**/*.tsx",
     "apps/web/*/src/**/*.ts",
     "apps/web/*/src/**/*.tsx",
     "apps/web/*/test/**/*.ts",

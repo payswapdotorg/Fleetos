@@ -7,31 +7,108 @@
  * canonical section order, the per-area view sets, and the breadcrumb
  * labels are frozen constants: two independent derivations over the
  * same route yield byte-identical results.
+ *
+ * W091 [TL] — the FINAL route vocabulary per spec/ui/CONSOLE-DESIGN.md:
+ * TEN top-level areas; Devices gains the enrollment/onboarding entry
+ * point; Security gains the Security Doctor view; the Commerce tree is
+ * complete (Procurement, Software, Vendors, Maintenance, Connectivity,
+ * Communication); Policies, Evidence & Audit and Learning are
+ * first-class areas. The area labels use the design contract's
+ * operator-facing names (not slugs) via SHELL_AREA_LABELS.
  */
 import type { ShellSurfaceArea, ShellSurfaceDescriptor } from "./seams";
 import { compareStrings, frozen, frozenArray, titleFromSlug } from "./internal";
 
-/** The canonical Control Tower section order (machine-stable). */
+/** The canonical Control Tower section order (machine-stable, 10 areas). */
 export const SHELL_AREA_ORDER: readonly ShellSurfaceArea[] = frozenArray([
   "overview",
   "device",
   "recovery",
   "security",
+  "policies",
   "actions",
   "workloads",
   "commerce",
+  "evidence",
+  "learning",
 ]);
 
 /** The frozen per-area view vocabulary (route targets per surface). */
 export const SHELL_AREA_VIEWS: Readonly<Record<ShellSurfaceArea, readonly string[]>> = frozen({
   overview: frozenArray(["home", "activity"]),
-  device: frozenArray(["list", "doctor", "lifecycle"]),
+  device: frozenArray(["list", "doctor", "lifecycle", "enrollment"]),
   recovery: frozenArray(["cases", "find-my", "destructive"]),
-  security: frozenArray(["findings", "decisions", "approvals"]),
+  security: frozenArray(["findings", "decisions", "approvals", "doctor"]),
+  policies: frozenArray(["list"]),
   actions: frozenArray(["plans", "print"]),
   workloads: frozenArray(["planning", "recommendations"]),
-  commerce: frozenArray(["procurement", "maintenance", "connectivity", "communication"]),
+  commerce: frozenArray([
+    "procurement",
+    "software",
+    "vendors",
+    "maintenance",
+    "connectivity",
+    "communication",
+  ]),
+  evidence: frozenArray(["trail"]),
+  learning: frozenArray(["cases", "adoption"]),
 });
+
+/**
+ * The operator-facing area labels (the design contract's top-level
+ * names — e.g. "Evidence & Audit", not "Evidence"). Frozen total map.
+ */
+export const SHELL_AREA_LABELS: Readonly<Record<ShellSurfaceArea, string>> = frozen({
+  overview: "Control Tower",
+  device: "Devices",
+  recovery: "Recovery",
+  security: "Security",
+  policies: "Policies",
+  actions: "Fleet Actions",
+  workloads: "Workloads",
+  commerce: "Commerce",
+  evidence: "Evidence & Audit",
+  learning: "Learning",
+});
+
+/** The operator-facing view labels (frozen, human-readable). */
+export const SHELL_VIEW_LABELS: Readonly<Record<string, string>> = frozen({
+  "overview.home": "Home",
+  "overview.activity": "Recent activity",
+  "device.list": "Fleet list",
+  "device.doctor": "Device Doctor",
+  "device.lifecycle": "Lifecycle",
+  "device.enrollment": "Enroll fleet",
+  "recovery.cases": "Recovery cases",
+  "recovery.find-my": "Find My Device",
+  "recovery.destructive": "Destructive actions",
+  "security.findings": "Findings",
+  "security.decisions": "Guardian decisions",
+  "security.approvals": "Approvals",
+  "security.doctor": "Security Doctor",
+  "policies.list": "Policies",
+  "actions.plans": "Action plans",
+  "actions.print": "Print",
+  "workloads.planning": "Planning",
+  "workloads.recommendations": "Recommendations",
+  "commerce.procurement": "Procurement",
+  "commerce.software": "Software",
+  "commerce.vendors": "Vendors",
+  "commerce.maintenance": "Maintenance",
+  "commerce.connectivity": "Connectivity",
+  "commerce.communication": "Communication",
+  "evidence.trail": "Evidence trail",
+  "learning.cases": "Evaluation cases",
+  "learning.adoption": "Adoption & certification",
+});
+
+/** Operator-facing label for a route (area + view; frozen derivation). */
+export function labelForRoute(area: ShellSurfaceArea, view: string): string {
+  const key = `${area}.${view}`;
+  const specific = SHELL_VIEW_LABELS[key];
+  if (typeof specific === "string") return specific;
+  return titleFromSlug(view);
+}
 
 /** A shell route: area + view. The complete navigation address. */
 export interface ShellRoute {
@@ -75,7 +152,7 @@ export function shellSections(): readonly ShellSection[] {
   return frozenArray(
     SHELL_AREA_ORDER.map((area) => ({
       area,
-      label: titleFromSlug(area),
+      label: SHELL_AREA_LABELS[area],
       views: SHELL_AREA_VIEWS[area],
     })),
   );
@@ -90,11 +167,11 @@ export interface ShellCrumb {
 
 /** Derive breadcrumbs for a route: [Area, Area / View]. Frozen output. */
 export function breadcrumbsFor(route: ShellRoute): readonly ShellCrumb[] {
-  const areaLabel = titleFromSlug(route.area);
+  const areaLabel = SHELL_AREA_LABELS[route.area];
   const crumbs: ShellCrumb[] = [
     { area: route.area, view: route.view, label: areaLabel },
   ];
-  const viewLabel = titleFromSlug(route.view);
+  const viewLabel = labelForRoute(route.area, route.view);
   if (viewLabel.length > 0 && viewLabel.toLowerCase() !== areaLabel.toLowerCase()) {
     crumbs.push({ area: route.area, view: route.view, label: `${areaLabel} / ${viewLabel}` });
   }

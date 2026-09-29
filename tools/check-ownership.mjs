@@ -139,7 +139,15 @@ function walkPackageDirs(rootRel) {
   return found;
 }
 
-const packageDirs = [...walkPackageDirs("packages"), ...walkPackageDirs("apps")];
+// W091 [TL]: apps/web is a CONTAINER workspace — its nested lane
+// packages (apps/web/device, apps/web/security, ...) are separate
+// workspaces the walker must discover (the "do not recurse into a
+// package" rule applies to leaf packages, not the container root).
+const packageDirs = [
+  ...walkPackageDirs("packages"),
+  ...walkPackageDirs("apps"),
+  ...walkPackageDirs("apps/web"),
+];
 
 // ---------------------------------------------------------------------------
 // 3. Check #2: every package directory claimed by exactly one lane
@@ -446,6 +454,30 @@ for (const file of tsFiles) {
     // The shared seam is the ONLY package that may be imported across
     // lanes — including its subpaths (e.g. "@fleetos/contracts/testing").
     if (importedPkgName === "@fleetos/contracts") continue;
+
+    // W091 [TL] — the RUNTIME BINDING-SITE exception (sanctioned by
+    // docs/tech-lead/CONSOLE-DEPLOYMENT-HANDOFF.md "The Next.js runtime
+    // is composition only: authenticate; resolve tenant context; call
+    // public application/domain services; shape data for the UI"):
+    // files under apps/web/src (the console runtime composition root)
+    // may import ANY public @fleetos/* package ENTRY POINT — but only
+    // bare specifiers (no deep file paths: the runtime consumes public
+    // APIs, never internals), and never the adapter/integration lanes
+    // (the frozen "no provider implementations" boundary stands).
+    if (
+      file.startsWith("apps/web/src/") &&
+      importedPkgName !== null &&
+      !spec.startsWith("@fleetos/contracts/") &&
+      spec === importedPkgName
+    ) {
+      if (/^@fleetos\/(device-adapters|integrations)/.test(importedPkgName)) {
+        violations.push(
+          `RUNTIME_PROVIDER_IMPORT: ${file}:${line} ${form}("${spec}") — the console runtime may not import adapter/integration lanes`,
+        );
+        continue;
+      }
+      continue; // The sanctioned composition-root import.
+    }
 
     // Determine the imported package's owning lane
     const importedLane = laneMap[importedPkgRel] ?? findClaimants(importedPkgRel)[0];
