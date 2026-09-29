@@ -1,5 +1,21 @@
 # FleetOS Project State
 
+STATUS: POST-ROADMAP UX + DEPLOYMENT PHASE — W001-W080 COMPLETE; W090A/W090B/W090C READY FOR PARALLEL DISPATCH; W091/W092 FOLLOW-ON
+Architecture: FROZEN v1.0
+Current source of truth: integration/wave0
+Current W080 checkpoint: 503f6e6
+Original roadmap verification: 2641 tests passed, 0 failed; typecheck 0; architecture/ownership/contract checks green; 23 packages; 150-contract snapshot unchanged
+Rendered console: NOT YET IMPLEMENTED — current apps/web packages are UI contracts/view-models/state machines
+Next actions:
+- dispatch W090A [A], W090B [B], W090C [C] in parallel
+- after all three accept, dispatch W091 [TL]
+- after W091 acceptance, execute W092 [TL] staging deployment + release rehearsal
+- use docs/tech-lead/UX-JOURNEY-SIMULATION.md and spec/ui/CONSOLE-DESIGN.md as the UX acceptance source
+- use docs/tech-lead/FREE-TIER-DEPLOYMENT.md for provider setup
+Worker limit: 3
+
+# FleetOS Project State
+
 STATUS: ROADMAP COMPLETE — Waves 0-7 + W051 + W061 + W080 [TL] production readiness ALL DELIVERED on integration/wave0 (2641/0 tests, 23 packages, 150-contract snapshot); the release gate is live
 Architecture: FROZEN v1.0
 Implementation wave: 4 complete + Wave 5 COMPLETE (Wave 0 complete; Wave 1 complete; Wave 2 COMPLETE — W021 + W010 + W022 + W020 accepted; Wave 3 COMPLETE — W031 [B] accepted on work/w031 ce3481a, W032 [C] accepted on work/w032 dec680b, W041 [B] accepted on work/w041 0512284, W030 [A] accepted on work/w030 094bfa7; Wave 4 COMPLETE — W041 [B] accepted on work/w041 0512284, W040 [A] accepted on work/w040 ae561ef, W042 [C] accepted on work/w042 c21eeaa; Wave 5 COMPLETE — W050A [A] ADCOS adapter accepted on work/w050a 3419240 (1639/0 on branch); W050B [B] Arena adapter accepted on work/w050b 088cad4 (1635/0 on branch); W050C [C] Aurum adapter accepted on work/w050c 3e1807d (1630/0 on branch))
