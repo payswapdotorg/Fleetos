@@ -29,6 +29,14 @@
       "devDependencies": {
         "@fleetos/actions": "workspace:*",
         "@fleetos/policy": "workspace:*",
+        "@testing-library/dom": "^10.4.0",
+        "@testing-library/react": "^16.3.0",
+        "@testing-library/user-event": "^14.6.1",
+        "@types/react": "^19.1.0",
+        "@types/react-dom": "^19.1.0",
+        "happy-dom": "^20.0.0",
+        "react": "^19.1.0",
+        "react-dom": "^19.1.0",
       },
     },
     "apps/web/commerce": {
@@ -55,6 +63,24 @@
       "devDependencies": {
         "@fleetos/device-model": "workspace:*",
         "@fleetos/health": "workspace:*",
+        "@testing-library/dom": "^10.4.0",
+        "@testing-library/react": "^16.3.0",
+        "@testing-library/user-event": "^14.6.1",
+        "@types/react": "^19.1.0",
+        "@types/react-dom": "^19.1.0",
+        "happy-dom": "^20.0.0",
+        "react": "^19.1.0",
+        "react-dom": "^19.1.0",
+      },
+    },
+    "apps/web/learning": {
+      "name": "@fleetos/web-learning",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "@fleetos/learning": "workspace:*",
         "@testing-library/dom": "^10.4.0",
         "@testing-library/react": "^16.3.0",
         "@testing-library/user-event": "^14.6.1",
@@ -96,6 +122,14 @@
         "@fleetos/actions": "workspace:*",
         "@fleetos/policy": "workspace:*",
         "@fleetos/security": "workspace:*",
+        "@testing-library/dom": "^10.4.0",
+        "@testing-library/react": "^16.3.0",
+        "@testing-library/user-event": "^14.6.1",
+        "@types/react": "^19.1.0",
+        "@types/react-dom": "^19.1.0",
+        "happy-dom": "^20.0.0",
+        "react": "^19.1.0",
+        "react-dom": "^19.1.0",
       },
     },
     "apps/web/shell": {
@@ -407,6 +441,8 @@
     "@fleetos/web-commerce": ["@fleetos/web-commerce@workspace:apps/web/commerce"],
 
     "@fleetos/web-device": ["@fleetos/web-device@workspace:apps/web/device"],
+
+    "@fleetos/web-learning": ["@fleetos/web-learning@workspace:apps/web/learning"],
 
     "@fleetos/web-recovery": ["@fleetos/web-recovery@workspace:apps/web/recovery"],
 
