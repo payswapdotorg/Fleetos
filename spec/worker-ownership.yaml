@@ -33,6 +33,7 @@ owners:
       - packages/integrations/arena/
       - apps/web/security/
       - apps/web/actions/
+      - apps/web/learning/
   worker-c:
     paths:
       - packages/identity/
