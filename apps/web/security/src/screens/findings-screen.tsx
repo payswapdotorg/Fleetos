@@ -26,6 +26,8 @@
 import type { JSX } from "react";
 import type { FindingsListItemView, FindingsListView } from "../findings-view";
 import { ALL_SURFACE_SEVERITIES } from "../findings-view";
+import type { FindingsLensLead, RemediationAffordanceView } from "../findings-role-view";
+import type { SecurityRoleLensView } from "../role-lens";
 import type { SurfaceSeverity } from "../surface-contracts";
 import { ConsoleStyles } from "../ui/tokens";
 import {
@@ -40,6 +42,7 @@ import {
 } from "../ui/primitives";
 import type { ScreenPhase } from "../ui/primitives";
 import { severityConsoleStatus } from "../ui/status";
+import { RoleLensSection } from "./role-lens-section";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -60,6 +63,23 @@ export interface FindingsScreenProps {
   readonly onCloseFinding: () => void;
   /** The intent to walk the remediation journey for a finding (opens Security Doctor). */
   readonly onRemediate: (finding: FindingsListItemView) => void;
+  /**
+   * W100B: the active role lens (optional — absent renders exactly the
+   * W090B screen). The lens shapes ONLY the banner emphasis; the
+   * records, ordering and affordances are unchanged.
+   */
+  readonly roleLens?: SecurityRoleLensView | null;
+  /**
+   * W100B: the role-shaped lead (from `buildRoleShapedFindingsView`) —
+   * the emphasis copy + spotlights + the authority-derived remediation
+   * affordance. Optional; absent renders the plain W090B header.
+   */
+  readonly roleLead?: FindingsLensLead | null;
+  /**
+   * W100B: the remediation affordance (authority-derived availability;
+   * the restricted explanation renders when unavailable).
+   */
+  readonly remediationAffordance?: RemediationAffordanceView | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -215,11 +235,72 @@ export function FindingsScreen(props: FindingsScreenProps): JSX.Element {
         <div>
           <h1 className="fos-screen-title">Security findings</h1>
           <p className="fos-screen-subtitle">
-            The Security Doctor's findings — versioned interpretations of observed device posture,
-            ordered most severe first.
+            {props.roleLead !== null && props.roleLead !== undefined
+              ? props.roleLead.copy
+              : "The Security Doctor's findings — versioned interpretations of observed device posture, ordered most severe first."}
           </p>
         </div>
       </header>
+      {props.roleLens !== null && props.roleLens !== undefined && (
+        <RoleLensSection
+          lens={props.roleLens}
+          emphasis={[
+            { label: "Findings", value: props.roleLens.findingsEmphasis },
+            { label: "Evidence", value: props.roleLens.evidenceEmphasis },
+          ]}
+        />
+      )}
+      {props.roleLead !== null && props.roleLead !== undefined && (
+        <Card title="What this lens leads with" subtitle="Emphasis only — the records never change">
+          <DefinitionList
+            entries={[
+              { term: "Critical", value: String(props.roleLead.criticalCount) },
+              { term: "High", value: String(props.roleLead.highCount) },
+              { term: "Devices affected", value: String(props.roleLead.deviceCount) },
+              { term: "Actionable remediations", value: String(props.roleLead.remediationProposalCount) },
+            ]}
+          />
+          {props.roleLead.spotlightFindingIds.length > 0 && (
+            <p className="fos-meta" style={{ margin: "0.5rem 0 0" }} data-testid="findings-spotlight">
+              Leading findings: {props.roleLead.spotlightFindingIds.join(", ")}
+            </p>
+          )}
+          {props.roleLead.evidenceFirst && (
+            <p className="fos-meta" style={{ margin: "0.35rem 0 0" }} data-testid="findings-evidence-first">
+              Evidence-first: every finding below links the immutable observations that support it.
+            </p>
+          )}
+        </Card>
+      )}
+      {props.remediationAffordance !== null && props.remediationAffordance !== undefined && (
+        <Card
+          title="Remediation walkthrough"
+          subtitle={
+            props.remediationAffordance.available
+              ? "Available to this session (authority-derived)"
+              : "Restricted in this session (authority-derived)"
+          }
+        >
+          {props.remediationAffordance.available ? (
+            <p className="fos-meta" style={{ margin: 0 }} data-testid="remediation-affordance-available">
+              The effective authority includes{" "}
+              <span className="fos-mono">{props.remediationAffordance.capability}</span>: the gated
+              remediation journey is offered per finding (the Contract Guardian still decides every
+              step — never one-click).
+            </p>
+          ) : (
+            <p className="fos-meta" style={{ margin: 0 }} data-testid="remediation-affordance-restricted">
+              Reason <span className="fos-mono">{props.remediationAffordance.restricted?.reason ?? "missing_permission"}</span>{" "}
+              — the effective authority lacks{" "}
+              <span className="fos-mono">{props.remediationAffordance.capability}</span>.{" "}
+              {props.remediationAffordance.restricted !== null
+                ? `${props.remediationAffordance.restricted.escalation.action} — ${props.remediationAffordance.restricted.escalation.requestLabel}.`
+                : "Request the capability from your Fleet Administrator."}{" "}
+              This explanation grants nothing.
+            </p>
+          )}
+        </Card>
+      )}
       {view !== null ? (
         <>
           <div className="fos-chipbar" role="group" aria-label="Filter findings by severity">

@@ -151,6 +151,7 @@ export const SURFACE_ERROR_CODES = frozen({
   decisionInvalid: "surface.decision_invalid",
   evaluationInvalid: "surface.evaluation_invalid",
   approvalItemInvalid: "surface.approval_item_invalid",
+  roleLensInvalid: "surface.role_lens_invalid",
 });
 
 /**
