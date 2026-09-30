@@ -32,6 +32,19 @@ export * from "./runtime";
 // assertion_malformed; untrusted assertions never reach dispatch).
 export * from "./trust";
 
+// W100A — reproducible agent release packaging: versioned
+// Windows/macOS/Linux artifacts with content-derived checksums,
+// release notes, install/uninstall/rollback metadata, and the
+// fail-closed credential-free installer scanner.
+export * from "./release";
+
+// W100A — the agent-side enrollment journey client: installer
+// artifact selection, one-time bootstrap code exchange, first
+// check-in (composed through the frozen helpers), first observation
+// flush, and Device Twin confirmation — all over injected seams, all
+// refusals machine-stable with human explanations.
+export * from "./enrollment-client";
+
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).
 export const MODULE_NAME = "agent" as const;
