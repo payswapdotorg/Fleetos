@@ -60,6 +60,14 @@ export * from "./doctor";
 // (initiate -> review -> confirm -> verified, with evidence)
 export * from "./enrollment";
 
+// W100A — the install center view-model (the install contract's
+// dedicated first-class surface): platform facets, ownership scopes,
+// the one-time enrollment code card, install plans with checksums,
+// installation verification over the agent journey trace, the
+// deterministic next-action ladder, and the uninstall/revoke plan
+// (authorization-required intents, never executions).
+export * from "./install-center";
+
 // W090A — the local console design tokens + status vocabulary
 export * from "./ui/tokens";
 export * from "./ui/status";
@@ -72,6 +80,10 @@ export * from "./screens/device-fleet-screen";
 export * from "./screens/device-doctor-screen";
 export * from "./screens/device-lifecycle-screen";
 export * from "./screens/enrollment-screen";
+
+// W100A — the rendered install center screen (presentational, fully
+// controlled; the nine install-contract steps + uninstall/revoke plan)
+export * from "./screens/install-center-screen";
 
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).
