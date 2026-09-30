@@ -89,6 +89,29 @@ export * from "./communication";
 // The commerce-surface state machines
 export * from "./state";
 
+// W090C — the verification + outcome view-models (the W072 scorecards
+// and evidence packs, the VERIFIED maintenance outcomes, the order and
+// entitlement reconciliations, the D3 software needs, the per-device
+// fleet connectivity status)
+export * from "./outcomes";
+
+// W090C — the local console design tokens + status vocabulary
+export * from "./ui/tokens";
+export * from "./ui/status";
+
+// W090C — the local shadcn-style component vocabulary (plain React + CSS)
+export * from "./ui/primitives";
+
+// W090C D2 — the rendered commerce screens (presentational, fully
+// controlled): the shared journey rail + consequential-action card
+export * from "./screens/commerce-shared";
+export * from "./screens/procurement-screen";
+export * from "./screens/software-screen";
+export * from "./screens/vendors-screen";
+export * from "./screens/maintenance-screen";
+export * from "./screens/connectivity-screen";
+export * from "./screens/communication-screen";
+
 // Module markers (the workspace convention).
 export const MODULE_NAME = "web-commerce" as const;
 export const MODULE_VERSION = "0.1.0" as const;
