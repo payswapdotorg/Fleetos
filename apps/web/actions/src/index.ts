@@ -65,6 +65,18 @@ export * from "./action-plans-view";
 // The print orchestration surface.
 export * from "./print-routing-view";
 
+// W100B — the ROLE LENS experience contract (the frozen role model
+// consumed as a public experience contract; the lens grants NOTHING).
+export * from "./role-lens";
+
+// W100B — the role-shaped print DISTRIBUTION surface (selected people +
+// document -> each person's approved printer receives the job).
+export * from "./print-distribution-view";
+
+// W100B — the role-shaped Fleet Action plan surface (emphasis changes;
+// the plan presentation is lens-independent).
+export * from "./action-role-view";
+
 // W090B — the local console design tokens + status vocabulary.
 export * from "./ui/tokens";
 export * from "./ui/status";
@@ -75,6 +87,9 @@ export * from "./ui/primitives";
 // W090B — the rendered screens (presentational, fully controlled).
 export * from "./screens/fleet-actions-screen";
 export * from "./screens/print-screen";
+// W100B — the rendered role-lens section + the print-distribution screen.
+export * from "./screens/role-lens-section";
+export * from "./screens/print-distribution-screen";
 
 // The tagged error/result contract of every builder.
 export type { SurfaceError, SurfaceResult, SurfaceValidationFailure } from "./internal";

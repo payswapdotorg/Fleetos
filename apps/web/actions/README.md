@@ -95,3 +95,40 @@ ambient types) and is typechecked locally:
 W061 wires lane typechecking into the root gate when the shell lands.
 
 No runtime dependencies. No `any` in public signatures. Strict TS.
+
+## W100B — the ROLE LENS + the print DISTRIBUTION experience
+
+W100B adds the role-shaped experience layer plus the print
+distribution surface (all W090B builders/screens unchanged — the lens
+is additive and optional):
+
+- `src/role-lens.ts` — the frozen role model consumed as a PUBLIC
+  EXPERIENCE CONTRACT (spec-conformance proven by
+  `test/role-lens.test.ts`); the authority seam (identity's
+  `ResolvedPermissions`), the VERBATIM echo and the restricted-
+  capability explanations (reason + escalation path + lens-switch
+  affordance only for an ASSIGNED emphasizing role).
+- `src/print-distribution-view.ts` — the role-shaped print
+  DISTRIBUTION view over the W100B domain plan
+  (`@fleetos/actions` `planPrintDistribution`): "selected people +
+  document -> each person's approved printer receives the job". Every
+  REFUSED entry carries its machine-stable routing reasons VERBATIM
+  plus the printer-approval ESCALATION path (capable-but-unapproved
+  printers are named as the request path only — never promoted).
+- `src/action-role-view.ts` — the role-shaped Fleet Action plan view:
+  the plan presentation (the W090B builder, unchanged) + the
+  authority-derived propose/approve affordances with restricted
+  explanations.
+- `src/screens/print-distribution-screen.tsx` + `src/screens/role-lens-
+  section.tsx` — the rendered distribution journey (role banner,
+  glance card, per-person entries) and the role banner.
+- The DOMAIN half lives in `packages/actions/src/print-distribution.ts`
+  (`planPrintDistribution` — pure, deterministic, tenant-scoped,
+  audited; routes each person's job through the unchanged W041 router
+  over THAT person's approved printers).
+- `test/role-lens.test.ts`, `test/role-views.test.ts`,
+  `test/render-role-lens.test.tsx`, `test/binding-role-lens.test.ts`,
+  `test/journey-role-actions.test.tsx` — spec conformance, the
+  view-model invariance, the BROWSER authority-invariance over the
+  REAL domain distribution, the REAL identity bindings and the
+  two-persona journeys (service.desk + employee).

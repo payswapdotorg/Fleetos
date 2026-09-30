@@ -153,6 +153,8 @@ export const SURFACE_ERROR_CODES = frozen({
   jobInvalid: "surface.job_invalid",
   printerInvalid: "surface.printer_invalid",
   progressionInvalid: "surface.progression_invalid",
+  roleLensInvalid: "surface.role_lens_invalid",
+  distributionInvalid: "surface.distribution_invalid",
 });
 
 /**
