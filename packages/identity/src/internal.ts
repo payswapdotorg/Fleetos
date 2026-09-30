@@ -16,3 +16,15 @@
 export function frozen<T>(value: T): T {
   return Object.freeze(value);
 }
+
+/**
+ * Freeze a copy of an array (the lane-C listing discipline). The input is
+ * never mutated.
+ *
+ * @template T the element type
+ * @param values the array to copy-and-freeze
+ * @returns the frozen copy
+ */
+export function frozenArray<T>(values: readonly T[]): readonly T[] {
+  return Object.freeze([...values]);
+}

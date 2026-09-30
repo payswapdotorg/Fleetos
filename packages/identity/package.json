@@ -7,6 +7,9 @@
   "dependencies": {
     "@fleetos/contracts": "workspace:*"
   },
+  "devDependencies": {
+    "@fleetos/audit": "workspace:*"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test"
