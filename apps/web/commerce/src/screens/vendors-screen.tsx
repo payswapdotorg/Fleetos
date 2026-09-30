@@ -33,6 +33,7 @@ import type {
   EvidencePacksView,
   VendorScorecardsView,
 } from "../outcomes";
+import type { VendorDiscoveryView } from "../discovery";
 import { CommerceJourneyRail } from "./commerce-shared";
 import type { CommerceJourneyRailStage } from "./commerce-shared";
 
@@ -45,6 +46,13 @@ export interface VendorsScreenData {
   readonly catalog: VendorCatalogView;
   readonly scorecards: VendorScorecardsView;
   readonly evidencePacks: EvidencePacksView;
+  /**
+   * The W100C vendor-discovery ENRICHMENT view (PROPOSAL-grade rows or
+   * the explicit provider-unavailable state), when the shell binds the
+   * optional Apify adapter. Optional: absent = the section is hidden
+   * (the provider is optional — never fail-silent when PRESENT).
+   */
+  readonly discovery?: VendorDiscoveryView | null;
 }
 
 export interface VendorsScreenProps {
@@ -159,6 +167,99 @@ function VendorRecordSheet({
         ]}
       />
     </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The W100C vendor-discovery enrichment card (PROPOSAL-grade, fail-visible)
+// ---------------------------------------------------------------------------
+
+function DiscoveryCard({ view }: { readonly view: VendorDiscoveryView }): JSX.Element {
+  if (view.kind === "unavailable") {
+    const unavailable = view.unavailable;
+    return (
+      <Card
+        title="Vendor discovery — enrichment provider unavailable"
+        subtitle="Proposals cannot be fetched right now; vendor records above remain the authoritative source."
+      >
+        <p>
+          <strong>{unavailable.headline}</strong>
+        </p>
+        <p className="fos-mono fos-meta">reason: {unavailable.reason}</p>
+        <p className="fos-mono fos-meta">retryable: {unavailable.retryable ? "yes" : "no"}</p>
+        <p>{unavailable.escalationPath}</p>
+      </Card>
+    );
+  }
+  return (
+    <Card
+      title="Vendor discovery — enrichment proposals"
+      subtitle="PROPOSAL-grade enrichment only (via the optional Apify adapter). Never authoritative inventory, price, policy or fulfillment truth — vendor records above remain the authority."
+    >
+      <p className="fos-mono fos-meta">{view.attributionLine}</p>
+      {view.rows.length === 0 ? (
+        <p>No candidates were discovered for this query — an explicitly empty result, not an error.</p>
+      ) : (
+        <div className="fos-table-wrap">
+          <table className="fos-table">
+            <caption>Discovered vendor candidates — {view.proposalCount} proposals</caption>
+            <thead>
+              <tr>
+                <th scope="col">Candidate</th>
+                <th scope="col">Status</th>
+                <th scope="col">Region</th>
+                <th scope="col">Categories</th>
+                <th scope="col">Contact</th>
+                <th scope="col">Attribution</th>
+              </tr>
+            </thead>
+            <tbody>
+              {view.rows.map((row) => (
+                <tr key={row.candidateName} data-candidate={row.candidateName}>
+                  <td>
+                    {row.candidateName}
+                    {row.notes !== null && (
+                      <>
+                        <br />
+                        <span className="fos-meta">{row.notes}</span>
+                      </>
+                    )}
+                  </td>
+                  <td>
+                    <span className="fos-badge fos-badge--warning">{row.proposalStatus}</span>
+                  </td>
+                  <td>{row.region ?? "—"}</td>
+                  <td>
+                    <span className="fos-meta">{row.categories.join(", ") || "—"}</span>
+                  </td>
+                  <td>
+                    {row.website !== null && (
+                      <>
+                        <span className="fos-mono fos-meta">{row.website}</span>
+                        <br />
+                      </>
+                    )}
+                    {row.phone !== null && <span className="fos-mono fos-meta">{row.phone}</span>}
+                    {row.contactEmail !== null && (
+                      <>
+                        <br />
+                        <span className="fos-mono fos-meta">{row.contactEmail}</span>
+                      </>
+                    )}
+                    {row.website === null && row.phone === null && row.contactEmail === null
+                      ? "—"
+                      : ""}
+                  </td>
+                  <td>
+                    <span className="fos-mono fos-meta">{row.attributionLine}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -332,6 +433,7 @@ export function VendorsScreen(props: VendorsScreenProps): JSX.Element {
         )}
         <ScorecardsCard scorecards={ready.scorecards} />
         <EvidencePacksCard packs={ready.evidencePacks} />
+        {ready.discovery != null && <DiscoveryCard view={ready.discovery} />}
       </>
     );
   }

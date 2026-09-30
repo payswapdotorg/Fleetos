@@ -399,6 +399,16 @@ const COMMERCE_VALUE_EXPORTS = new Set([
   "MaintenanceScreen",
   "ConnectivityScreen",
   "CommunicationScreen",
+  // W100C role-lens.ts — the role-aware commerce projection (PURE +
+  // presentation-only constants)
+  "COMMERCE_ROLE_LENSES",
+  "COMMERCE_ROLE_LENS_IDS",
+  "COMMERCE_ROLE_LENS_VIEW_VERSION",
+  "applyCommerceRoleLens",
+  // W100C discovery.ts — the Apify enrichment view (PROPOSAL-grade +
+  // fail-visible provider-unavailable states; PURE builder)
+  "VENDOR_DISCOVERY_VIEW_VERSION",
+  "buildVendorDiscoveryView",
   // index.ts — module markers
   "MODULE_NAME",
   "MODULE_VERSION",
@@ -473,6 +483,12 @@ const WORKLOADS_VALUE_EXPORTS = new Set([
   // screens — the W090C rendered workload screens (PRESENTATIONAL)
   "WorkloadPlanningScreen",
   "RecommendationRecordCard",
+  // W100C role-lens.ts — the role-aware workload projection (PURE +
+  // presentation-only constants)
+  "WORKLOAD_ROLE_LENSES",
+  "WORKLOAD_ROLE_LENS_IDS",
+  "WORKLOAD_ROLE_LENS_VIEW_VERSION",
+  "applyWorkloadRoleLens",
   // index.ts — module markers
   "MODULE_NAME",
   "MODULE_VERSION",
