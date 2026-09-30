@@ -35,6 +35,7 @@
 import type { TenantId } from "@fleetos/contracts";
 import type {
   ConnectivityResourceFacets,
+  MaintenanceResourceFacets,
   RecommendationLedgerFacets,
   SoftwareResourceFacets,
   WorkloadProfileFacets,
@@ -86,6 +87,50 @@ export interface JourneyQuoteFacets {
 }
 
 /**
+ * The W100C vendor-selection facet — the W032 `VendorMatch` reduced to
+ * the selection evidence the stage displays. The stage is DONE when a
+ * SATISFIABLE match exists for the demand (the matching engine
+ * PROPOSED; the deterministic policy layer remains authoritative for
+ * whether an order is permitted — the stage only displays the match).
+ */
+export interface JourneyVendorMatchFacets {
+  readonly tenantId: TenantId;
+  /** The matched vendor id. */
+  readonly vendorId: string;
+  /** The matched vendor name. */
+  readonly vendorName: string;
+  /** The matched capability id, when one matched. */
+  readonly matchedCapabilityId: string | null;
+  /** The match rank score in [0, 1], verbatim. */
+  readonly rankScore: number;
+  /** True when the vendor satisfies every hard gate (verbatim). */
+  readonly satisfiable: boolean;
+  /** The machine-stable match reasons (verbatim). */
+  readonly reasons: readonly string[];
+}
+
+/**
+ * The W100C maintenance facet — the W042 `ServiceWorkOrder` + its
+ * service match reduced to the maintenance stage's evidence. DONE when
+ * a work order exists AND a satisfiable service match is recorded;
+ * APPROVAL when the work order exists but no vendor match is recorded
+ * yet (the human assignment decision); PENDING when no work order
+ * exists.
+ */
+export interface JourneyMaintenanceFacets {
+  readonly tenantId: TenantId;
+  readonly workOrderId: string;
+  /** The device the work order concerns (the workload's device). */
+  readonly deviceId: string;
+  /** The service category (a vendor capability id). */
+  readonly serviceCategory: string;
+  /** The customer deadline (injected, echoed verbatim). */
+  readonly deadline: string;
+  /** The matched service vendor, when a match is recorded. */
+  readonly matchedVendor: JourneyVendorMatchFacets | null;
+}
+
+/**
  * The adopted-connectivity verification facet — the W050A
  * `ConnectivityRecord` reduced to the verification evidence the
  * terminal stage displays (latest revision only). The seam EXCLUDES
@@ -116,6 +161,10 @@ export interface WorkloadProcurementJourneySource {
   readonly demand: JourneyDemandFacets | null;
   /** The quote + acceptance (the quote stage), when present. */
   readonly quote: JourneyQuoteFacets | null;
+  /** The W032 vendor match for the demand (the vendor-selection stage), when present. */
+  readonly vendorMatch: JourneyVendorMatchFacets | null;
+  /** The W042 service work order + service match (the maintenance stage), when present. */
+  readonly maintenance: JourneyMaintenanceFacets | null;
   /** The W050A connectivity submission (the request stage), when present. */
   readonly submission: ConnectivityResourceFacets | null;
   /** The adopted connectivity record's verification summary, when present. */
@@ -132,6 +181,8 @@ export const JOURNEY_STAGE_IDS = [
   "software-need",
   "procurement-request",
   "procurement-quote",
+  "vendor-selection",
+  "maintenance-service",
   "connectivity-request",
   "connectivity-verified",
 ] as const;
@@ -142,7 +193,8 @@ export type JourneyStageId = (typeof JOURNEY_STAGE_IDS)[number];
 /**
  * The shell route target of each stage (the W091 route vocabulary:
  * workloads.planning / commerce.software / commerce.procurement /
- * commerce.connectivity). Machine-stable — the shell navigates by it.
+ * commerce.vendors / commerce.maintenance / commerce.connectivity).
+ * Machine-stable — the shell navigates by it.
  */
 export const JOURNEY_STAGE_ROUTES: Readonly<
   Record<JourneyStageId, { readonly area: "workloads" | "commerce"; readonly view: string }>
@@ -151,6 +203,8 @@ export const JOURNEY_STAGE_ROUTES: Readonly<
   "software-need": { area: "commerce", view: "software" },
   "procurement-request": { area: "commerce", view: "procurement" },
   "procurement-quote": { area: "commerce", view: "procurement" },
+  "vendor-selection": { area: "commerce", view: "vendors" },
+  "maintenance-service": { area: "commerce", view: "maintenance" },
   "connectivity-request": { area: "commerce", view: "connectivity" },
   "connectivity-verified": { area: "commerce", view: "connectivity" },
 });
@@ -302,6 +356,24 @@ export function buildWorkloadProcurementJourneyView(
   if (demandMismatch !== null) return { ok: false, error: demandMismatch };
   const quoteMismatch = tenantMismatch(tenantId, source.quote?.tenantId, "web-workloads.journey");
   if (quoteMismatch !== null) return { ok: false, error: quoteMismatch };
+  const vendorMatchMismatch = tenantMismatch(
+    tenantId,
+    source.vendorMatch?.tenantId,
+    "web-workloads.journey",
+  );
+  if (vendorMatchMismatch !== null) return { ok: false, error: vendorMatchMismatch };
+  const maintenanceMismatch = tenantMismatch(
+    tenantId,
+    source.maintenance?.tenantId,
+    "web-workloads.journey",
+  );
+  if (maintenanceMismatch !== null) return { ok: false, error: maintenanceMismatch };
+  const maintenanceVendorMismatch = tenantMismatch(
+    tenantId,
+    source.maintenance?.matchedVendor?.tenantId,
+    "web-workloads.journey",
+  );
+  if (maintenanceVendorMismatch !== null) return { ok: false, error: maintenanceVendorMismatch };
   const submissionMismatch = tenantMismatch(
     tenantId,
     source.submission?.tenantId,
@@ -346,10 +418,28 @@ export function buildWorkloadProcurementJourneyView(
           ? "blocked"
           : "approval";
 
-  // --- Stage 5: the connectivity request (the W050A submission) ---
+  // --- Stage 5 (W100C): the vendor selection (the W032 match) ---
+  const vendorMatch = source.vendorMatch;
+  const vendorState: "done" | "blocked" | "pending" =
+    vendorMatch === null
+      ? "pending"
+      : vendorMatch.satisfiable
+        ? "done"
+        : "blocked";
+
+  // --- Stage 6 (W100C): the maintenance service (the W042 work order) ---
+  const maintenance = source.maintenance;
+  const maintenanceState: "done" | "approval" | "pending" =
+    maintenance === null
+      ? "pending"
+      : maintenance.matchedVendor !== null && maintenance.matchedVendor.satisfiable
+        ? "done"
+        : "approval";
+
+  // --- Stage 7: the connectivity request (the W050A submission) ---
   const submission = source.submission;
   const submissionStatus = (submission?.status ?? null) as WorkloadResourceLinkageStatus | null;
-  const request5State: "done" | "approval" | "blocked" | "pending" =
+  const request7State: "done" | "approval" | "blocked" | "pending" =
     submission === null
       ? "pending"
       : submissionStatus === "APPROVED"
@@ -360,7 +450,7 @@ export function buildWorkloadProcurementJourneyView(
             ? "blocked"
             : "pending";
 
-  // --- Stage 6: the VERIFIED connectivity outcome ---
+  // --- Stage 8: the VERIFIED connectivity outcome ---
   const verification = source.verification;
   const verified = verification !== null && deriveConnectivityVerification(verification);
 
@@ -369,7 +459,9 @@ export function buildWorkloadProcurementJourneyView(
     needDone ? "done" : "pending",
     requestDone ? "done" : "pending",
     quoteState,
-    request5State,
+    vendorState,
+    maintenanceState,
+    request7State,
     verified ? "done" : "pending",
   ]);
 
@@ -403,6 +495,18 @@ export function buildWorkloadProcurementJourneyView(
           ? `Quote ${quote.quoteId} from vendor ${quote.vendorId} was REJECTED — the procurement path is blocked.`
           : `Quote ${quote.quoteId} from vendor ${quote.vendorId} is ${quote.status} — acceptance (the operator approval) is pending.`
       : "No quote is issued for the demand yet.",
+    vendorMatch !== null
+      ? vendorMatch.satisfiable
+        ? `Vendor ${vendorMatch.vendorName} (${vendorMatch.vendorId}) MATCHED for the demand — rank ${vendorMatch.rankScore.toFixed(2)}${vendorMatch.matchedCapabilityId !== null ? `, capability ${vendorMatch.matchedCapabilityId}` : ""}.`
+        : `Vendor ${vendorMatch.vendorName} (${vendorMatch.vendorId}) is UNSATISFIABLE for the demand (${vendorMatch.reasons.join(", ")}).`
+      : "No vendor match is recorded for the demand yet.",
+    maintenance !== null
+      ? maintenance.matchedVendor !== null && maintenance.matchedVendor.satisfiable
+        ? `Service work order ${maintenance.workOrderId} (${maintenance.serviceCategory}, device ${maintenance.deviceId}, deadline ${maintenance.deadline}) assigned to ${maintenance.matchedVendor.vendorName}.`
+        : maintenance.matchedVendor !== null
+          ? `Service work order ${maintenance.workOrderId} has an unsatisfiable vendor match (${maintenance.matchedVendor.vendorName}) — the assignment decision needs attention.`
+          : `Service work order ${maintenance.workOrderId} (${maintenance.serviceCategory}, deadline ${maintenance.deadline}) awaits a vendor assignment.`
+      : "No maintenance service work order is open for this workload's device yet.",
     submission !== null
       ? `Connectivity submission ${submission.submissionId} is ${submission.status} (outcome ${submission.request.outcome.canonical}).`
       : "No connectivity request is submitted for the workload yet.",
@@ -418,6 +522,8 @@ export function buildWorkloadProcurementJourneyView(
     source.subscription?.subscriptionId ?? null,
     source.demand?.demandId ?? null,
     quote?.quoteId ?? null,
+    vendorMatch?.vendorId ?? null,
+    maintenance?.workOrderId ?? null,
     submission?.submissionId ?? null,
     verification?.connectivityId ?? null,
   ]);
@@ -437,6 +543,23 @@ export function buildWorkloadProcurementJourneyView(
       ? frozenArray([
           `quote:${quote.quoteId}`,
           ...(quote.acceptedAt !== null ? [`acceptedAt:${quote.acceptedAt}`] : []),
+        ])
+      : frozenArray([]),
+    vendorMatch !== null
+      ? frozenArray([
+          `vendorMatch:${vendorMatch.vendorId}`,
+          `rankScore:${vendorMatch.rankScore.toFixed(2)}`,
+          `satisfiable:${vendorMatch.satisfiable ? "yes" : "no"}`,
+        ])
+      : frozenArray([]),
+    maintenance !== null
+      ? frozenArray([
+          `workOrder:${maintenance.workOrderId}`,
+          `serviceCategory:${maintenance.serviceCategory}`,
+          `deadline:${maintenance.deadline}`,
+          ...(maintenance.matchedVendor !== null
+            ? [`serviceVendor:${maintenance.matchedVendor.vendorId}`]
+            : []),
         ])
       : frozenArray([]),
     submission !== null
@@ -459,6 +582,8 @@ export function buildWorkloadProcurementJourneyView(
     "Software need",
     "Procurement request",
     "Procurement quote & acceptance",
+    "Vendor selection",
+    "Maintenance service",
     "Connectivity request",
     "Verified connectivity",
   ]);

@@ -33,11 +33,13 @@ import {
   CONSOLE_CSS,
   reduceWorkloadSurfaceState,
   INITIAL_WORKLOAD_SURFACE_STATE,
+  applyWorkloadRoleLens,
 } from "../src/index";
 import type {
   WorkloadPlanningData,
   WorkloadPlanningScreenProps,
   WorkloadPlanningTab,
+  WorkloadRoleLensView,
   WorkloadSurfaceEvent,
   WorkloadSurfaceState,
 } from "../src/index";
@@ -158,6 +160,7 @@ function PlanningShell(props: {
   readonly journey: readonly ReturnType<typeof journeyRailStages>[number][] | null;
   readonly onStage?: (stageId: string) => void;
   readonly events?: WorkloadSurfaceEvent[];
+  readonly roleLens?: WorkloadRoleLensView | null;
 }): React.JSX.Element {
   const { data, surface, tab, journey } = props;
   return (
@@ -171,6 +174,7 @@ function PlanningShell(props: {
       onTabChange={(): void => {}}
       journey={journey}
       onOpenJourneyStage={props.onStage}
+      roleLens={props.roleLens ?? null}
     />
   );
 }
@@ -396,6 +400,8 @@ test("render: the journey rail shows every stage with statuses and navigates by 
     subscription: null,
     demand: null,
     quote: null,
+    vendorMatch: null,
+    maintenance: null,
     submission: null,
     verification: null,
   });
@@ -516,6 +522,8 @@ test("determinism: the journey-rail-present screen renders byte-identical static
     subscription: null,
     demand: null,
     quote: null,
+    vendorMatch: null,
+    maintenance: null,
     submission: null,
     verification: null,
   });
@@ -554,3 +562,69 @@ void CORR;
 void T0;
 void procurementWorkstationCandidate;
 void fireEvent;
+
+// ---------------------------------------------------------------------------
+// W100C — the role-lens band
+// ---------------------------------------------------------------------------
+
+test("W100C render: the role-lens band shows the lens copy and capability notices", () => {
+  const listing = buildWorkloadProfileListView(TENANT_A, [realProfile()]);
+  if (!listing.ok) throw new Error(listing.error.message);
+  const lens = applyWorkloadRoleLens(TENANT_A, "employee", listing.view);
+  if (!lens.ok) throw new Error(lens.error.message);
+  render(
+    <PlanningShell
+      data={planningData()}
+      surface={{ view: "list" }}
+      tab="recommendations"
+      journey={null}
+      roleLens={lens.view}
+    />,
+  );
+  // The band identifies the lens.
+  expect(screen.getByText("Viewing as Employee / Device Owner")).toBeTruthy();
+  expect(
+    screen.getByText(
+      "Is my device healthy, what should I do, and how do I request help? — emphasis only; permissions come from identity and the Contract Guardian.",
+    ),
+  ).toBeTruthy();
+  // The scope note explains the boundary (never a permission).
+  expect(
+    screen.getByText(/Scoped to the workloads you own or use/),
+  ).toBeTruthy();
+  // The de-emphasized sections' notices render with escalation paths
+  // (one per notice — getAllByText: every notice carries the phrase).
+  expect(
+    screen.getAllByText(/de-emphasized for the Employee \/ Device Owner lens/).length,
+  ).toBe(lens.view.notices.length);
+  expect(
+    screen.getAllByText(/Switch your active role/).length,
+  ).toBe(lens.view.notices.length);
+});
+
+test("W100C render: no role-lens prop -> no band (the surface is unchanged)", () => {
+  const { container } = render(
+    <PlanningShell data={planningData()} surface={{ view: "list" }} tab="recommendations" journey={null} />,
+  );
+  expect(container.textContent?.includes("Viewing as")).toBe(false);
+});
+
+test("W100C render: the lens band never renders permission vocabulary", () => {
+  const listing = buildWorkloadProfileListView(TENANT_A, [realProfile()]);
+  if (!listing.ok) throw new Error(listing.error.message);
+  const lens = applyWorkloadRoleLens(TENANT_A, "vendor.operator", listing.view);
+  if (!lens.ok) throw new Error(lens.error.message);
+  const { container } = render(
+    <PlanningShell
+      data={planningData()}
+      surface={{ view: "list" }}
+      tab="recommendations"
+      journey={null}
+      roleLens={lens.view}
+    />,
+  );
+  const text = container.textContent ?? "";
+  for (const forbidden of ["permission:", "grant:", "allowed:", "denied:"]) {
+    expect(text.toLowerCase().includes(forbidden)).toBe(false);
+  }
+});
