@@ -40,3 +40,5 @@ declare global {
     readonly dir: string;
   }
 }
+
+export {};

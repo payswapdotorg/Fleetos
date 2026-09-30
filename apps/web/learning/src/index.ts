@@ -47,6 +47,14 @@ export * from "./seams";
 // The pure view-models (the W060 pattern over the W070 records).
 export * from "./learning-view";
 
+// W100B — the ROLE LENS experience contract (the frozen role model
+// consumed as a public experience contract; the lens grants NOTHING).
+export * from "./role-lens";
+
+// W100B — the role-shaped learning surface with evaluation-case
+// rationale and capability-adoption explanations.
+export * from "./learning-role-view";
+
 // The local console design tokens + status vocabulary.
 export * from "./ui/tokens";
 export * from "./ui/status";
@@ -56,6 +64,8 @@ export * from "./ui/primitives";
 
 // The rendered screen (presentational, fully controlled).
 export * from "./screens/learning-screen";
+// W100B — the rendered role-lens section.
+export * from "./screens/role-lens-section";
 
 // The tagged error/result contract of every builder.
 export type {
