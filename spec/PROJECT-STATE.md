@@ -1,17 +1,45 @@
 # FleetOS Project State
 
-STATUS: WAVE 8 RENDER PHASE — W090A ACCEPTED (5bbcce0); W090B ACCEPTED (153b22e); W090C ACCEPTED (2ac73f1 + merge 6a0b4f9: workload/commerce lane packages — planning screen w/ composite journey, the full commerce tree incl. vendors scorecards + evidence packs, binding-site tests over REAL domain records; TL gates re-run locally: 2832/0); W091 [TL] DELIVERED (rendered Control Tower + Next.js runtime + global search + Evidence & Audit + journey convergence + responsive shell); W092 [TL] DEPLOYED + ACCEPTED (2026-09-29): the FleetOS staging console is LIVE at https://fleetos-staging-flame.vercel.app (Vercel Hobby project fleetos-staging prj_tY1B5b7x9X13THwsZMh8HtXfIk52, production deployments from integration/wave0, all NINE frozen staging secrets set incl. the operator-supplied R2 S3 pair; post-deploy acceptance accepted:true — console-loads, unknown-route-safe, health-healthy, no-credential-leak; health route reports all nine secrets present; manifest digest 1a3dea65...; bindings record in docs/tech-lead/STAGING-BINDINGS.md: Neon live-verified, Upstash PONG-verified (dedicated rate-limit DB NXDOMAIN — substitution + swap procedure documented), R2 SigV4 round-trip verified)
+STATUS: PRODUCTIZATION PREPARATION — WAVE 8 COMPLETE; W100A/B/C READY FOR PARALLEL DISPATCH; W101/W102/W103 TL FOLLOW-ON
+
 Architecture: FROZEN v1.0
-Current source of truth: integration/wave0
-Current checkpoint: WAVE 8 COMPLETE — all lanes accepted+merged (W090A/B/C, W091, W092) at 6a0b4f9
-Latest verification: 2832 tests passed, 0 failed (post-W090C-merge); typecheck 0; architecture/ownership/contract checks green; 150-contract snapshot unchanged; production build compiles + serves (home/area/unknown paths 200); console browser-verified end-to-end (render, ten-area navigation, global search landing on records, evidence trails, safe unknown-route refusal, responsive mobile shell, zero console errors)
-Rendered console: LIVE — the Next.js runtime (apps/web) composes the REAL domain packages over the deterministic demo fleet; the shell chrome (AppShell) renders the TEN-area route vocabulary with responsive mobile navigation, global command search, breadcrumbs, and the safe unknown-route refusal
-Next actions:
-- dispatch W090C [C] (rendered Workload/Commerce) — queued for operator login; a resident login-watch daemon auto-dispatches the moment the operator authenticates on the replay console
-- after W090C acceptance, bind its screens into the runtime route tree
-- harvest W090C when the worker pushes work/w090c [TL]: clone branch, re-run the three gates locally (never trust worker numbers), CONSOLE-DESIGN + journey + ownership review, merge --no-ff to integration/wave0, redeploy staging with the merged tip
-- swap the Upstash binding when the operator's dedicated rate-limit DB (meet-ewe-145933) resolves: upsert the two secrets + one redeploy
-- use docs/tech-lead/UX-JOURNEY-SIMULATION.md and spec/ui/CONSOLE-DESIGN.md as the UX acceptance source
+Current source of truth after acceptance: integration/wave0
+Preparation branch: integration/product-readiness
+Accepted base: W090A + W090B + W090C + W091 + W092
+Current staging URL: https://fleetos-staging-flame.vercel.app
+
+Latest accepted Wave 8 verification:
+- 2832 tests passed, 0 failed
+- typecheck 0
+- architecture/ownership/contract checks green
+- 150-contract snapshot unchanged
+- production build compiles and serves
+- browser verification covers ten-area navigation, global search, evidence, safe unknown routes, responsive shell, and 13 acceptance journeys
+- W092 staging acceptance: console loads, unknown-route-safe, health-healthy, no-credential-leak
+
+Productization reality:
+- rendered console: YES
+- free-tier staging base: YES
+- complete durable user/workspace/session onboarding: NOT YET
+- multi-role role switching: NOT YET
+- installable signed agent distribution + first check-in UX: NOT YET
+- role-shaped interfaces/personalized Control Tower: NOT YET
+- Apify integration: NOT YET (optional enrichment)
+- Resend integration: NOT YET (optional email channel)
+
+Next implementation:
+- W100A [A] installable agent + real enrollment
+- W100B [B] role-shaped security/action/learning experiences
+- W100C [C] durable identity/session/role switching + workload/commerce + optional Apify
+- W101 [TL] product shell/auth/onboarding convergence
+- W102 [TL] durable free-tier staging deployment
+- W103 [TL] UX simulation + final acceptance
+
+Product-ready target:
+1. install and use end to end;
+2. reproducible non-commercial free-tier staging;
+3. solid roleful frontend with explicit role switching.
+
 Worker limit: 3
 
 ## Historical W080 acceptance ledger

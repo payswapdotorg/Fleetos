@@ -1,3 +1,5 @@
+# STATUS: W092 BASELINE — CURRENT BINDINGS VERIFIED; PRODUCTIZATION EXTENSION IS docs/tech-lead/FREE-TIER-PROVIDER-MATRIX.md
+
 # FleetOS Free-Tier Deployment Plan
 
 ## Current status

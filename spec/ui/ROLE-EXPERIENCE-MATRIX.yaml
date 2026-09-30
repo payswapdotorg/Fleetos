@@ -1,0 +1,39 @@
+version: 1
+purpose: FleetOS experience profiles. These hints shape presentation only; they never grant authority.
+roles:
+  fleet.admin:
+    label: Fleet Administrator
+    home_lens: governance
+    primary_areas: [overview, device, security, policies, actions, evidence, commerce, workloads, learning, recovery]
+  service.desk:
+    label: Service Desk
+    home_lens: operations
+    primary_areas: [overview, device, recovery, actions, commerce, evidence]
+  security.compliance:
+    label: Security & Compliance
+    home_lens: risk
+    primary_areas: [overview, security, policies, evidence, actions, learning]
+  asset.manager:
+    label: Asset & Procurement Manager
+    home_lens: resources
+    primary_areas: [overview, workloads, commerce, device, maintenance, evidence]
+  team.manager:
+    label: Team Manager
+    home_lens: team
+    primary_areas: [overview, workloads, actions, device, security, evidence]
+  employee:
+    label: Employee / Device Owner
+    home_lens: personal
+    primary_areas: [overview, device, recovery, security, actions, evidence]
+  vendor.operator:
+    label: Vendor / Service Operator
+    home_lens: exchange
+    primary_areas: [overview, commerce, evidence, communication]
+
+rules:
+  - experience_profiles_do_not_grant_permissions
+  - effective_permissions_come_from_identity_and_guardian
+  - active_role_is_scoped_to_current_tenant
+  - role_switch_is_audited
+  - role_switch_never_changes_tenant
+  - unavailable_capabilities_show_reason_and_escalation_path

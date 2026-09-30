@@ -99,3 +99,26 @@ W092 - Free-tier staging deployment + release rehearsal
 TL. Bind the rendered app to Neon PostgreSQL, Upstash Redis and Cloudflare R2; add Vercel staging configuration, environment templates, build/deploy CI, deployment manifests, post-deploy health/evidence checks and W080 release-gate integration. Vercel Hobby is staging/demo only because it is restricted to personal/non-commercial use; commercial production requires a commercial plan.
 
 New-work acceptance rule: W090A/B/C require browser-visible rendering, accessible interaction states, tenant/authorization semantics, empty/loading/error/blocked/approval states and journey evidence. W091 requires all architecture-level capabilities to be reachable from navigation or global search. W092 requires reproducible staging deployment and release-gate evidence. The frozen architecture/contracts remain unchanged unless a genuine architectural change is proposed through an ADR.
+
+
+# Productization extension — W100-W103
+
+W100A - Installable agent + real enrollment
+A. Produce reproducible Windows/macOS/Linux agent artifacts; one-time enrollment/bootstrap; first check-in and first observation; install center integration; revoke/uninstall; BYOD scope; browser acceptance. Scope: apps/agent, packages/device-adapters, packages/recovery, packages/integrations/adcos, apps/web/device, apps/web/recovery, and agent-release workflow artifacts owned by the lane.
+
+W100B - Role-shaped security/action/learning experiences
+B. Implement role-aware experience projections for security, policy, approvals, actions, print and learning; explain blocked/approval-required actions; expose evidence and escalation affordances; add browser tests. Scope: packages/security, packages/policy, packages/actions, packages/learning, packages/integrations/arena, apps/web/security, apps/web/actions, apps/web/learning.
+
+W100C - Durable identity/session/role switching + resource/commercial experiences
+C. Persist users/workspaces/sessions/role assignments over Neon; implement auditable active-role semantics; role-aware workload/commerce flows; add optional provider-neutral Apify enrichment adapter; add browser/integration tests. Scope: packages/identity, packages/audit, packages/workloads, packages/vendors, packages/procurement, packages/software, packages/maintenance, packages/integrations/aurum, packages/integrations/apify, apps/web/workloads, apps/web/commerce.
+
+W101 - Product shell + auth/onboarding convergence
+TL. Compose sign-in/session, workspace lifecycle, onboarding rail, role switcher, role-shaped Control Tower, Install Center, approval/notification inbox, role-aware search, route guards and mobile behavior. No new business truth in the shell.
+
+W102 - Durable free-tier staging deployment
+TL. Bind Neon durable persistence, Upstash transient coordination, R2 artifacts/evidence, optional Apify/Resend adapters, CI, agent artifact release, Vercel staging, post-deploy checks, manifest and W080 release gate.
+
+W103 - UX operational simulation + final product acceptance
+TL. Run all role/persona simulations, browser E2E, mobile flows, install/first-check-in, tenant isolation, session lifecycle and provider/credential checks. Update UX contracts when simulation discovers operational drift. Publish the three-question YES checklist.
+
+New-work acceptance rule: no item is accepted on worker-reported unit tests alone. The TL re-runs architecture check, ownership check, contracts check, typecheck, full test suite, build, browser E2E and relevant provider/deployment evidence on the exact delivered commit.

@@ -49,3 +49,16 @@ W090A,W090B,W090C -> W091 [TL] rendered Control Tower + journey convergence
 W091,W080 -> W092 [TL] free-tier staging deployment + release rehearsal
 
 Wave 8 rule: W090A/B/C may run concurrently on disjoint worker-owned UI packages. The Tech Lead owns the Next.js root runtime, cross-surface composition, shared design system, Evidence & Audit composition, deployment configuration and release acceptance.
+
+
+Wave 9 - productization, all three workers in parallel
+W080,W091,W092 -> W100A [A] installable agent + real enrollment
+W080,W091 -> W100B [B] role-shaped security/action/learning experiences
+W012,W091,W092 -> W100C [C] durable identity/session/role switching + workload/commerce + optional Apify
+
+Wave 10 - Tech Lead convergence
+W100A,W100B,W100C -> W101 [TL] product shell + auth/onboarding convergence
+W101,W092,W100C -> W102 [TL] durable free-tier staging deployment
+W101,W102 -> W103 [TL] UX operational simulation + final product acceptance
+
+Wave 9 rule: W100A/B/C may run concurrently on the existing disjoint worker scopes. Shared role/session contracts that cross ownership boundaries are TL-owned and must be exposed as public seams rather than imported internals.

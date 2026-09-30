@@ -1,3 +1,5 @@
+# STATUS: W092 HISTORICAL HANDOFF — SUPERSEDED FOR CURRENT WORK BY docs/tech-lead/PRODUCT-READINESS-HANDOFF.md
+
 # FleetOS Console + Deployment Handoff
 
 ## Incoming objective
