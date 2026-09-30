@@ -39,6 +39,10 @@ W030 — mobile + printer/copier adapter family contracts:
 - `src/seams-inmemory-mobile.ts` / `src/seams-inmemory-printer.ts` — D3 in-memory deterministic reference seams (payload contracts enforced fail-closed; no real MDM/SNMP I/O).
 - `src/family-adapters.ts` — D3/D4 family adapter factories: family profile → construction-time envelope validation (printer lock/locate/wipe REFUSED at construction) → the W020 `createEndpointAdapter` (negotiation inside every method). Family adapters register through the W020 registry and dispatch through the W020 dispatcher unchanged.
 
+W100A — the enrollment-request flow (the install contract's one-time bootstrap code):
+
+- `src/enrollment-request.ts` — tenant-bound, scope-bound, one-time, short-lived, revocable, auditable enrollment requests with VERIFIER-ONLY code storage (the code is echoed once at creation, never stored); the four ownership-kind distinctions (`corporate_owned`/`leased`/`byod`/`third_party_managed`) mapping onto the frozen W071 classes; one-time redemption issuing the device-scoped trust record (the frozen `SessionToken` shape); the machine-stable refusal taxonomy (`code_expired`/`code_already_used`/`code_revoked`/`code_not_found`/`device_already_enrolled`/`tenant_role_mismatch`/`enrollment_refused_by_policy`) each with its human explanation; the in-memory tenant-partitioned reference store (no cross-tenant existence side channel).
+
 ## Ownership
 
 Lane: `worker-a` (per `spec/worker-ownership.yaml`).
