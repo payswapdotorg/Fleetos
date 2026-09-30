@@ -38,6 +38,10 @@ export * from "./hash";
 export * from "./log";
 export * from "./sink-adapter";
 
+// W100C — the durable audit log over the DurableRecordStore seam (Neon
+// at the W102 binding; restart-continuous hash chains).
+export * from "./durable-log";
+
 // FleetError-shaped audit errors
 export * from "./errors";
 
