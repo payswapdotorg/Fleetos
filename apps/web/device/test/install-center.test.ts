@@ -63,6 +63,7 @@ import {
   type ReleaseManifestLike,
 } from "../src/install-center";
 import { SCOPE_A, TENANT_A, TENANT_B } from "./helpers";
+import type { DeviceUiTenantScope } from "../src/internal";
 
 const T0 = "2026-01-01T00:00:00Z";
 
@@ -406,6 +407,8 @@ describe("W100A scope guard", () => {
       ok: false,
       reason: "tenant_mismatch",
     });
-    expect(checkInstallCenterScope(null, state).ok).toBe(false);
+    // The runtime guard refuses a malformed scope (typed as the shape
+    // it must be; the runtime check stays defensive).
+    expect(checkInstallCenterScope(null as unknown as DeviceUiTenantScope, state).ok).toBe(false);
   });
 });

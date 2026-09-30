@@ -49,6 +49,7 @@ import { describe, expect, test } from "bun:test";
 import {
   asDeviceId,
   asTenantId,
+  type CausationId,
 } from "@fleetos/contracts";
 import { makeCommandId, makeCorrelationId, makeEventId, makeIdempotencyKey } from "@fleetos/contracts/testing";
 import {
@@ -194,8 +195,8 @@ function makeBoundClient(store: EnrollmentRequestStore, sink?: ReturnType<typeof
   return { client: made.client, bootstrapSeam, checkInSeam, observationSeam, submittedCommands, flushedBatches };
 }
 
-function makeCommandEnvelopeId(): string {
-  return makeCommandId("w100a-binding-cmd") as string;
+function makeCommandEnvelopeId(): CausationId {
+  return makeCommandId("w100a-binding-cmd") as unknown as CausationId;
 }
 
 /**

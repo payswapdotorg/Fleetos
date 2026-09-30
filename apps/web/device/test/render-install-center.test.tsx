@@ -79,7 +79,7 @@ function stateWithEverything(): InstallCenterState {
 
 interface Harness {
   readonly state: InstallCenterState;
-  readonly release: ReleaseManifestLike;
+  readonly release: ReleaseManifestLike | undefined;
   readonly journey: EnrollmentJourneyLike | undefined;
   readonly calls: string[];
 }
