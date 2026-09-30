@@ -111,3 +111,17 @@ Use the interaction qualities of `pectoraux/ShareNet` as inspiration — calm na
 
 Deployment source:
 Use Vercel Hobby only for non-commercial staging/demo, with Neon Free as authoritative Postgres, Upstash Redis Free for transient queue/cache/lock, and Cloudflare R2 for evidence/artifacts. The W080 release gate remains the production-control authority.
+
+## Current productization phase — superseding follow-on note
+
+The W090A/B/C + W091 + W092 phase is now COMPLETE. The next source-of-truth handoff is docs/tech-lead/PRODUCT-READINESS-HANDOFF.md.
+
+Dispatch:
+- W100A [A] installable agent + real enrollment
+- W100B [B] role-shaped security/action/learning experiences
+- W100C [C] durable identity/session/role switching + workload/commerce + optional Apify
+- W101 [TL] product shell/auth/onboarding convergence
+- W102 [TL] durable free-tier staging deployment
+- W103 [TL] UX simulation + final product acceptance
+
+The product is not yet allowed to be called fully installable/multi-role/durable-user product-ready until W103 passes.
