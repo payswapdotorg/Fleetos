@@ -1,10 +1,125 @@
-/* The console's base document styles (the AppShell carries the full
-   design system via its frozen CONSOLE_CSS; this file only resets the
-   document shell so the app fills the viewport cleanly). */
+/* The console's document-base stylesheet (W091; restyled W120).
+ *
+ * The AppShell carries the full design system through its frozen
+ * CONSOLE_CSS (mounted inside the application root). This file is the
+ * DOCUMENT base: it resets the document shell, mirrors the W120
+ * Stripe-adapted token vocabulary on :root (so every var() reference
+ * resolves — including the session surfaces the gate renders OUTSIDE
+ * the shell root, like the sign-in screen, the invite bar and the
+ * session-expired banner), and styles those gate-level fos-* surfaces
+ * that never sit inside .fos-app. The token values are kept in sync
+ * with the shell's canonical block on purpose: one language.
+ *
+ * The gate surfaces' class vocabulary is the same frozen fos-*
+ * contract; W121's authentication screens inherit this language. */
+
+/* The W120 token vocabulary, mirrored at the document root. */
+:root {
+  --surface: #f6f8fb;
+  --surface-raised: #ffffff;
+  --surface-sunken: #eef1f6;
+  --text-primary: #1b2032;
+  --text-secondary: #5b6478;
+  --text-muted: #8a94a6;
+  --hairline: #e4e8ee;
+  --hairline-strong: #d4dae3;
+  --accent: #635bff;
+  --accent-hover: #5449d6;
+  --accent-contrast: #ffffff;
+  --accent-soft: #eeedfe;
+  --status-healthy: #0d8050;
+  --status-informational: #5f6b81;
+  --status-attention: #b05309;
+  --status-approval: #8d6a1e;
+  --status-blocked: #c23636;
+  --status-running: #12718a;
+  --status-unknown: #8a94a6;
+  --radius: 8px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 2px rgba(27, 32, 50, 0.06);
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 html, body {
   margin: 0;
   padding: 0;
-  background: #faf8f4;
-  color: #2d2a26;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-family: var(--font);
+  line-height: 1.5;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Visible focus for the gate surfaces (the shell scopes its own). */
+.fos-signin :focus-visible,
+.fos-invite :focus-visible,
+.fos-session-expired :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---- The component subset the gate surfaces render ---- */
+.fos-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center; }
+.fos-stack { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+.fos-meta { color: var(--text-secondary); font-size: 0.8125rem; }
+.fos-mono { font-family: var(--mono); font-size: 0.8125rem; overflow-wrap: anywhere; }
+
+.fos-card { background: var(--surface-raised); border: 1px solid var(--hairline); border-radius: var(--radius); box-shadow: var(--shadow); padding: 1.5rem; min-width: 0; }
+.fos-card-title { margin: 0 0 0.75rem; font-size: 1rem; font-weight: 600; }
+.fos-card-subtitle { margin: 0 0 0.75rem; color: var(--text-secondary); font-size: 0.8125rem; }
+
+.fos-btn { display: inline-flex; align-items: center; gap: 0.4rem; font: inherit; font-size: 0.875rem; font-weight: 500; padding: 0.5rem 0.9rem; min-height: 2.25rem; border-radius: var(--radius-sm); border: 1px solid transparent; cursor: pointer; background: transparent; color: var(--text-primary); transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease; }
+.fos-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+.fos-btn--primary { background: var(--accent); color: var(--accent-contrast); }
+.fos-btn--primary:hover:enabled { background: var(--accent-hover); }
+.fos-btn--secondary { background: var(--surface-raised); border-color: var(--hairline-strong); }
+.fos-btn--secondary:hover:enabled { background: var(--surface-sunken); }
+.fos-btn--ghost:hover:enabled { background: var(--surface-sunken); }
+
+.fos-badge { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.02em; padding: 0.15rem 0.55rem; border-radius: 999px; border: 1px solid var(--hairline-strong); background: var(--surface-raised); color: var(--text-secondary); white-space: nowrap; }
+
+.fos-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 0.6rem; padding: 2.25rem 1.75rem; border: 1px dashed var(--hairline-strong); border-radius: var(--radius); background: var(--surface-raised); }
+.fos-empty__title { margin: 0; font-size: 1rem; font-weight: 600; }
+.fos-empty__hint { margin: 0; color: var(--text-secondary); font-size: 0.875rem; max-width: 38rem; }
+
+/* ---- The workspace choice screen (sign in / create / join) ---- */
+.fos-signin { min-height: 100vh; display: flex; flex-direction: column; align-items: center; gap: 1.5rem; padding: 9vh 1.5rem 4rem; background: var(--surface); color: var(--text-primary); font-family: var(--font); }
+.fos-signin-head { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; }
+.fos-signin-head h1 { margin: 0; font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; }
+.fos-env { margin: 0; font-size: 0.8125rem; color: var(--text-muted); }
+.fos-signin-tabs { display: inline-flex; gap: 0.25rem; padding: 0.3rem; background: var(--surface-raised); border: 1px solid var(--hairline); border-radius: var(--radius); box-shadow: var(--shadow); }
+.fos-signin-tabs .fos-btn { min-height: 2.1rem; }
+.fos-signin .fos-card { width: min(28rem, 100%); display: flex; flex-direction: column; gap: 0.6rem; padding: 1.75rem; }
+.fos-signin .fos-card > .fos-btn { margin-top: 0.75rem; }
+.fos-signin label { font-size: 0.8125rem; font-weight: 500; color: var(--text-primary); margin: 0.35rem 0 0; }
+.fos-signin input, .fos-signin select { font: inherit; font-size: 0.875rem; padding: 0.55rem 0.75rem; min-height: 2.35rem; border: 1px solid var(--hairline-strong); border-radius: var(--radius); background: var(--surface-raised); color: var(--text-primary); width: 100%; }
+.fos-signin input::placeholder { color: var(--text-muted); }
+.fos-signin input:hover:enabled, .fos-signin select:hover { border-color: var(--text-muted); }
+
+/* ---- The refusal explanation (machine reason + human words) ---- */
+.fos-refusal { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.85rem 1rem; border-radius: var(--radius); border: 1px solid rgba(194, 54, 54, 0.3); background: #fbf1f1; }
+.fos-refusal-reason { margin: 0; font-size: 0.8125rem; color: var(--status-blocked); }
+.fos-refusal-words { margin: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+
+/* ---- The session-expired recovery banner ---- */
+.fos-session-expired { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem 1.5rem; padding: 0.85rem 1.75rem; background: #fbf1f1; border-bottom: 1px solid rgba(194, 54, 54, 0.25); font-family: var(--font); }
+.fos-session-expired p { margin: 0; font-size: 0.875rem; color: var(--text-primary); }
+.fos-expired-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+/* ---- The invite-member bar (composed above the console) ---- */
+.fos-invite { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; padding: 0.75rem 1.75rem; background: var(--surface-raised); border-bottom: 1px solid var(--hairline); font-family: var(--font); color: var(--text-primary); }
+.fos-invite-label { margin: 0; font-size: 0.875rem; font-weight: 600; display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
+.fos-invite .fos-mono { font-size: 1.0625rem; font-weight: 600; letter-spacing: 0.02em; }
+
+/* Reduced motion: all animation/transition is optional and disabled. */
+@media (prefers-reduced-motion: reduce) {
+  .fos-signin, .fos-signin *, .fos-signin *::before, .fos-signin *::after,
+  .fos-invite, .fos-invite *, .fos-invite *::before, .fos-invite *::after,
+  .fos-session-expired, .fos-session-expired *, .fos-session-expired *::before, .fos-session-expired *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
 }

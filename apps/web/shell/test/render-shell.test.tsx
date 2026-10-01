@@ -170,10 +170,30 @@ test("blank queries show the instructive empty state (never an implicit everythi
 test("the frozen stylesheet asserts reduced-motion + the design tokens (no gradients by default)", () => {
   expect(CONSOLE_CSS).toContain("@media (prefers-reduced-motion: reduce)");
   expect(CONSOLE_CSS).toContain("animation: none !important");
-  expect(CONSOLE_CSS).toContain("--surface: #faf8f4");
-  expect(CONSOLE_CSS).toContain("--text-primary: #2d2a26");
-  expect(CONSOLE_CSS).toContain("--hairline: #e6e0d6");
+  expect(CONSOLE_CSS).toContain("--surface: #f6f8fb");
+  expect(CONSOLE_CSS).toContain("--text-primary: #1b2032");
+  expect(CONSOLE_CSS).toContain("--hairline: #e4e8ee");
   expect(CONSOLE_CSS).not.toContain("linear-gradient(135deg");
+});
+
+test("the W120 Stripe-adapted language: indigo accent, crisp radii, Inter stack, sidebar pill + account area", () => {
+  // The #635BFF indigo accent family (primary actions + focus rings).
+  expect(CONSOLE_CSS).toContain("--accent: #635bff");
+  expect(CONSOLE_CSS).toContain("--accent-hover: #5449d6");
+  expect(CONSOLE_CSS).toContain("--accent-soft: #eeedfe");
+  // Crisp 8px cards/inputs; 6px small radius.
+  expect(CONSOLE_CSS).toContain("--radius: 8px");
+  expect(CONSOLE_CSS).toContain("--radius-sm: 6px");
+  // The Inter/system stack degrades gracefully (no webfont load).
+  expect(CONSOLE_CSS).toContain('"Inter", -apple-system, BlinkMacSystemFont');
+  // The sidebar's active-item pill + the topbar account area rules exist.
+  expect(CONSOLE_CSS).toContain('.fos-sidebar__link[aria-current="page"]');
+  expect(CONSOLE_CSS).toContain(".fos-topbar__chrome");
+  expect(CONSOLE_CSS).toContain(".fos-memberchip");
+  // The token block is cascade-immune (declared on the shell root, not
+  // plain .fos-scope — lane-local frozen copies mount later in the
+  // document and must never revert the chrome's tokens).
+  expect(CONSOLE_CSS).toContain(".fos-scope.fos-app {");
 });
 
 test("the Control Tower screen renders the attention stream, pulses, activity, onboarding, and counters over the view-model", () => {

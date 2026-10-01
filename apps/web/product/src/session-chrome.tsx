@@ -9,6 +9,10 @@
  * notifications/approval inbox badge, the member chip, and the
  * invite-member surface (W110). Fully presentational, fully controlled.
  *
+ * W120: the member chip carries the account-area treatment (avatar
+ * initial + two-line identity inside the account pill) — pure
+ * presentation; every style comes from the shell's fos-* classes.
+ *
  * W110: `InviteMemberControl` surfaces the runtime's REAL
  * `issueInvitation()` seam — the raw join code renders DISPLAY-ONCE
  * (mirroring the Install Center's enrollment-code law): shown with a
@@ -94,8 +98,16 @@ export function MemberChip(props: {
   readonly displayName: string;
   readonly onSignOut: () => void;
 }): JSX.Element {
+  // W120: the account-area treatment — the avatar carries the display
+  // name's initial (pure presentation; no identity truth derived here).
+  const initial = props.displayName.trim().length > 0
+    ? props.displayName.trim().slice(0, 1).toUpperCase()
+    : "·";
   return (
     <div className="fos-memberchip">
+      <span className="fos-member-avatar" aria-hidden="true">
+        {initial}
+      </span>
       <span className="fos-member-identity">
         <strong>{props.workspaceName}</strong>
         <span>{props.displayName}</span>
