@@ -9,7 +9,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { createProductSessionRuntime } from "../src/runtime/product-session";
+import { createProductSessionRuntime, INVITATION_TTL_SECONDS } from "../src/runtime/product-session";
 import {
   PRODUCT_REFUSAL_EXPLANATIONS,
   operatorRoleFor,
@@ -252,5 +252,98 @@ describe("W101 role bridge (presentation-only laws)", () => {
     expect(employee).toContain("restricted view");
     expect(employee).toContain("personal lens");
     expect(searchResultContextFor(null, "evidence")).toContain("Sign in");
+  });
+});
+
+describe("W110 invitation issuance + join-role selection (REAL identity seams)", () => {
+  test("issueInvitation refuses machine-stably when signed out (unknown_session)", () => {
+    const rt = makeRuntime();
+    const refused = rt.issueInvitation();
+    expect(refused.ok).toBe(false);
+    if (refused.ok) return;
+    expect(refused.reason).toBe("unknown_session");
+    expect(refused.message).toContain("no active session");
+    // the frozen human explanation exists for the refusal code
+    expect(PRODUCT_REFUSAL_EXPLANATIONS[refused.reason]).toContain("Sign in again");
+  });
+
+  test("issueInvitation returns the raw code exactly once (the runtime never re-issues it)", () => {
+    const rt = makeRuntime();
+    rt.createWorkspace({
+      name: "Northwind Fleet",
+      founderDisplayName: "Ada Lovelace",
+      founderEmail: "ada@northwind.example",
+    });
+    const first = rt.issueInvitation();
+    const second = rt.issueInvitation();
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    // distinct single-use codes (the seam's generator; only verifiers persist)
+    expect(first.rawCode).not.toBe(second.rawCode);
+    expect(first.rawCode.startsWith("joinw101c")).toBe(true);
+  });
+
+  test("joinWorkspace with a chosen member role grants it; the assigned-only switch refusal still holds", () => {
+    const rt = makeRuntime();
+    rt.createWorkspace({
+      name: "Northwind Fleet",
+      founderDisplayName: "Ada Lovelace",
+      founderEmail: "ada@northwind.example",
+    });
+    const invited = rt.issueInvitation();
+    expect(invited.ok).toBe(true);
+    if (!invited.ok) return;
+    const joined = rt.joinWorkspace({
+      code: invited.rawCode,
+      displayName: "Grace Hopper",
+      email: "grace@northwind.example",
+      roles: ["service.desk"],
+    });
+    expect(joined.ok).toBe(true);
+    if (!joined.ok) return;
+    expect(joined.state.phase).toBe("onboarding");
+    if (joined.state.phase === "signed-out") return;
+    // the chosen role became the REAL starting assignment + active lens
+    expect(joined.state.activeRole).toBe("service.desk");
+    expect(joined.state.assignedRoles).toEqual(["service.desk"]);
+    expect(joined.state.tenantId).toBe("tnt_w101test0001");
+    // assigned-only: fleet.admin was never assigned to the joiner
+    const refused = rt.switchActiveRole("fleet.admin");
+    expect(refused.ok).toBe(false);
+    if (refused.ok) return;
+    expect(refused.reason).toBe("role_not_assigned");
+    expect(PRODUCT_REFUSAL_EXPLANATIONS[refused.reason]).toContain("not assigned to you");
+    // switching to the joined (assigned) role succeeds — audited
+    const ok = rt.switchActiveRole("service.desk");
+    expect(ok.ok).toBe(true);
+    const st = rt.state();
+    if (st.phase === "signed-out") return;
+    expect(st.activeRole).toBe("service.desk");
+  });
+
+  test("an issued invitation expires after its TTL (expired_code; 24h seam truth)", () => {
+    expect(INVITATION_TTL_SECONDS).toBe(60 * 60 * 24);
+    const { rt, advance } = makeAdvanceableRuntime();
+    rt.createWorkspace({
+      name: "Northwind Fleet",
+      founderDisplayName: "Ada Lovelace",
+      founderEmail: "ada@northwind.example",
+    });
+    const invited = rt.issueInvitation();
+    expect(invited.ok).toBe(true);
+    if (!invited.ok) return;
+    // one second beyond the seam's TTL: the identity seam refuses
+    advance(INVITATION_TTL_SECONDS + 1);
+    const joined = rt.joinWorkspace({
+      code: invited.rawCode,
+      displayName: "Grace Hopper",
+      email: "grace@northwind.example",
+      roles: ["employee"],
+    });
+    expect(joined.ok).toBe(false);
+    if (joined.ok) return;
+    expect(joined.reason).toBe("expired_code");
+    expect(PRODUCT_REFUSAL_EXPLANATIONS[joined.reason]).toContain("expired");
   });
 });

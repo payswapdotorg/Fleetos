@@ -13,11 +13,19 @@
  * Control Tower, the Evidence & Audit area, Policies and Learning as
  * first-class areas, mobile navigation completeness, and the safe
  * unknown-route failure — over the same REAL domain packages.
+ *
+ * W110 adds the invitation + join-role product closure journey: the
+ * founder issues a workspace invitation through the REAL UI (the
+ * display-once code), a member joins through the gate's Join tab with
+ * the Service Desk member role, the session shows the Service Desk
+ * lens, the role switcher lists the joined role — and only it
+ * (assigned-only; fleet.admin was never assigned to the joiner).
  */
 import { test, expect, afterEach } from "bun:test";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { ConsoleApp, pathToRoute, routeToPath } from "../src/console-app";
 import { DEMO } from "../src/runtime/demo-fleet";
+import { PRODUCT_EXPERIENCE_ROLE_LABELS } from "@fleetos/web-product";
 import type { ShellRoute } from "@fleetos/web-shell";
 
 afterEach(() => {
@@ -209,4 +217,61 @@ test("the demo composition is deterministic: the tower view is identical across 
     expect(typeof item.recordId).toBe("string");
     expect(item.recordId.length).toBeGreaterThan(0);
   }
+});
+
+// ---------------------------------------------------------------------------
+// W110 journey: invitation issuance → role-carrying join through the gate
+// ---------------------------------------------------------------------------
+
+test("E2E journey — the founder issues an invitation; a member joins with the Service Desk role through the gate", () => {
+  mountApp({ area: "overview", view: "home" });
+  // The invite affordance is discoverable in the session chrome.
+  fireEvent.click(screen.getByText("Invite member…"));
+  // The raw join code renders DISPLAY-ONCE with the copy + hide confirm.
+  const code = screen.getByTestId("invitation-code-value").textContent ?? "";
+  expect(code.length).toBeGreaterThan(0);
+  expect(
+    screen.getByText(/Shown once — the console stores only a verifier; this code cannot be shown again\./),
+  ).toBeDefined();
+  expect(screen.getByText(/Expires 24 hours after the code is issued\./)).toBeDefined();
+  fireEvent.click(screen.getByText("Copy join code"));
+  fireEvent.click(screen.getByText("I copied it — hide it"));
+  // DISPLAY-ONCE LAW: the code left the screen for good.
+  expect(screen.queryByTestId("invitation-code-value")).toBeNull();
+  expect(screen.queryByText(code)).toBeNull();
+  expect(screen.getByText(/The join code was shown once and is now hidden\./)).toBeDefined();
+
+  // The founder signs out; the member joins through the gate with a role.
+  fireEvent.click(screen.getByText("Sign out"));
+  fireEvent.click(screen.getAllByText("Join workspace")[0]!.closest("button")!);
+  fireEvent.change(screen.getByLabelText("Join code"), { target: { value: code } });
+  fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Grace Hopper" } });
+  fireEvent.change(screen.getByLabelText("Your email"), {
+    target: { value: "grace@northwind.example" },
+  });
+  // the member role selection: Service Desk (one of the five offered)
+  fireEvent.change(screen.getByLabelText("Join as"), { target: { value: "service.desk" } });
+  fireEvent.click(screen.getAllByText("Join workspace").at(-1)!.closest("button")!);
+
+  // The joined session shows the Service Desk lens: the active-role chip
+  // carries the Service Desk label, and the shell derives the operator
+  // emphasis from the joined role (service.desk -> operator).
+  const chip = screen.getByTitle("Switch your active role (audited)");
+  expect(chip.textContent).toContain(PRODUCT_EXPERIENCE_ROLE_LABELS["service.desk"]);
+  const sidebarFooter = document.querySelector(".fos-sidebar__footer");
+  expect(sidebarFooter?.textContent).toContain("Role: operator");
+  // the joined member's identity is the session's
+  expect(screen.getByText("Grace Hopper")).toBeDefined();
+
+  // The role switcher lists the joined role — and ONLY it (assigned-only:
+  // fleet.admin was never assigned to the joiner, so it is never offered).
+  fireEvent.click(chip);
+  const menu = screen.getByRole("listbox", { name: "Your assigned roles" });
+  const offered = Array.from(menu.querySelectorAll('[role="option"]')).map(
+    (el) => el.textContent ?? "",
+  );
+  expect(offered).toEqual([PRODUCT_EXPERIENCE_ROLE_LABELS["service.desk"]]);
+  expect(offered).not.toContain(PRODUCT_EXPERIENCE_ROLE_LABELS["fleet.admin"]);
+  // the audited note stays verbatim
+  expect(screen.getByText("Role switches are audited and never change your permissions.")).toBeDefined();
 });

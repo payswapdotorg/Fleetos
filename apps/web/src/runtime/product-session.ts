@@ -82,6 +82,14 @@ export const PRODUCT_ROLE_DEFINITIONS: readonly RoleDefinition[] = Object.freeze
 
 const DEFAULT_TTL_SECONDS = 60 * 60 * 8; // one working session, then expiry UX.
 
+/**
+ * The join-invitation lifetime the runtime requests from the REAL
+ * identity seam (W110: 24 hours). The seam owns the expiry truth (the
+ * invitation's `expiresAt` is persisted in the tenant store); the
+ * shell surfaces this number ONLY as the display-once expiry note.
+ */
+export const INVITATION_TTL_SECONDS: number = 60 * 60 * 24;
+
 function counterGenerator(prefix: string, pad: number): () => string {
   let n = 0;
   return () => {
@@ -300,7 +308,7 @@ export function createProductSessionRuntime(seams: ProductSessionSeams): {
       }
       const issued = workspaceService.createInvitation(ctxOf(rememberedTenantId), {
         now: now(),
-        ttlSeconds: 60 * 60 * 24,
+        ttlSeconds: INVITATION_TTL_SECONDS,
         createdBy: "console",
         correlationId: asCorrelationId(nextCorr()),
       });
