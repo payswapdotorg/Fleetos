@@ -33,6 +33,7 @@ import {
   asObservationId,
   asTenantId,
   asUserId,
+  isValidTenantId,
   makeGuardianDecision,
 } from "@fleetos/contracts";
 import type { CorrelationId, DeviceId, TenantId, UserId } from "@fleetos/contracts";
@@ -88,8 +89,10 @@ import type {
   ShellAuditRecordLike,
   ShellBandedSummary,
   ShellEvidenceTrail,
+  ShellOperatorRole,
   ShellRecordSummary,
 } from "@fleetos/web-shell";
+import type { ProductExperienceRole } from "@fleetos/web-product";
 
 // ---------------------------------------------------------------------------
 // The deterministic seed constants (no clock, no entropy)
@@ -117,12 +120,98 @@ const CORR_4 = asCorrelationId("cor_w091demo000004");
 export const SCOPE = { tenantId: TENANT_ID } as const;
 
 // ---------------------------------------------------------------------------
+// W122 — the DEMO TENANT's persona catalog (one per experience role)
+// ---------------------------------------------------------------------------
+
+/**
+ * The demo workspace's display name (the honest DEMO label every demo
+ * session carries in its chrome — the tenant label + the "Demo
+ * workspace" badge both render it).
+ */
+export const DEMO_WORKSPACE_NAME: string = "Demo — FleetOS Workspace";
+
+/**
+ * A demo PERSONA seed: a named principal pre-seeded in the dedicated
+ * demo tenant, one per frozen experience-role vocabulary entry
+ * (ROLE-EXPERIENCE-MATRIX.yaml — the full seven-role total).
+ *
+ * The personas carry NO passwords (no credential records are ever
+ * registered for them): the sanctioned entry is the sign-in screen's
+ * one-click DEMO quick link, which opens the persona's session through
+ * the SAME session-open seam (product-session.ts — no second auth path).
+ */
+export interface DemoPersonaSeed {
+  /** The stable persona id (the quick-link seam's selector). */
+  readonly personaId: string;
+  /** The persona's experience role (the frozen matrix vocabulary). */
+  readonly role: ProductExperienceRole;
+  /** The honest display name ("Demo — <matrix label>"). */
+  readonly displayName: string;
+  /** The persona's member reference (its principal identity). */
+  readonly memberRef: string;
+}
+
+/**
+ * The demo persona catalog — EXACTLY one persona per experience role
+ * (the frozen seven-role vocabulary, matrix order), each an honest
+ * "Demo — <label>" principal in the dedicated demo tenant.
+ */
+export const DEMO_PERSONAS: readonly DemoPersonaSeed[] = Object.freeze([
+  {
+    personaId: "demo-fleet-admin",
+    role: "fleet.admin",
+    displayName: "Demo — Fleet Administrator",
+    memberRef: "demo.fleet.admin@fleetos.demo",
+  },
+  {
+    personaId: "demo-service-desk",
+    role: "service.desk",
+    displayName: "Demo — Service Desk",
+    memberRef: "demo.service.desk@fleetos.demo",
+  },
+  {
+    personaId: "demo-security-compliance",
+    role: "security.compliance",
+    displayName: "Demo — Security & Compliance",
+    memberRef: "demo.security.compliance@fleetos.demo",
+  },
+  {
+    personaId: "demo-asset-manager",
+    role: "asset.manager",
+    displayName: "Demo — Asset & Procurement Manager",
+    memberRef: "demo.asset.manager@fleetos.demo",
+  },
+  {
+    personaId: "demo-team-manager",
+    role: "team.manager",
+    displayName: "Demo — Team Manager",
+    memberRef: "demo.team.manager@fleetos.demo",
+  },
+  {
+    personaId: "demo-employee",
+    role: "employee",
+    displayName: "Demo — Employee / Device Owner",
+    memberRef: "demo.employee@fleetos.demo",
+  },
+  {
+    personaId: "demo-vendor-operator",
+    role: "vendor.operator",
+    displayName: "Demo — Vendor / Service Operator",
+    memberRef: "demo.vendor.operator@fleetos.demo",
+  },
+]);
+
+// ---------------------------------------------------------------------------
 // The composition (deterministic; identical on every call)
 // ---------------------------------------------------------------------------
 
 interface DemoComposition {
   readonly store: TwinStore;
   readonly auditLog: AuditLog;
+  /** W122: the raw banded summaries (the tower rebuild's input, per role). */
+  readonly bandedSummaries: readonly ShellBandedSummary[];
+  /** W122: the audit-like projections (the tower rebuild's recent-audit input). */
+  readonly recentAuditLike: readonly ShellAuditRecordLike[];
   readonly towerView: ControlTowerView;
   readonly evidenceIndex: readonly EvidenceIndexRow[];
   readonly evidenceTrails: readonly ShellEvidenceTrail[];
@@ -598,6 +687,8 @@ function composeDemoFleet(): DemoComposition {
   return {
     store,
     auditLog,
+    bandedSummaries: banded,
+    recentAuditLike: appendedRecords.map(auditLike),
     towerView: towerResult.view,
     evidenceIndex: evidenceIndexResult.rows,
     evidenceTrails,
@@ -607,6 +698,11 @@ function composeDemoFleet(): DemoComposition {
 
 /** The composed demo fleet (module-scope singleton; deterministic). */
 export const DEMO: DemoComposition = composeDemoFleet();
+
+/** Whether a tenant id is the dedicated demo tenant (W122 isolation law). */
+export function isDemoTenant(tenantId: string): boolean {
+  return tenantId === TENANT_ID;
+}
 
 // ---------------------------------------------------------------------------
 // The lane view-models bound over the composed demo fleet
@@ -813,5 +909,155 @@ export function learningViews(): {
     feed: buildOutcomeFeedView({ tenantId: TENANT_ID }, [observation.observation]),
     cases: buildEvaluationCasesView({ tenantId: TENANT_ID }, [gated.proposal]),
     ledger: buildAdoptionLedgerView({ tenantId: TENANT_ID }, [first.record, second.record]),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// W122 — THE ISOLATION LAW: the tenant-scoped console composition
+// ---------------------------------------------------------------------------
+
+/**
+ * The per-tenant console data composition (every console area's records):
+ *
+ *   - the DEMO tenant sees the rich demo fleet (the W091 composition);
+ *   - EVERY non-demo workspace sees ONLY its own records — the same REAL
+ *     lane builders over that tenant's (today empty) record sets, so a
+ *     fresh workspace renders honest empty states in every area, and NO
+ *     demo record, fixture or tenant id ever resolves in a non-demo
+ *     workspace (fail-closed — never a silent fallback to demo data).
+ */
+export interface ConsoleAreaComposition {
+  /** Whether the active session's tenant is the dedicated demo tenant. */
+  readonly isDemo: boolean;
+  /** The active session's tenant (the composition's scope). */
+  readonly tenantId: string;
+  readonly towerView: ControlTowerView;
+  readonly evidenceIndex: readonly EvidenceIndexRow[];
+  readonly evidenceTrails: readonly ShellEvidenceTrail[];
+  readonly searchRecords: readonly ShellRecordSummary[];
+  readonly fleetView: ReturnType<typeof buildDeviceListViewModel>;
+  readonly findingsView: ReturnType<typeof buildFindingsListView>;
+  readonly approvalsView: ReturnType<typeof buildApprovalsQueueView>;
+  readonly policiesView: ReturnType<typeof buildPoliciesListView>;
+  readonly learning: {
+    readonly feed: ReturnType<typeof buildOutcomeFeedView>;
+    readonly cases: ReturnType<typeof buildEvaluationCasesView>;
+    readonly ledger: ReturnType<typeof buildAdoptionLedgerView>;
+  };
+}
+
+/** The fail-closed composition result (machine-stable refusals). */
+export type ConsoleAreasResult =
+  | { readonly ok: true; readonly view: ConsoleAreaComposition }
+  | {
+      readonly ok: false;
+      readonly reason: "invalid_tenant" | "composition_refused";
+      readonly message: string;
+    };
+
+/**
+ * Compose the console areas for the ACTIVE session's tenant.
+ *
+ * The demo tenant resolves the rich demo fleet (role-shaped through the
+ * REAL tower builder over the frozen demo summaries); every other
+ * workspace resolves ONLY its own records over the same REAL builders
+ * with empty record sets — the honest fresh-workspace state, never demo
+ * data. An unknown/invalid tenant grammar is a machine-stable refusal
+ * (fail-closed; never a fallback to the demo tenant).
+ */
+export function composeConsoleAreas(
+  tenantId: string,
+  role: ShellOperatorRole,
+): ConsoleAreasResult {
+  if (typeof tenantId !== "string" || !isValidTenantId(asTenantId(tenantId))) {
+    return {
+      ok: false,
+      reason: "invalid_tenant",
+      message: `composeConsoleAreas: '${String(tenantId)}' does not match the frozen tenant grammar`,
+    };
+  }
+  if (isDemoTenant(tenantId)) {
+    // The demo tenant: the rich demo fleet, shaped for the acting role.
+    const tower = buildControlTowerView({
+      scope: SCOPE,
+      role,
+      summaries: DEMO.bandedSummaries,
+      recentAudit: DEMO.recentAuditLike,
+      activityLimit: 6,
+    });
+    if (!tower.ok) {
+      return {
+        ok: false,
+        reason: "composition_refused",
+        message: `composeConsoleAreas: the demo tower view refused (${tower.reason})`,
+      };
+    }
+    return {
+      ok: true,
+      view: {
+        isDemo: true,
+        tenantId,
+        towerView: tower.view,
+        evidenceIndex: DEMO.evidenceIndex,
+        evidenceTrails: DEMO.evidenceTrails,
+        searchRecords: DEMO.searchRecords,
+        fleetView: deviceFleetView(),
+        findingsView: securityFindingsView(),
+        approvalsView: approvalsQueueView(),
+        policiesView: policiesView(),
+        learning: learningViews(),
+      },
+    };
+  }
+  // Every NON-DEMO workspace: ONLY its own records (the same REAL
+  // builders; a fresh workspace has none yet — honest empty states).
+  const scope = { tenantId: asTenantId(tenantId) };
+  const tower = buildControlTowerView({
+    scope,
+    role,
+    summaries: [],
+    recentAudit: [],
+    activityLimit: 6,
+  });
+  if (!tower.ok) {
+    return {
+      ok: false,
+      reason: "composition_refused",
+      message: `composeConsoleAreas: the empty tower view refused (${tower.reason})`,
+    };
+  }
+  const evidenceIndexResult = buildEvidenceIndex(scope, []);
+  if (!evidenceIndexResult.ok) {
+    return {
+      ok: false,
+      reason: "composition_refused",
+      message: "composeConsoleAreas: the empty evidence index refused",
+    };
+  }
+  const ownStore = createInMemoryTwinStore();
+  return {
+    ok: true,
+    view: {
+      isDemo: false,
+      tenantId,
+      towerView: tower.view,
+      evidenceIndex: evidenceIndexResult.rows,
+      evidenceTrails: [],
+      searchRecords: [],
+      fleetView: buildDeviceListViewModel(
+        scope,
+        ownStore,
+        { filter: { kind: "all" }, sort: { field: "deviceId", direction: "asc" }, page: "all" },
+        { now: NOW, freshWithinMs: 86_400_000, staleAfterMs: 604_800_000 },
+      ),
+      findingsView: buildFindingsListView(scope, []),
+      approvalsView: buildApprovalsQueueView(scope, []),
+      policiesView: buildPoliciesListView(scope, []),
+      learning: {
+        feed: buildOutcomeFeedView(scope, []),
+        cases: buildEvaluationCasesView(scope, []),
+        ledger: buildAdoptionLedgerView(scope, []),
+      },
+    },
   };
 }

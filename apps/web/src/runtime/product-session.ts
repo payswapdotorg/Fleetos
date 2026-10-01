@@ -59,6 +59,7 @@ import {
   createRoleSwitchService,
   makeUserPrincipal,
   makeTenantContext,
+  makeRoleAssignment,
   asOpaqueToken,
   isValidOpaqueToken,
   MIN_PASSWORD_LENGTH,
@@ -86,12 +87,18 @@ import type {
   ProductWorkspaceSummary,
   IssueInvitationResult,
   ProductTransitionResult,
+  ProductDemoPersonaSummary,
 } from "@fleetos/web-product";
 import type { ProductExperienceRole } from "@fleetos/web-product";
 import {
   experienceRoleFromAssignment,
   PRODUCT_EXPERIENCE_ROLES,
 } from "@fleetos/web-product";
+import {
+  DEMO_PERSONAS,
+  DEMO_WORKSPACE_NAME,
+  TENANT_ID as DEMO_TENANT_ID,
+} from "./demo-fleet";
 
 // ---------------------------------------------------------------------------
 // The seven product role definitions (presentation-level; authority is
@@ -305,6 +312,16 @@ export function createBrowserPasswordHasher(rounds: number = BROWSER_PASSWORD_RO
  * the runtime — reload KEEPS the session honest through the resolve
  * seam; without them (the default, and every deterministic test) each
  * runtime is a fresh browser session over a fresh in-memory store.
+ *
+ * W122 — the demo persona surface: the runtime lists the dedicated
+ * demo tenant's pre-seeded personas (`demoPersonas`) and opens a
+ * persona's session (`openDemoPersonaSession`) THROUGH THE SAME
+ * session-open seam as create/join/sign-in (no second auth path: the
+ * demo personas carry no passwords; the one-click quick link is the
+ * sanctioned entry). The demo tenant is seeded lazily + idempotently
+ * through the REAL identity repositories on the persona entry — a
+ * tenant like any other for the whole session lifecycle
+ * (open/resolve/expire/revoke; no special-cased demo branch).
  */
 export function createProductSessionRuntime(seams: ProductRuntimeSeams): {
   /** List the workspaces (the choice screen's directory). */
@@ -333,6 +350,13 @@ export function createProductSessionRuntime(seams: ProductRuntimeSeams): {
     /** The sign-in password (verified against the stored verifier; never stored). */
     readonly password: string;
   }) => ProductTransitionResult;
+  /** W122: the demo persona catalog (the sign-in quick links' input). */
+  readonly demoPersonas: () => readonly ProductDemoPersonaSummary[];
+  /**
+   * W122: open a demo persona's workspace session — the sanctioned demo
+   * entry (the same session-open seam; the personas carry no passwords).
+   */
+  readonly openDemoPersonaSession: (personaId: string) => ProductTransitionResult;
   /** Switch the active experience role (audited; assigned-only). */
   readonly switchActiveRole: (role: ProductExperienceRole) => ProductTransitionResult;
   /** Mark onboarding complete (first-run rail dismissed). */
@@ -411,12 +435,18 @@ export function createProductSessionRuntime(seams: ProductRuntimeSeams): {
   function listWorkspaces(): readonly ProductWorkspaceSummary[] {
     // The directory: every workspace partition in the store snapshot
     // (the runtime owns the store — this is its composition scope) plus
-    // any seeded directory entries.
+    // any seeded directory entries. W122 (the isolation law): the
+    // dedicated demo tenant is NEVER a directory entry — the demo
+    // workspace is reachable ONLY through the sign-in screen's clearly-
+    // labeled quick links (the sanctioned entry), so no workspace list
+    // ever shows a demo tenant.
     const seen = new Map<string, ProductWorkspaceSummary>();
     for (const seed of seams.seedWorkspaces ?? []) {
+      if (seed.tenantId === DEMO_TENANT_ID) continue;
       seen.set(seed.tenantId, seed);
     }
     for (const tenantId of Object.keys(store.snapshot.fleetos_tenants ?? {})) {
+      if (tenantId === DEMO_TENANT_ID) continue;
       const ws = workspacesOfTenant(tenantId);
       if (ws) seen.set(tenantId, ws);
     }
@@ -508,6 +538,104 @@ export function createProductSessionRuntime(seams: ProductRuntimeSeams): {
     // reload re-resolves THIS session (fail-closed — see restore below).
     persistSession({ tenantId, token: opened.session.token });
     return { ok: true, state: project(onboardingDone ? "active" : "onboarding") };
+  }
+
+  // -- W122: the demo persona surface (the sanctioned demo entry) ------
+
+  /** The frozen demo-seed instant (no clock reads; deterministic). */
+  const DEMO_SEED_AT = "2026-10-01T00:00:00Z" as const;
+
+  /**
+   * Ensure the dedicated demo tenant + its persona catalog exist in the
+   * durable store (LAZY + IDEMPOTENT — the composition runs on the
+   * persona entry, never at construction, so deterministic runtimes and
+   * non-demo browser sessions stay untouched). Every record is written
+   * through the REAL identity repositories (the same seams the
+   * workspace lifecycle service composes); NO password credential is
+   * ever registered (the personas carry no passwords — the quick link
+   * is the sanctioned entry, never a credential).
+   */
+  function ensureDemoTenantSeeded(): { ok: true } | { ok: false; message: string } {
+    const ctx = ctxOf(DEMO_TENANT_ID);
+    const existing = tenants.getWorkspace(ctx);
+    if (existing === undefined) {
+      const founder = makeUserPrincipal(DEMO_TENANT_ID, DEMO_PERSONAS[0]!.memberRef as never);
+      const put = tenants.putWorkspace(ctx, {
+        tenantId: DEMO_TENANT_ID,
+        name: DEMO_WORKSPACE_NAME,
+        status: "active",
+        createdAt: DEMO_SEED_AT,
+        createdBy: founder.principalId,
+      });
+      if (!put.ok) {
+        return { ok: false, message: `demo tenant seed refused (${put.reason})` };
+      }
+    }
+    for (const persona of DEMO_PERSONAS) {
+      const principal = makeUserPrincipal(DEMO_TENANT_ID, persona.memberRef as never);
+      const membership = principals.putPrincipal(ctx, {
+        tenantId: DEMO_TENANT_ID,
+        principalId: principal.principalId,
+        kind: "user",
+        memberRef: persona.memberRef,
+        displayName: persona.displayName,
+        createdAt: DEMO_SEED_AT,
+      });
+      // already_exists is the idempotent re-seed over a shared store.
+      if (!membership.ok && membership.reason !== "already_exists") {
+        return { ok: false, message: `demo persona seed refused (${membership.reason})` };
+      }
+      const assignment = assignments.addAssignment(
+        ctx,
+        makeRoleAssignment({
+          tenantId: DEMO_TENANT_ID,
+          principalId: principal.principalId,
+          roleName: persona.role,
+          assignedAt: DEMO_SEED_AT,
+          assignedBy: makeUserPrincipal(
+            DEMO_TENANT_ID,
+            DEMO_PERSONAS[0]!.memberRef as never,
+          ).principalId,
+        }),
+      );
+      if (!assignment.ok) {
+        return { ok: false, message: `demo role assignment refused (${assignment.error.message})` };
+      }
+    }
+    return { ok: true };
+  }
+
+  function demoPersonas(): readonly ProductDemoPersonaSummary[] {
+    return DEMO_PERSONAS.map((persona) => ({
+      personaId: persona.personaId,
+      role: persona.role,
+      displayName: persona.displayName,
+      workspaceName: DEMO_WORKSPACE_NAME,
+    }));
+  }
+
+  function openDemoPersonaSession(personaId: string): ProductTransitionResult {
+    const persona = DEMO_PERSONAS.find((p) => p.personaId === personaId);
+    if (persona === undefined) {
+      return {
+        ok: false,
+        reason: "invalid_input",
+        message: `openDemoPersonaSession: unknown demo persona '${String(personaId)}'`,
+      };
+    }
+    const seeded = ensureDemoTenantSeeded();
+    if (!seeded.ok) {
+      return {
+        ok: false,
+        reason: "invalid_input",
+        message: `openDemoPersonaSession: ${seeded.message}`,
+      };
+    }
+    // THE SAME session-open seam as create/join/sign-in — no second
+    // auth path: the demo persona carries no credential; the quick
+    // link (this sanctioned transition) is the entry. From here the
+    // demo session flows the REAL lifecycle like any tenant's.
+    return openSession(DEMO_TENANT_ID as string, persona.memberRef, [persona.role]);
   }
 
   // -- W121: the persisted browser-session seam (fail-closed) ----------
@@ -752,6 +880,11 @@ export function createProductSessionRuntime(seams: ProductRuntimeSeams): {
       }
       return openSession(input.tenantId.trim(), input.email.trim(), assigned);
     },
+
+    // W122: the demo persona surface (the sign-in screen's quick links).
+    demoPersonas,
+
+    openDemoPersonaSession,
 
     switchActiveRole: (role) => {
       if (token === null || sessionId === null || rememberedTenantId === null) {

@@ -513,6 +513,18 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
     [apply, runtime, resetInvite],
   );
 
+  // W122: the demo quick links' sanctioned entry — the runtime's demo
+  // persona transition through the SAME apply() path as every other
+  // session-opening transition (create/join/sign-in). No demo data or
+  // logic enters the gate: it wires the runtime's surface to the screen.
+  const onOpenDemoPersona = useCallback(
+    (personaId: string) => {
+      apply(runtime.openDemoPersonaSession(personaId));
+      resetInvite();
+    },
+    [apply, runtime, resetInvite],
+  );
+
   const onRoleSwitch = useCallback(
     (role: Parameters<typeof runtime.switchActiveRole>[0]) => {
       apply(runtime.switchActiveRole(role));
@@ -591,6 +603,8 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
         onJoin={onJoin}
         onSignIn={onSignIn}
         refusal={refusal}
+        demoPersonas={runtime.demoPersonas()}
+        onOpenDemoPersona={onOpenDemoPersona}
       />
     );
   }
