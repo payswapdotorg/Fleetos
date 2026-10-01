@@ -1,11 +1,18 @@
 "use client";
 /**
- * @fleetos/web-product — the session screens (W101 [TL]).
+ * @fleetos/web-product — the session screens (W101 [TL]; W110 join-role selection).
  *
  * The sign-in / workspace-choice / onboarding surfaces of the product
  * shell: fully presentational, fully controlled (the W090 pattern —
  * callbacks out, no internal routing, no business truth). The design
  * is the shell's shared system (tokens + primitives).
+ *
+ * W110: the Join tab carries the role selection — the five MEMBER
+ * roles (`JOIN_MEMBER_ROLES`, labels verbatim from the matrix) with
+ * the honest helper copy (`JOIN_ROLE_NOTE`); the chosen role flows
+ * through `onJoin` to the runtime's `joinWorkspace({..., roles})`
+ * seam. `fleet.admin` and `vendor.operator` are never offered (never
+ * self-service through a bearer code).
  */
 import type { JSX } from "react";
 import { useState } from "react";
@@ -35,7 +42,12 @@ export function WorkspaceChoiceScreen(props: {
   readonly workspaces: readonly ProductWorkspaceSummary[];
   readonly environmentLabel: string;
   readonly onCreate: (input: { readonly name: string; readonly displayName: string; readonly email: string }) => void;
-  readonly onJoin: (input: { readonly code: string; readonly displayName: string; readonly email: string }) => void;
+  readonly onJoin: (input: {
+    readonly code: string;
+    readonly displayName: string;
+    readonly email: string;
+    readonly role: ProductExperienceRole;
+  }) => void;
   readonly onSignIn: (input: { readonly tenantId: string; readonly email: string }) => void;
   readonly refusal?: { readonly reason: ProductAuthRefusal; readonly message: string } | null;
 }): JSX.Element {
@@ -44,6 +56,7 @@ export function WorkspaceChoiceScreen(props: {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [role, setRole] = useState<ProductExperienceRole>("employee");
   const [tenantId, setTenantId] = useState(props.workspaces[0]?.tenantId ?? "");
   return (
     <main className="fos-signin" aria-label="FleetOS sign in">
@@ -122,10 +135,23 @@ export function WorkspaceChoiceScreen(props: {
           <input id="fos-joindisplay" value={displayName} placeholder="Grace Hopper" onChange={(e) => setDisplayName(e.target.value)} />
           <label htmlFor="fos-joinemail">Your email</label>
           <input id="fos-joinemail" type="email" value={email} placeholder="grace@northwind.example" onChange={(e) => setEmail(e.target.value)} />
+          <label htmlFor="fos-joinrole">Join as</label>
+          <select
+            id="fos-joinrole"
+            value={role}
+            onChange={(e) => setRole(e.target.value as ProductExperienceRole)}
+          >
+            {JOIN_MEMBER_ROLES.map((memberRole) => (
+              <option key={memberRole} value={memberRole}>
+                {PRODUCT_EXPERIENCE_ROLE_LABELS[memberRole]}
+              </option>
+            ))}
+          </select>
+          <p className="fos-meta">{JOIN_ROLE_NOTE}</p>
           <Button
             variant="primary"
             disabled={!code.trim() || !displayName.trim() || !email.trim()}
-            onClick={() => props.onJoin({ code, displayName, email })}
+            onClick={() => props.onJoin({ code, displayName, email, role })}
           >
             Join workspace
           </Button>
@@ -144,6 +170,35 @@ export const ONBOARDING_STEPS: readonly { readonly id: string; readonly title: s
     { id: "first-checkin", title: "First check-in", hint: "The agent checks in and streams its first observation." },
     { id: "doctor", title: "Device Doctor", hint: "FleetOS starts diagnosing devices from real observations." },
   ]);
+
+// ---------------------------------------------------------------------------
+// W110: the Join tab's role selection (the member-role vocabulary)
+// ---------------------------------------------------------------------------
+
+/**
+ * The MEMBER roles offered at the Join tab (W110): the frozen matrix
+ * vocabulary minus the two roles that are never self-service —
+ * `fleet.admin` (granted by workspace operators) and `vendor.operator`
+ * (isolated vendor access, provisioned separately). Joining with one
+ * of these roles creates a REAL starting role assignment through the
+ * identity seam's `joinWorkspace({..., roles})` — the seam's own
+ * authority, never widened by this presentation. `employee` is the
+ * default (the seam's own default when no role is passed).
+ */
+export const JOIN_MEMBER_ROLES: readonly ProductExperienceRole[] = Object.freeze([
+  "employee",
+  "service.desk",
+  "team.manager",
+  "asset.manager",
+  "security.compliance",
+]);
+
+/**
+ * The honest join-role helper copy (frozen): what choosing a role does,
+ * and why the two non-member roles are absent — never a silent gap.
+ */
+export const JOIN_ROLE_NOTE: string =
+  "Joining with a role sets your starting role assignment and experience lens. fleet.admin and vendor.operator are not offered here — elevated roles are granted by workspace operators, and isolated vendor access is provisioned separately; never self-service through a bearer code.";
 
 /** The onboarding rail (current step highlighted; fully controlled). */
 export function OnboardingRail(props: {
