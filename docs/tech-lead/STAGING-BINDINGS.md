@@ -69,3 +69,12 @@ with the deployment (tools/post-deploy-check.mjs + tools/deployment-manifest.mjs
   `1a3dea656038255e2b6e70bd3dc006ad1c25e2bb1ed5f4a98416f83b20e90c73`.
   (Earlier Composio OAuth 403/SAML scope issue is moot for the direct-token
   path; the Composio connections still authenticate for user-level calls.)
+
+
+## W102 — the quota-blocked redeploy + the armed production path (2026-10-01)
+
+- W101 (dfb7d83) is pushed to BOTH integration/wave0 AND main (fast-forward from 568708e).
+- The Vercel free-tier deployment quota (100/day) was exhausted by the Wave-9 push cycle; the API refuses new deployments until 2026-10-02 ~01:24 UTC (limit.reset epoch 1790904241856). Git-hook auto-deploys are blocked by the same quota (verified: the dfb7d83 push produced no deployment).
+- The project's productionBranch is main: the post-quota deployment from main (dfb7d83) lands as a PRODUCTION deployment and serves the fleetos-staging-flame.vercel.app alias — no manual promotion needed.
+- A one-time cron (2026-10-02 01:30 UTC) re-triggers the production deployment and runs the post-deploy acceptance.
+- The W103 browser acceptance ran against the LOCAL production build (bun run build + start, :3101): workspace create through the REAL gate, role-shaped tower (owner via the bridge), approval inbox badge, role switcher + member chip, onboarding rail, Install Center fail-closed refusal (selection_incomplete + explanation) + one-time code display-once (BOOT-W101-0001), global search landing on records, reload => signed-out (the honest in-memory browser-session model).

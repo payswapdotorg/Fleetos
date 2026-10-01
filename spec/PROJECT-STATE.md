@@ -1,6 +1,6 @@
 # FleetOS Project State
 
-STATUS: WAVE 9 COMPLETE — W100A ACCEPTED (90abd40), W100B ACCEPTED (f17d51b), W100C ACCEPTED (807f60e); all three lanes merged --no-ff; W101/W102/W103 [TL] convergence UNBLOCKED
+STATUS: WAVE 10 IN PROGRESS — W101 [TL] DELIVERED (dfb7d83: the ProductGate session composition over the REAL W100C identity services, @fleetos/web-product, Install Center route, role-shaped tower, 3251/0); W102 [TL] PARTIAL (staging redeploy quota-blocked until 2026-10-02 01:24 UTC — production path armed via main, cron re-trigger set); W103 [TL] core-persona browser acceptance DONE against the local production build
 
 Latest accepted Wave 9 verification (2026-10-01, TL harvest after session-death recovery — push truth + local gate re-runs, per the never-trust-worker-numbers law):
 - W100A work/w100a 90abd40: check OK / typecheck 0 / 2946 pass 0 fail (+114) — enrollment-request flow (verifier-only code storage, one-time redemption), reproducible release packaging (content-derived checksums, FAIL-CLOSED credential scanner), agent-side enrollment journey client, web Install Center w/ full-journey browser tests
