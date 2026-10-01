@@ -59,7 +59,10 @@ export type ProductAuthRefusal =
   | "revoked_code"
   | "role_not_assigned"
   | "unknown_session"
-  | "no_experience_role";
+  | "no_experience_role"
+  | "unknown_account"
+  | "wrong_password"
+  | "credential_revoked";
 
 /** The frozen human explanations for every refusal code. */
 export const PRODUCT_REFUSAL_EXPLANATIONS: Readonly<Record<ProductAuthRefusal, string>> =
@@ -81,6 +84,12 @@ export const PRODUCT_REFUSAL_EXPLANATIONS: Readonly<Record<ProductAuthRefusal, s
     unknown_session: "The session could not be found. Sign in again to continue.",
     no_experience_role:
       "This account has no product role assigned yet. Ask an administrator to grant one.",
+    unknown_account:
+      "No password is set for this account. Ask an administrator to issue sign-in credentials.",
+    wrong_password:
+      "That password is incorrect. Check it and try again.",
+    credential_revoked:
+      "This account's sign-in credentials were revoked. Ask an administrator to reissue them.",
   });
 
 // ---------------------------------------------------------------------------
@@ -103,6 +112,44 @@ export interface ProductSessionSeams {
   readonly correlationId?: () => string;
   /** The workspace directory seed (pre-existing workspaces to list). */
   readonly seedWorkspaces?: readonly ProductWorkspaceSummary[];
+  /**
+   * W121 — the persistent browser-session store. The runtime persists
+   * the CURRENT session token through this seam (every session-opening
+   * transition saves; sign-out clears) and re-resolves the persisted
+   * token at construction — reload KEEPS the session honest (expiry
+   * still enforced via the resolve seam; corrupted/unknown/mismatched
+   * tokens fail closed to the gate). The localStorage implementation
+   * is injected at the composition root (product-gate.tsx).
+   */
+  readonly sessionStore?: ProductSessionStore;
+}
+
+/**
+ * The persisted browser-session payload (the reload memory): the
+ * tenant the session belongs to plus the opaque session token. The
+ * tenant rides along because session resolution is tenant-scoped by
+ * construction — a token issued in tenant A is unknown in tenant B,
+ * so a mismatched pair fails closed to the gate.
+ */
+export interface ProductPersistedSession {
+  /** The session's tenant (must match the `tnt_` grammar). */
+  readonly tenantId: string;
+  /** The opaque session token (must match the `fst_` grammar). */
+  readonly token: string;
+}
+
+/**
+ * The injected persistent browser-session store (W121). Pure
+ * persistence — NO validation truth lives here: the runtime treats
+ * whatever `load` returns as UNTRUSTED and re-resolves it through the
+ * real session seam (fail-closed on anything malformed, unknown,
+ * expired, or revoked). `save(null)` clears the persisted session.
+ */
+export interface ProductSessionStore {
+  /** Persist the session payload (null clears it). */
+  save(session: ProductPersistedSession | null): void;
+  /** The persisted payload, when present — never trusted as-is. */
+  load(): ProductPersistedSession | null;
 }
 
 /** A fail-closed product failure (the shared refusal shape). */

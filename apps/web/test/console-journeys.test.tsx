@@ -31,17 +31,24 @@ import type { ShellRoute } from "@fleetos/web-shell";
 afterEach(() => {
   cleanup();
   window.history.replaceState({}, "", "/");
+  // W121: the gate persists the durable identity records + session token
+  // in localStorage (the browser tier) — every journey starts from the
+  // honest signed-out gate, so the persisted state is cleared between
+  // tests (never a leaked session across journeys).
+  window.localStorage.clear();
 });
 
 function mountApp(route: ShellRoute): void {
   render(<ConsoleApp initialRoute={route} />);
   // W101: the product session gate — the console renders only for an
-  // authenticated session. Create the workspace (the founder session)
-  // through the REAL UI, then dismiss the first-run onboarding rail.
+  // authenticated session. Create the workspace (the founder session,
+  // WITH the W121 sign-up password) through the REAL UI, then dismiss
+  // the first-run onboarding rail.
   fireEvent.click(screen.getAllByText("Create workspace")[0]!.closest("button")!);
   fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "Northwind Fleet" } });
   fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Ada Lovelace" } });
   fireEvent.change(screen.getByLabelText("Your email"), { target: { value: "ada@northwind.example" } });
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "founder-pass-0001" } });
   fireEvent.click(screen.getAllByText("Create workspace").at(-1)!.closest("button")!);
   fireEvent.click(screen.getByText("Dismiss getting started"));
 }

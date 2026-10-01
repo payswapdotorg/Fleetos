@@ -7,6 +7,7 @@ import { test, expect } from "bun:test";
 import { asTenantId, asUserId, asCorrelationId } from "@fleetos/contracts";
 import {
   createDurableInvitationRepository,
+  createDurablePasswordCredentialRepository,
   createDurablePrincipalRepository,
   createDurableRoleAssignmentRepository,
   createDurableSessionRepository,
@@ -32,6 +33,7 @@ function makeRepositories() {
     assignments: createDurableRoleAssignmentRepository(store),
     sessions: createDurableSessionRepository(store),
     invitations: createDurableInvitationRepository(store),
+    credentials: createDurablePasswordCredentialRepository(store),
   };
 }
 
@@ -198,4 +200,65 @@ test("invitation records roundtrip; the code-hash resolver is the cross-tenant s
   const used = { ...invitation, usedAt: "2026-10-01T12:00:00Z", usedBy: `usr:${JOINER}` };
   expect(repos.invitations.updateInvitation(ctxA, used).ok).toBe(true);
   expect(repos.invitations.getInvitation(ctxA, "inv_1")!.usedBy).toBe(`usr:${JOINER}`);
+});
+
+// ---------------------------------------------------------------------------
+// W121 — the password-credential repository
+// ---------------------------------------------------------------------------
+
+test("W121: password credentials roundtrip and partition per tenant", () => {
+  const repos = makeRepositories();
+  const ctxA = makeTenantContext(TENANT_A, CORR);
+  const ctxB = makeTenantContext(TENANT_B, CORR);
+  const record = {
+    tenantId: TENANT_A,
+    credentialId: "pwd_alpha000001_usr-founder0001",
+    principalId: `usr:${FOUNDER}`,
+    memberRef: FOUNDER,
+    salt: "slt_w100c0000000000001",
+    verifier: "pwv_0123456789abcdef",
+    createdAt: AT,
+    createdBy: `usr:${FOUNDER}`,
+    revokedAt: null,
+  };
+  expect(repos.credentials.putCredential(ctxA, record).ok).toBe(true);
+  // roundtrip by member reference (the sign-in lookup key)
+  expect(repos.credentials.getCredentialByMemberRef(ctxA, FOUNDER)).toEqual(record);
+  // roundtrip by principal + by credential id
+  expect(repos.credentials.getCredentialByPrincipal(ctxA, `usr:${FOUNDER}`)).toEqual(record);
+  expect(repos.credentials.getCredential(ctxA, record.credentialId)).toEqual(record);
+  // duplicate insert refuses (one credential per principal)
+  expect(repos.credentials.putCredential(ctxA, record).ok).toBe(false);
+  // tenant B sees NOTHING (partition isolation; existence never leaks)
+  expect(repos.credentials.getCredentialByMemberRef(ctxB, FOUNDER)).toBeUndefined();
+  expect(repos.credentials.listCredentials(ctxB)).toEqual([]);
+  // the SAME member ref in tenant B is a distinct record (per-tenant credentials)
+  const recordB = { ...record, tenantId: TENANT_B, credentialId: "pwd_beta000002_usr-founder0001" };
+  expect(repos.credentials.putCredential(ctxB, recordB).ok).toBe(true);
+  expect(repos.credentials.listCredentials(ctxA).length).toBe(1);
+  expect(repos.credentials.listCredentials(ctxB).length).toBe(1);
+});
+
+test("W121: the credential revocation transition persists (update in place)", () => {
+  const repos = makeRepositories();
+  const ctxA = makeTenantContext(TENANT_A, CORR);
+  const record = {
+    tenantId: TENANT_A,
+    credentialId: "pwd_alpha000001_usr-founder0001",
+    principalId: `usr:${FOUNDER}`,
+    memberRef: FOUNDER,
+    salt: "slt_w100c0000000000001",
+    verifier: "pwv_0123456789abcdef",
+    createdAt: AT,
+    createdBy: `usr:${FOUNDER}`,
+    revokedAt: null,
+  };
+  repos.credentials.putCredential(ctxA, record);
+  const revoked = { ...record, revokedAt: "2026-10-02T09:00:00Z" };
+  expect(repos.credentials.updateCredential(ctxA, revoked).ok).toBe(true);
+  expect(repos.credentials.getCredentialByMemberRef(ctxA, FOUNDER)!.revokedAt).toBe(
+    "2026-10-02T09:00:00Z",
+  );
+  // updating an UNKNOWN credential refuses machine-stably
+  expect(repos.credentials.updateCredential(ctxA, { ...record, credentialId: "pwd_nope" }).ok).toBe(false);
 });

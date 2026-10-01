@@ -364,6 +364,73 @@ export const WORKSPACE_INVITATIONS_TABLE: DurableTableDefinition = frozen({
   ]),
 });
 
+/**
+ * `fleetos_password_credentials` — the persistent password-credential
+ * records (W121). The durable account-credential truth: a member's
+ * sign-in verifier + salt, bound to its tenant and principal. The
+ * PLAIN password is NEVER stored — only the PasswordHasher verifier
+ * output and its per-credential salt (the seam in `../password.ts`;
+ * the hasher implementation is injected at the composition root).
+ */
+export const PASSWORD_CREDENTIALS_TABLE: DurableTableDefinition = frozen({
+  name: "fleetos_password_credentials",
+  tenantScoped: true,
+  primaryKey: frozenArray(["credential_id"]),
+  description:
+    "Persistent password-credential records — the durable account-credential truth (verifier + salt; the plain password is never stored).",
+  columns: frozenArray([
+    TENANT_ID_COLUMN,
+    {
+      name: "credential_id",
+      type: "text",
+      nullable: false,
+      description: "Deterministic credential id (pwd_ prefix).",
+    },
+    {
+      name: "principal_id",
+      type: "text",
+      nullable: false,
+      description: "The credential's principal id (usr: grammar).",
+    },
+    {
+      name: "member_ref",
+      type: "text",
+      nullable: false,
+      description: "The sign-in member reference (the member's email).",
+    },
+    {
+      name: "salt",
+      type: "text",
+      nullable: false,
+      description: "The per-credential salt (injected generator; never the plain password).",
+    },
+    {
+      name: "verifier",
+      type: "text",
+      nullable: false,
+      description: "The PasswordHasher verifier output (the plain password is never stored).",
+    },
+    {
+      name: "created_at",
+      type: "timestamptz",
+      nullable: false,
+      description: "ISO 8601 credential-creation instant (injected).",
+    },
+    {
+      name: "created_by",
+      type: "text",
+      nullable: false,
+      description: "The creating principal id.",
+    },
+    {
+      name: "revoked_at",
+      type: "timestamptz",
+      nullable: true,
+      description: "ISO 8601 revocation instant, when the credential was revoked.",
+    },
+  ]),
+});
+
 /** Every identity-lane durable table, definition order (deterministic DDL). */
 export const IDENTITY_DURABLE_TABLES: readonly DurableTableDefinition[] = frozenArray([
   TENANTS_TABLE,
@@ -371,6 +438,7 @@ export const IDENTITY_DURABLE_TABLES: readonly DurableTableDefinition[] = frozen
   ROLE_ASSIGNMENTS_TABLE,
   SESSIONS_TABLE,
   WORKSPACE_INVITATIONS_TABLE,
+  PASSWORD_CREDENTIALS_TABLE,
 ]);
 
 // ---------------------------------------------------------------------------

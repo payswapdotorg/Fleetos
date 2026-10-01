@@ -1,6 +1,7 @@
 "use client";
 /**
- * @fleetos/web-product — the session screens (W101 [TL]; W110 join-role selection).
+ * @fleetos/web-product — the session screens (W101 [TL]; W110 join-role
+ * selection; W121 password credentials).
  *
  * The sign-in / workspace-choice / onboarding surfaces of the product
  * shell: fully presentational, fully controlled (the W090 pattern —
@@ -13,6 +14,12 @@
  * through `onJoin` to the runtime's `joinWorkspace({..., roles})`
  * seam. `fleet.admin` and `vendor.operator` are never offered (never
  * self-service through a bearer code).
+ *
+ * W121: the Sign-in and Create tabs carry the password fields —
+ * `type="password"` semantics with the right `autoComplete` hints;
+ * the password value NEVER renders visibly (masked input, controlled
+ * for the disabled logic only) and flows only into the controlled
+ * callbacks bound to the identity seam's verifier inputs.
  */
 import type { JSX } from "react";
 import { useState } from "react";
@@ -41,20 +48,30 @@ export function RefusalExplanation(props: {
 export function WorkspaceChoiceScreen(props: {
   readonly workspaces: readonly ProductWorkspaceSummary[];
   readonly environmentLabel: string;
-  readonly onCreate: (input: { readonly name: string; readonly displayName: string; readonly email: string }) => void;
+  readonly onCreate: (input: {
+    readonly name: string;
+    readonly displayName: string;
+    readonly email: string;
+    readonly password: string;
+  }) => void;
   readonly onJoin: (input: {
     readonly code: string;
     readonly displayName: string;
     readonly email: string;
     readonly role: ProductExperienceRole;
   }) => void;
-  readonly onSignIn: (input: { readonly tenantId: string; readonly email: string }) => void;
+  readonly onSignIn: (input: {
+    readonly tenantId: string;
+    readonly email: string;
+    readonly password: string;
+  }) => void;
   readonly refusal?: { readonly reason: ProductAuthRefusal; readonly message: string } | null;
 }): JSX.Element {
   const [tab, setTab] = useState<"signin" | "create" | "join">("signin");
   const [name, setName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [role, setRole] = useState<ProductExperienceRole>("employee");
   const [tenantId, setTenantId] = useState(props.workspaces[0]?.tenantId ?? "");
@@ -100,10 +117,19 @@ export function WorkspaceChoiceScreen(props: {
               placeholder="you@company.example"
               onChange={(e) => setEmail(e.target.value)}
             />
+            <label htmlFor="fos-password">Password</label>
+            <input
+              id="fos-password"
+              type="password"
+              value={password}
+              placeholder="Your password"
+              autoComplete="current-password"
+              onChange={(e) => setPassword(e.target.value)}
+            />
             <Button
               variant="primary"
-              onClick={() => props.onSignIn({ tenantId, email })}
-              disabled={!email.trim() || !tenantId}
+              onClick={() => props.onSignIn({ tenantId, email, password })}
+              disabled={!email.trim() || !tenantId || !password}
             >
               Sign in
             </Button>
@@ -118,10 +144,19 @@ export function WorkspaceChoiceScreen(props: {
           <input id="fos-newdisplay" value={displayName} placeholder="Ada Lovelace" onChange={(e) => setDisplayName(e.target.value)} />
           <label htmlFor="fos-newemail">Your email</label>
           <input id="fos-newemail" type="email" value={email} placeholder="ada@northwind.example" onChange={(e) => setEmail(e.target.value)} />
+          <label htmlFor="fos-newpassword">Password</label>
+          <input
+            id="fos-newpassword"
+            type="password"
+            value={password}
+            placeholder="At least 8 characters"
+            autoComplete="new-password"
+            onChange={(e) => setPassword(e.target.value)}
+          />
           <Button
             variant="primary"
-            disabled={!name.trim() || !displayName.trim() || !email.trim()}
-            onClick={() => props.onCreate({ name, displayName, email })}
+            disabled={!name.trim() || !displayName.trim() || !email.trim() || !password}
+            onClick={() => props.onCreate({ name, displayName, email, password })}
           >
             Create workspace
           </Button>

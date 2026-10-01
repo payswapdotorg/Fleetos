@@ -19,7 +19,9 @@
  *     switch writes the audit trail — ROLE-EXPERIENCE-MATRIX rule
  *     `role_switch_is_audited`);
  *   - `identity.role.switch_denied`     — a role switch was REFUSED
- *     (denied outcome with machine-stable reasons).
+ *     (denied outcome with machine-stable reasons);
+ *   - `identity.credential.created`     — a password credential is
+ *     registered (W121; ids only — never salt/verifier/plain).
  *
  * Pure reads (get/list/resolve) never audit. `lastSeenAt` touches are
  * not consequential and do not audit (documented judgment call).
@@ -98,4 +100,5 @@ export const IDENTITY_AUDIT_ACTIONS = frozen({
   sessionRevoked: "identity.session.revoked",
   roleSwitched: "identity.role.switched",
   roleSwitchDenied: "identity.role.switch_denied",
+  credentialCreated: "identity.credential.created",
 } as const);

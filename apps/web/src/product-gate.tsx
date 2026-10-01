@@ -1,7 +1,7 @@
 "use client";
 /**
  * @fleetos/web — the ProductGate (W101 [TL], the product shell's session
- * gate; W110 invitation + join-role closure).
+ * gate; W110 invitation + join-role closure; W121 proper authentication).
  *
  * The composition-only product entry: it owns the product session
  * runtime (over the REAL W100C identity services) and gates the
@@ -13,27 +13,32 @@
  *                 approval inbox, member chip) and role-shaped shell;
  *   expired    -> the console with the session-expired recovery banner.
  *
- * W110: the gate also composes the two product closures over the REAL
+ * W110: the gate composes the two product closures over the REAL
  * seams (no new business truth — the identity package owns every
- * decision):
+ * decision): the INVITE-MEMBER surface and the JOIN-ROLE selection.
  *
- *   - the INVITE-MEMBER surface (signed-in shell only): the invite
- *     affordance calls `runtime.issueInvitation()`; on success the raw
- *     code renders DISPLAY-ONCE (copy affordance + "I copied it — hide
- *     it" confirm; the raw code leaves this gate's memory on confirm,
- *     so it can never be re-rendered); on refusal the machine-stable
- *     reason renders — never a silent no-op;
- *   - the JOIN-ROLE selection: the choice screen's chosen member role
- *     flows through `onJoin` into `runtime.joinWorkspace({..., roles:
- *     [role]})` (the seam's own authority creates the real starting
- *     role assignment).
+ * W121 (proper authentication) — the composition root INJECTS the real
+ * seams the runtime composes (business truth still never enters this
+ * file; the identity package owns it):
+ *   - the REAL PasswordHasher (`createBrowserPasswordHasher()` — an
+ *     iterated salted SHA-256 defined at the runtime binding site;
+ *     identity itself stays zero-dep by the seam law);
+ *   - a crypto-random salt generator (entropy is legal HERE — the
+ *     composition root, exactly like the real clock);
+ *   - the BROWSER durable identity store (the W100C DurableRecordStore
+ *     seam over localStorage — the demo/local tier until the W102 Neon
+ *     binding; the in-memory fallback when localStorage is unavailable,
+ *     e.g. the server render);
+ *   - the localStorage session store (the W121 persisted-token seam —
+ *     reload KEEPS the session honest through the resolve seam).
  *
- * The clock seam is INJECTED HERE (the composition root — the runtime
- * and every view-model stay deterministic/pure). Business truth never
- * enters this file: the identity package owns it; the shell renders it.
+ * SSR/hydration law: the server-rendered first paint is ALWAYS the
+ * signed-out gate (the server has no browser stores); after mount the
+ * client syncs the persisted session's truth — hydration stays
+ * byte-identical, then the honest restored state takes over.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import {
   WorkspaceChoiceScreen,
@@ -45,9 +50,33 @@ import type {
   ProductTransitionResult,
   ProductAuthRefusal,
   ProductExperienceRole,
+  ProductSessionStore,
+  ProductPersistedSession,
+  ProductWorkspaceSummary,
   InviteMemberState,
 } from "@fleetos/web-product";
-import { createProductSessionRuntime, INVITATION_TTL_SECONDS } from "./runtime/product-session";
+import {
+  checkRowTenant,
+  durableAlreadyExists,
+  invalidRowColumns,
+  requireRowKey,
+  requireTableName,
+  requireTenantContext,
+} from "@fleetos/identity";
+import type {
+  DurableListOptions,
+  DurableRecordStore,
+  DurableRow,
+  DurableStoredRow,
+  DurableWrite,
+  TenantContext,
+} from "@fleetos/identity";
+import {
+  createBrowserPasswordHasher,
+  createProductSessionRuntime,
+  INVITATION_TTL_SECONDS,
+} from "./runtime/product-session";
+import type { ProductDurableStore } from "./runtime/product-session";
 import { ConsoleSessionApp } from "./console-app";
 import type { ShellRoute } from "@fleetos/web-shell";
 import { environmentLabel } from "./runtime/env";
@@ -66,20 +95,346 @@ function realClock(): string {
   return new Date().toISOString();
 }
 
+// ---------------------------------------------------------------------------
+// W121 — the browser-tier stores injected at THIS composition root
+// (localStorage; in-memory fallback when storage is unavailable — the
+// server render, private modes, storage-disabled contexts)
+// ---------------------------------------------------------------------------
+
+/** The localStorage key of the durable identity records (browser tier). */
+const FLEETOS_BROWSER_DURABLE_KEY = "fleetos.w121.durable" as const;
+/** The localStorage key of the persisted session token (W121). */
+const FLEETOS_BROWSER_SESSION_KEY = "fleetos.w121.session" as const;
+
+/** localStorage access, guarded for SSR/quota/private-mode (never throws). */
+function browserLocalStorage(): Storage | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const storage = window.localStorage;
+    return storage === undefined || storage === null ? null : storage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The in-memory fallback store shape (also the serialization unit):
+ * table -> tenant -> row key -> row. Flat durable values only.
+ */
+interface BrowserDurableShape {
+  readonly [table: string]: Record<string, Record<string, DurableRow>>;
+}
+
+/** Parse the persisted durable shape; a fresh empty store on garbage. */
+function readBrowserDurableShape(): BrowserDurableShape {
+  const storage = browserLocalStorage();
+  if (storage === null) return {};
+  try {
+    const raw = storage.getItem(FLEETOS_BROWSER_DURABLE_KEY);
+    if (raw === null) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+    return parsed as BrowserDurableShape;
+  } catch {
+    return {};
+  }
+}
+
+/** Best-effort serialization (in-page truth stays consistent either way). */
+function writeBrowserDurableShape(shape: BrowserDurableShape): void {
+  const storage = browserLocalStorage();
+  if (storage === null) return;
+  try {
+    storage.setItem(FLEETOS_BROWSER_DURABLE_KEY, JSON.stringify(shape));
+  } catch {
+    // Quota/private-mode: durability is best-effort in the browser tier;
+    // the in-page records remain the truth for this page's session.
+  }
+}
+
+/**
+ * The BROWSER durable identity store: the W100C `DurableRecordStore`
+ * seam over localStorage, partitioned per table per tenant EXACTLY
+ * like the in-memory reference (a tenant-A context can never observe
+ * tenant-B rows). The demo/local tier until the W102 Neon binding;
+ * the runtime + repositories are identical whichever implementation
+ * is injected.
+ */
+export function createBrowserDurableRecordStore(): ProductDurableStore {
+  const shape: BrowserDurableShape = readBrowserDurableShape();
+
+  function partitionOf(table: string, tenantId: string): Record<string, DurableRow> {
+    const perTable = shape[table] as Record<string, Record<string, DurableRow>> | undefined;
+    if (perTable === undefined) {
+      const fresh: Record<string, Record<string, DurableRow>> = {};
+      (shape as Record<string, Record<string, Record<string, DurableRow>>>)[table] = fresh;
+      return fresh[tenantId] === undefined
+        ? (fresh[tenantId] = {})
+        : fresh[tenantId]!;
+    }
+    const perTenant = perTable[tenantId];
+    if (perTenant === undefined) {
+      return (perTable[tenantId] = {});
+    }
+    return perTenant;
+  }
+
+  function validateRow(table: string, row: DurableRow): void {
+    const offenders = invalidRowColumns(row);
+    if (offenders.length > 0) {
+      throw new TypeError(
+        `DurableRecordStore: ${table} row carries non-durable values in: ${offenders.join(", ")}`,
+      );
+    }
+  }
+
+  function sortedPartition(table: string, tenantId: string): readonly DurableStoredRow[] {
+    const partition = (shape[table] as Record<string, Record<string, DurableRow>> | undefined)?.[tenantId];
+    if (partition === undefined) return [];
+    return Object.keys(partition)
+      .sort()
+      .map((key) => ({ key, row: { ...partition[key]! } }));
+  }
+
+  const store: DurableRecordStore = {
+    insert(ctx: TenantContext, table: string, key: string, row: DurableRow): DurableWrite {
+      const table_ = requireTableName(table);
+      const key_ = requireRowKey(key);
+      const tenantId = requireTenantContext(ctx);
+      validateRow(table_, row);
+      const tenantFailure = checkRowTenant(tenantId, row, table_);
+      if (tenantFailure !== undefined) return tenantFailure;
+      const partition = partitionOf(table_, tenantId);
+      if (Object.prototype.hasOwnProperty.call(partition, key_)) {
+        return {
+          ok: false,
+          error: durableAlreadyExists(table_, key_, tenantId, ctx.correlationId),
+          reason: "already_exists",
+        };
+      }
+      partition[key_] = { ...row };
+      writeBrowserDurableShape(shape);
+      return { ok: true };
+    },
+
+    put(ctx: TenantContext, table: string, key: string, row: DurableRow): DurableWrite {
+      const table_ = requireTableName(table);
+      const key_ = requireRowKey(key);
+      const tenantId = requireTenantContext(ctx);
+      validateRow(table_, row);
+      const tenantFailure = checkRowTenant(tenantId, row, table_);
+      if (tenantFailure !== undefined) return tenantFailure;
+      partitionOf(table_, tenantId)[key_] = { ...row };
+      writeBrowserDurableShape(shape);
+      return { ok: true };
+    },
+
+    get(ctx: TenantContext, table: string, key: string): DurableStoredRow | undefined {
+      const table_ = requireTableName(table);
+      const key_ = requireRowKey(key);
+      const tenantId = requireTenantContext(ctx);
+      const partition = (shape[table_] as Record<string, Record<string, DurableRow>> | undefined)?.[tenantId];
+      const row = partition?.[key_];
+      return row === undefined ? undefined : { key: key_, row: { ...row } };
+    },
+
+    list(ctx: TenantContext, table: string, opts?: DurableListOptions): readonly DurableStoredRow[] {
+      const table_ = requireTableName(table);
+      const tenantId = requireTenantContext(ctx);
+      const rows = sortedPartition(table_, tenantId);
+      const prefix = opts?.prefix;
+      const where = opts?.where;
+      return rows.filter((stored) => {
+        if (prefix !== undefined && !stored.key.startsWith(prefix)) return false;
+        if (where !== undefined) {
+          for (const [column, value] of Object.entries(where)) {
+            if (stored.row[column] !== value) return false;
+          }
+        }
+        return true;
+      });
+    },
+
+    remove(ctx: TenantContext, table: string, key: string): boolean {
+      const table_ = requireTableName(table);
+      const key_ = requireRowKey(key);
+      const tenantId = requireTenantContext(ctx);
+      const partition = (shape[table_] as Record<string, Record<string, DurableRow>> | undefined)?.[tenantId];
+      if (partition === undefined || !Object.prototype.hasOwnProperty.call(partition, key_)) {
+        return false;
+      }
+      delete partition[key_];
+      writeBrowserDurableShape(shape);
+      return true;
+    },
+
+    count(ctx: TenantContext, table: string): number {
+      const table_ = requireTableName(table);
+      const tenantId = requireTenantContext(ctx);
+      return sortedPartition(table_, tenantId).length;
+    },
+
+    findInvitationByCodeHash(codeHash: string): DurableStoredRow | undefined {
+      if (typeof codeHash !== "string" || codeHash.length === 0) return undefined;
+      const perTable = shape["fleetos_workspace_invitations"] as
+        | Record<string, Record<string, DurableRow>>
+        | undefined;
+      if (perTable === undefined) return undefined;
+      for (const partition of Object.values(perTable)) {
+        for (const [key, row] of Object.entries(partition)) {
+          if (row["code_hash"] === codeHash) {
+            return { key, row: { ...row } };
+          }
+        }
+      }
+      return undefined;
+    },
+  };
+
+  return {
+    ...store,
+    get snapshot(): Readonly<Record<string, Readonly<Record<string, readonly DurableStoredRow[]>>>> {
+      const out: Record<string, Record<string, readonly DurableStoredRow[]>> = {};
+      for (const [table, perTenant] of Object.entries(shape)) {
+        const perTable: Record<string, readonly DurableStoredRow[]> = {};
+        for (const tenantId of Object.keys(perTenant)) {
+          perTable[tenantId] = Object.freeze(sortedPartition(table, tenantId));
+        }
+        out[table] = Object.freeze(perTable);
+      }
+      return Object.freeze(out);
+    },
+  };
+}
+
+/**
+ * The localStorage session store (the W121 persisted-token seam): JSON
+ * under one key; `save(null)` removes it; `load` validates the shape
+ * and the frozen grammars and refuses EVERYTHING else (fail-closed —
+ * the runtime re-validates on top through the resolve seam).
+ */
+export function createBrowserSessionStore(): ProductSessionStore {
+  return {
+    save(session: ProductPersistedSession | null): void {
+      const storage = browserLocalStorage();
+      if (storage === null) return;
+      try {
+        if (session === null) {
+          storage.removeItem(FLEETOS_BROWSER_SESSION_KEY);
+        } else {
+          storage.setItem(FLEETOS_BROWSER_SESSION_KEY, JSON.stringify(session));
+        }
+      } catch {
+        // Best-effort persistence only; never an authentication path.
+      }
+    },
+    load(): ProductPersistedSession | null {
+      const storage = browserLocalStorage();
+      if (storage === null) return null;
+      try {
+        const raw = storage.getItem(FLEETOS_BROWSER_SESSION_KEY);
+        if (raw === null) return null;
+        const parsed: unknown = JSON.parse(raw);
+        if (typeof parsed !== "object" || parsed === null) return null;
+        const candidate = parsed as { readonly tenantId?: unknown; readonly token?: unknown };
+        if (typeof candidate.tenantId !== "string" || typeof candidate.token !== "string") {
+          return null;
+        }
+        if (!candidate.tenantId.startsWith("tnt_") || !candidate.token.startsWith("fst_")) {
+          return null;
+        }
+        return { tenantId: candidate.tenantId, token: candidate.token };
+      } catch {
+        return null; // corrupted storage fails closed (the runtime clears it)
+      }
+    },
+  };
+}
+
+/**
+ * The crypto-random session-token generator (the frozen `fst_`
+ * grammar, crypto-random body). Injected for the same reason as the
+ * salt: a per-runtime deterministic counter would COLLIDE with the
+ * persisted (revoked-but-kept) session records after a reload — the
+ * durable session table enforces token uniqueness across all records,
+ * so fresh sessions need fresh entropy at the binding site.
+ */
+function browserSessionTokenGenerator(): string {
+  const root: Crypto | undefined = typeof crypto === "undefined" ? undefined : crypto;
+  if (root !== undefined && typeof root.getRandomValues === "function") {
+    const bytes = new Uint8Array(24);
+    root.getRandomValues(bytes);
+    const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+    return `fst_${Array.from(bytes, (b) => alphabet[b % alphabet.length]!).join("")}`;
+  }
+  return `fst_brwsr${Math.random().toString(36).slice(2, 27).padEnd(25, "0")}`;
+}
+
+/**
+ * The crypto-random session-id generator (the `ses_` prefix). Session
+ * ids are the durable session table's PRIMARY KEY — the same
+ * uniqueness-across-reloads ruling as the token generator above.
+ */
+function browserSessionIdGenerator(): string {
+  const root: Crypto | undefined = typeof crypto === "undefined" ? undefined : crypto;
+  if (root !== undefined && typeof root.getRandomValues === "function") {
+    const bytes = new Uint8Array(12);
+    root.getRandomValues(bytes);
+    return `ses_${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+  }
+  return `ses_brwsr${Math.random().toString(36).slice(2, 14)}`;
+}
+
+/**
+ * The crypto-random salt generator (entropy is legal at the composition
+ * root — the same ruling as the real clock; deterministic tests inject
+ * their own seam). Falls back to a best-effort random hex when the Web
+ * Crypto RNG is unavailable.
+ */
+function browserSaltGenerator(): string {
+  const root: Crypto | undefined = typeof crypto === "undefined" ? undefined : crypto;
+  if (root !== undefined && typeof root.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    root.getRandomValues(bytes);
+    return `slt_${Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+  }
+  return `slt_fallback${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`;
+}
+
 export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
   const runtime = useMemo(
     () =>
       createProductSessionRuntime({
         now: realClock,
         ttlSeconds: 60 * 60 * 8,
+        // W121: the REAL seams this composition root injects — the
+        // iterated-SHA-256 password hasher, the crypto-random salts,
+        // the browser durable identity store (localStorage) and the
+        // persisted session-token store. The identity package's own
+        // defaults stay deterministic; the browser tier is injected
+        // HERE, at the binding site.
+        passwordHasher: createBrowserPasswordHasher(),
+        saltGenerator: browserSaltGenerator,
+        sessionToken: browserSessionTokenGenerator,
+        sessionId: browserSessionIdGenerator,
+        durableStore: createBrowserDurableRecordStore(),
+        sessionStore: createBrowserSessionStore(),
       }),
     [],
   );
-  const [state, setState] = useState<ProductSessionState>(() => runtime.state());
+  // SSR/hydration law: the first paint is ALWAYS the signed-out gate
+  // (the server render owns no browser stores); the client syncs the
+  // persisted truth after mount — reload restores the session through
+  // the resolve seam, never a fabricated first-paint login.
+  const [state, setState] = useState<ProductSessionState>(() => ({ phase: "signed-out" }));
   const [refusal, setRefusal] = useState<
     { readonly reason: ProductAuthRefusal; readonly message: string } | null
   >(null);
-  const [directory, setDirectory] = useState(() => runtime.listWorkspaces());
+  const [directory, setDirectory] = useState<readonly ProductWorkspaceSummary[]>(() => []);
+  useEffect(() => {
+    setState(runtime.state());
+    setDirectory(runtime.listWorkspaces());
+  }, [runtime]);
   // W110: the invite-member surface state (the display-once lifecycle).
   // The raw code lives here ONLY between issuance and the hide confirm.
   const [invite, setInvite] = useState<InviteMemberState>({ kind: "closed" });
@@ -108,12 +463,18 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
   );
 
   const onCreate = useCallback(
-    (input: { readonly name: string; readonly displayName: string; readonly email: string }) => {
+    (input: {
+      readonly name: string;
+      readonly displayName: string;
+      readonly email: string;
+      readonly password: string;
+    }) => {
       apply(
         runtime.createWorkspace({
           name: input.name,
           founderDisplayName: input.displayName,
           founderEmail: input.email,
+          password: input.password,
         }),
       );
       resetInvite();
@@ -145,7 +506,7 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
   );
 
   const onSignIn = useCallback(
-    (input: { readonly tenantId: string; readonly email: string }) => {
+    (input: { readonly tenantId: string; readonly email: string; readonly password: string }) => {
       apply(runtime.signIn(input));
       resetInvite();
     },
@@ -169,13 +530,13 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
   }, [apply, runtime]);
 
   const onRecover = useCallback(() => {
-    // Recovery signs the SAME member back into the SAME workspace (the
-    // expired session's remembered identity — never a silent re-auth).
-    const current = runtime.state();
-    if (current.phase === "expired") {
-      apply(runtime.signIn({ tenantId: current.tenantId, email: current.memberRef }));
-      resetInvite();
-    }
+    // W121: the honest recovery — with password credentials the gate can
+    // no longer silently re-authenticate the expired session's member
+    // (that would bypass the credential seam). Recovery clears the dead
+    // session and returns to the choice screen, where the member signs
+    // back in WITH their credentials (never a fabricated re-login).
+    apply(runtime.signOut());
+    resetInvite();
   }, [apply, runtime, resetInvite]);
 
   // -- W110: the invite-member surface over the REAL seam -------------
