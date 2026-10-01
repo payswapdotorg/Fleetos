@@ -55,6 +55,29 @@ export * from "./roles";
 // D4 — Scoped authorization primitives
 export * from "./authorization";
 
+// W100C — The audit emission seam for the durable identity lifecycle
+export * from "./identity-audit-seam";
+
+// W100C — Durable persistence: tables + DDL + the record-store seam +
+// the in-memory reference implementation
+export * from "./durable/tables";
+export * from "./durable/ddl";
+export * from "./durable/seam";
+export * from "./durable/memory";
+
+// W100C — The durable repositories (tenant/principal/assignment/session/
+// invitation translation over the seam)
+export * from "./durable/repositories";
+
+// W100C — The workspace/tenant create/join lifecycle (audited)
+export * from "./workspace";
+
+// W100C — The durable session service + active-role session semantics
+export * from "./session";
+
+// W100C — The auditable active-role switch (never changes tenant)
+export * from "./role-switch";
+
 // FleetError-shaped identity errors
 export * from "./errors";
 

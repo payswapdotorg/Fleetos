@@ -205,6 +205,40 @@ function acceptedQuoteFacets(): {
   };
 }
 
+
+/** The W100C vendor-match facets (satisfiable — the selection stage's DONE evidence). */
+function matchedVendorFacets() {
+  return {
+    tenantId: TENANT_A,
+    vendorId: "ven_w100c0000001",
+    vendorName: "Nordwerk IT Service",
+    matchedCapabilityId: "cap.procure.laptop",
+    rankScore: 0.82,
+    satisfiable: true,
+    reasons: ["capability_declared", "region_covered"],
+  };
+}
+
+/** The W100C maintenance facets (work order + satisfiable service match). */
+function fulfilledMaintenanceFacets() {
+  return {
+    tenantId: TENANT_A,
+    workOrderId: "swo_w100c000001",
+    deviceId: "dev_w090c_0001",
+    serviceCategory: "service.battery",
+    deadline: "2026-04-01T00:00:00Z",
+    matchedVendor: {
+      tenantId: TENANT_A,
+      vendorId: "ven_w100c0000002",
+      vendorName: "Akku Kolonial",
+      matchedCapabilityId: "service.battery",
+      rankScore: 0.9,
+      satisfiable: true,
+      reasons: ["sla_headroom", "quality_headroom"],
+    },
+  };
+}
+
 /** The W050A submission facets (APPROVED, adopted). */
 function approvedSubmission() {
   return {
@@ -240,6 +274,8 @@ function fullSource(): WorkloadProcurementJourneySource {
     subscription: journeySubscription(),
     demand: journeyDemand(),
     quote: acceptedQuoteFacets(),
+    vendorMatch: matchedVendorFacets(),
+    maintenance: fulfilledMaintenanceFacets(),
     submission: approvedSubmission(),
     verification: verifiedConnectivity(),
   };
@@ -249,7 +285,7 @@ function fullSource(): WorkloadProcurementJourneySource {
 // The view-model derivations
 // ---------------------------------------------------------------------------
 
-test("journey: the full source derives all six stages DONE and the terminal VERIFIED outcome", () => {
+test("journey: the full source derives all EIGHT stages DONE and the terminal VERIFIED outcome", () => {
   const result = buildWorkloadProcurementJourneyView(TENANT_A, fullSource());
   expect(result.ok).toBe(true);
   if (!result.ok) throw new Error(result.error.message);
@@ -273,7 +309,10 @@ test("journey: every stage carries its route target (the shell vocabulary)", () 
   }
   expect(result.view.stages[0]?.route).toEqual({ area: "workloads", view: "planning" });
   expect(result.view.stages[1]?.route).toEqual({ area: "commerce", view: "software" });
-  expect(result.view.stages[5]?.route).toEqual({ area: "commerce", view: "connectivity" });
+  expect(result.view.stages[4]?.route).toEqual({ area: "commerce", view: "vendors" });
+  expect(result.view.stages[5]?.route).toEqual({ area: "commerce", view: "maintenance" });
+  expect(result.view.stages[6]?.route).toEqual({ area: "commerce", view: "connectivity" });
+  expect(result.view.stages[7]?.route).toEqual({ area: "commerce", view: "connectivity" });
 });
 
 test("journey: a PARKED submission derives the connectivity-request stage as the approval state", () => {
@@ -314,6 +353,8 @@ test("journey: an unaccepted (ISSUED) quote derives the approval state at the qu
   const source: WorkloadProcurementJourneySource = {
     ...fullSource(),
     quote: { ...acceptedQuoteFacets(), accepted: false, acceptedAt: null, status: "ISSUED" },
+    vendorMatch: null,
+    maintenance: null,
     submission: null,
     verification: null,
   };
@@ -331,6 +372,8 @@ test("journey: records absent -> the first open stage is current, the plan stage
     subscription: null,
     demand: null,
     quote: null,
+    vendorMatch: null,
+    maintenance: null,
     submission: null,
     verification: null,
   };
@@ -539,4 +582,141 @@ test("TYPE PROOF: JourneyConnectivityVerificationFacets composes from the real W
   expect(seam.failed).toBe(false);
   expect(seam.measurementKinds).toEqual(["latency_ms", "throughput_mbps"]);
   expect(deriveConnectivityVerification(seam)).toBe(true);
+});
+
+// ---------------------------------------------------------------------------
+// W100C — the vendor-selection + maintenance-service stages
+// ---------------------------------------------------------------------------
+
+test("W100C: a satisfiable vendor match derives the vendor-selection stage DONE", () => {
+  const source: WorkloadProcurementJourneySource = {
+    ...fullSource(),
+    maintenance: null,
+  };
+  const result = buildWorkloadProcurementJourneyView(TENANT_A, source);
+  if (!result.ok) throw new Error(result.error.message);
+  const vendorStage = result.view.stages.find((stage) => stage.stageId === "vendor-selection");
+  expect(vendorStage?.state).toBe("done");
+  expect(vendorStage?.summary).toContain("Nordwerk IT Service");
+  expect(vendorStage?.summary).toContain("rank 0.82");
+  expect(vendorStage?.recordRef).toBe("ven_w100c0000001");
+  expect(vendorStage?.evidenceRefs).toContain("vendorMatch:ven_w100c0000001");
+  expect(vendorStage?.route).toEqual({ area: "commerce", view: "vendors" });
+});
+
+test("W100C: an unsatisfiable vendor match BLOCKS the vendor-selection stage", () => {
+  const source: WorkloadProcurementJourneySource = {
+    ...fullSource(),
+    vendorMatch: {
+      ...matchedVendorFacets(),
+      satisfiable: false,
+      reasons: ["region_not_covered"],
+    },
+    maintenance: null,
+  };
+  const result = buildWorkloadProcurementJourneyView(TENANT_A, source);
+  if (!result.ok) throw new Error(result.error.message);
+  const vendorStage = result.view.stages.find((stage) => stage.stageId === "vendor-selection");
+  expect(vendorStage?.state).toBe("blocked");
+  expect(vendorStage?.summary).toContain("UNSATISFIABLE");
+  expect(vendorStage?.summary).toContain("region_not_covered");
+});
+
+test("W100C: an absent vendor match leaves the stage PENDING (never invented)", () => {
+  const source: WorkloadProcurementJourneySource = {
+    ...fullSource(),
+    vendorMatch: null,
+    maintenance: null,
+  };
+  const result = buildWorkloadProcurementJourneyView(TENANT_A, source);
+  if (!result.ok) throw new Error(result.error.message);
+  // The vendor stage is the FIRST open stage here: pending + cursor =>
+  // "current" (the cursor discipline — authorization states are never
+  // masked, and a plain pending stage leads the journey).
+  const vendorStage = result.view.stages.find((stage) => stage.stageId === "vendor-selection");
+  expect(vendorStage?.state).toBe("current");
+  expect(vendorStage?.summary).toContain("No vendor match is recorded");
+});
+
+test("W100C: a work order with a satisfiable service match derives the maintenance stage DONE", () => {
+  const result = buildWorkloadProcurementJourneyView(TENANT_A, fullSource());
+  if (!result.ok) throw new Error(result.error.message);
+  const maintenanceStage = result.view.stages.find(
+    (stage) => stage.stageId === "maintenance-service",
+  );
+  expect(maintenanceStage?.state).toBe("done");
+  expect(maintenanceStage?.summary).toContain("swo_w100c000001");
+  expect(maintenanceStage?.summary).toContain("Akku Kolonial");
+  expect(maintenanceStage?.recordRef).toBe("swo_w100c000001");
+  expect(maintenanceStage?.route).toEqual({ area: "commerce", view: "maintenance" });
+  expect(maintenanceStage?.evidenceRefs).toContain("serviceVendor:ven_w100c0000002");
+});
+
+test("W100C: a work order WITHOUT a service match derives the maintenance stage APPROVAL", () => {
+  const source: WorkloadProcurementJourneySource = {
+    ...fullSource(),
+    maintenance: { ...fulfilledMaintenanceFacets(), matchedVendor: null },
+  };
+  const result = buildWorkloadProcurementJourneyView(TENANT_A, source);
+  if (!result.ok) throw new Error(result.error.message);
+  const maintenanceStage = result.view.stages.find(
+    (stage) => stage.stageId === "maintenance-service",
+  );
+  expect(maintenanceStage?.state).toBe("approval");
+  expect(maintenanceStage?.summary).toContain("awaits a vendor assignment");
+});
+
+test("W100C: an absent work order leaves the maintenance stage PENDING", () => {
+  const source: WorkloadProcurementJourneySource = {
+    ...fullSource(),
+    maintenance: null,
+  };
+  const result = buildWorkloadProcurementJourneyView(TENANT_A, source);
+  if (!result.ok) throw new Error(result.error.message);
+  // The maintenance stage is the FIRST open stage here: pending +
+  // cursor => "current".
+  const maintenanceStage = result.view.stages.find(
+    (stage) => stage.stageId === "maintenance-service",
+  );
+  expect(maintenanceStage?.state).toBe("current");
+  expect(maintenanceStage?.summary).toContain("No maintenance service work order");
+});
+
+test("W100C: the full 8-stage journey is workload -> software -> procurement -> vendor -> maintenance -> connectivity", () => {
+  const result = buildWorkloadProcurementJourneyView(TENANT_A, fullSource());
+  if (!result.ok) throw new Error(result.error.message);
+  expect(result.view.stages.map((stage) => stage.stageId)).toEqual([
+    "workload-plan",
+    "software-need",
+    "procurement-request",
+    "procurement-quote",
+    "vendor-selection",
+    "maintenance-service",
+    "connectivity-request",
+    "connectivity-verified",
+  ]);
+});
+
+test("W100C: cross-tenant vendor/maintenance records are refused (tenant_mismatch, LOCK 17)", () => {
+  const foreignVendor = {
+    ...matchedVendorFacets(),
+    tenantId: asTenantId("tnt_w060cbbbbbbbb2"),
+  };
+  const result = buildWorkloadProcurementJourneyView(TENANT_A, {
+    ...fullSource(),
+    vendorMatch: foreignVendor,
+  });
+  expect(result.ok).toBe(false);
+  if (!result.ok) expect(result.error.code).toContain("tenant_mismatch");
+
+  const foreignMaintenance = {
+    ...fulfilledMaintenanceFacets(),
+    tenantId: asTenantId("tnt_w060cbbbbbbbb2"),
+  };
+  const result2 = buildWorkloadProcurementJourneyView(TENANT_A, {
+    ...fullSource(),
+    maintenance: foreignMaintenance,
+  });
+  expect(result2.ok).toBe(false);
+  if (!result2.ok) expect(result2.error.code).toContain("tenant_mismatch");
 });

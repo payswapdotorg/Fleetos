@@ -95,6 +95,14 @@ export * from "./state";
 // fleet connectivity status)
 export * from "./outcomes";
 
+// W100C — the ROLE-AWARE commerce projection (asset.manager /
+// team.manager / employee / vendor.operator lenses — presentation only)
+export * from "./role-lens";
+
+// W100C — the Apify vendor-discovery ENRICHMENT view (PROPOSAL-grade +
+// the explicit provider-unavailable states)
+export * from "./discovery";
+
 // W090C — the local console design tokens + status vocabulary
 export * from "./ui/tokens";
 export * from "./ui/status";

@@ -76,6 +76,7 @@ import type {
 import type { WorkloadResourceLinkageStatus, WorkloadResourceLinkageView } from "../resources";
 import type { WorkloadProfileFacets } from "../seams";
 import type { JourneyRailStageView } from "../journey";
+import type { WorkloadRoleLensView } from "../role-lens";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -113,6 +114,13 @@ export interface WorkloadPlanningScreenProps {
   readonly journey: readonly JourneyRailStageView[] | null;
   /** Navigate to a journey stage (the shell routes by the stage target). */
   readonly onOpenJourneyStage?: (stageId: string) => void;
+  /**
+   * The W100C role-lens band (PRESENTATION ONLY — emphasis, copy and
+   * capability notices; never permissions). Optional: the shell injects
+   * it when the session's active role carries one of the four W100C
+   * lenses.
+   */
+  readonly roleLens?: WorkloadRoleLensView | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +128,33 @@ export interface WorkloadPlanningScreenProps {
 // ---------------------------------------------------------------------------
 
 const JOURNEY_RAIL_TITLE = "Journey — workload plan to verified connectivity";
+
+/** The W100C role-lens band: emphasis + copy + capability notices (never permissions). */
+function RoleLensBand({ lens }: { readonly lens: WorkloadRoleLensView }): JSX.Element {
+  return (
+    <Card
+      title={`Viewing as ${lens.label}`}
+      subtitle={`${lens.primaryQuestion} — emphasis only; permissions come from identity and the Contract Guardian.`}
+    >
+      {lens.scopeNote !== null && (
+        <p className="fos-screen-subtitle" style={{ marginTop: 0 }}>
+          {lens.scopeNote}
+        </p>
+      )}
+      {lens.notices.length > 0 && (
+        <ul aria-label="De-emphasized sections for this role lens">
+          {lens.notices.map((notice) => (
+            <li key={notice.section}>
+              <span className="fos-timeline__label">{notice.message}</span>
+              <br />
+              <span className="fos-timeline__detail">{notice.escalationPath}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
 
 function JourneyRail({
   stages,
@@ -881,6 +916,7 @@ export function WorkloadPlanningScreen(props: WorkloadPlanningScreenProps): JSX.
           </Button>
         )}
       </header>
+      {props.roleLens != null && <RoleLensBand lens={props.roleLens} />}
       {props.journey !== null && props.journey.length > 0 && (
         <JourneyRail stages={props.journey} onOpenStage={props.onOpenJourneyStage} />
       )}

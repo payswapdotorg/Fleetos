@@ -96,3 +96,15 @@ Runtime dependencies: `@fleetos/contracts` + the declared same-lane
 workspace domain packages. React + the testing stack live in
 devDependencies (the W090A/W090B precedent). No `any` in public
 signatures. Strict TS.
+
+## W100C — role lens + the full journey
+
+Wave 9 added `src/role-lens.ts` (the role-aware workload projection for
+asset.manager / team.manager / employee / vendor.operator — emphasis
+ordering, role copy, and machine-stable capability notices with
+escalation paths; PRESENTATION ONLY, structurally permission-free) and
+extended `src/journey.ts` to the full eight-stage
+workload -> software -> procurement -> vendor -> maintenance ->
+connectivity journey (the vendor-selection and maintenance-service
+stages route to the existing commerce.vendors / commerce.maintenance
+shell views). The rendered screen gained the optional `roleLens` band.

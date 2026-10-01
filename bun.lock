@@ -77,6 +77,7 @@
       },
       "devDependencies": {
         "@fleetos/integration-adcos": "workspace:*",
+        "@fleetos/integration-apify": "workspace:*",
         "@fleetos/integration-aurum": "workspace:*",
         "@fleetos/maintenance": "workspace:*",
         "@fleetos/procurement": "workspace:*",
@@ -271,6 +272,9 @@
       "dependencies": {
         "@fleetos/contracts": "workspace:*",
       },
+      "devDependencies": {
+        "@fleetos/audit": "workspace:*",
+      },
     },
     "packages/integrations/adcos": {
       "name": "@fleetos/integration-adcos",
@@ -282,6 +286,13 @@
         "@fleetos/audit": "workspace:*",
         "@fleetos/identity": "workspace:*",
         "@fleetos/policy": "workspace:*",
+      },
+    },
+    "packages/integrations/apify": {
+      "name": "@fleetos/integration-apify",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
       },
     },
     "packages/integrations/arena": {
@@ -472,6 +483,8 @@
     "@fleetos/identity": ["@fleetos/identity@workspace:packages/identity"],
 
     "@fleetos/integration-adcos": ["@fleetos/integration-adcos@workspace:packages/integrations/adcos"],
+
+    "@fleetos/integration-apify": ["@fleetos/integration-apify@workspace:packages/integrations/apify"],
 
     "@fleetos/integration-arena": ["@fleetos/integration-arena@workspace:packages/integrations/arena"],
 

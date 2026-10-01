@@ -54,6 +54,7 @@ import {
   MaintenanceScreen,
   ConnectivityScreen,
   CommunicationScreen,
+  buildVendorDiscoveryView,
   CONSOLE_CSS,
 } from "../src/index";
 import type {
@@ -830,6 +831,8 @@ test("journey rail: the REAL workload-lane journey renders on the procurement sc
       accepted: false,
       acceptedAt: null,
     },
+    vendorMatch: null,
+    maintenance: null,
     submission: null,
     verification: null,
   });
@@ -890,6 +893,8 @@ test("journey rail: a REJECTED quote renders the blocked stage state on the soft
       accepted: false,
       acceptedAt: null,
     },
+    vendorMatch: null,
+    maintenance: null,
     submission: null,
     verification: null,
   });
@@ -1230,3 +1235,103 @@ test("provider neutrality: no provider handle or topology field ever renders", (
 });
 
 void CORR;
+
+// ---------------------------------------------------------------------------
+// W100C — the vendor-discovery enrichment card on VendorsScreen
+// ---------------------------------------------------------------------------
+
+test("W100C vendors: the discovery card renders PROPOSAL rows with attribution", () => {
+  const discovery = buildVendorDiscoveryView(TENANT_A, {
+    kind: "discovered",
+    proposals: [
+      {
+        proposalStatus: "PROPOSAL",
+        tenantId: TENANT_A,
+        provenance: {
+          provider: "apify",
+          runId: "run_render00001",
+          datasetId: "ds_render000001",
+          fetchedAt: "2026-10-01T09:00:00Z",
+        },
+        candidateName: "Nordwerk IT Service",
+        region: "Berlin",
+        categories: ["Laptops", "repair"],
+        website: "https://nordwerk.example",
+        phone: "+49 30 000",
+        contactEmail: "info@nordwerk.example",
+        notes: "24h turnaround",
+      },
+    ],
+    attribution: {
+      provider: "apify",
+      runId: "run_render00001",
+      datasetId: "ds_render000001",
+      fetchedAt: "2026-10-01T09:00:00Z",
+      rawItemCount: 1,
+      proposalCount: 1,
+    },
+  });
+  if (!discovery.ok) throw new Error(discovery.error.message);
+  render(
+    <VendorsScreen
+      phase={{ kind: "ready", view: { ...vendorsData(), discovery: discovery.view } }}
+      openVendorId={null}
+      onOpenVendor={(): void => {}}
+      journey={null}
+    />,
+  );
+  // The card's hard-law subtitle renders.
+  expect(
+    screen.getByText(/Never authoritative inventory, price, policy or fulfillment truth/),
+  ).toBeTruthy();
+  // The candidate row renders with the PROPOSAL badge and attribution.
+  expect(screen.getByText("Nordwerk IT Service")).toBeTruthy();
+  expect(screen.getAllByText("PROPOSAL").length).toBeGreaterThan(0);
+  // The attribution summary renders the raw -> proposal count, and the
+  // run id appears in BOTH the summary line and the row's attribution
+  // column (two visible attributions — the run is always traceable).
+  expect(screen.getByText(/1 raw items → 1 proposals/)).toBeTruthy();
+  expect(screen.getAllByText(/via apify · run run_render00001/).length).toBe(2);
+});
+
+test("W100C vendors: the provider-unavailable state renders fail-visibly with escalation", () => {
+  const unavailable = buildVendorDiscoveryView(TENANT_A, {
+    kind: "unavailable",
+    unavailable: {
+      state: "budget_exhausted",
+      reason: "apify_free_credit_exhausted",
+      retryable: true,
+    },
+    escalationPath:
+      "The Apify free-tier credit is exhausted. Enrichment resumes at the next billing cycle.",
+  });
+  if (!unavailable.ok) throw new Error(unavailable.error.message);
+  render(
+    <VendorsScreen
+      phase={{ kind: "ready", view: { ...vendorsData(), discovery: unavailable.view } }}
+      openVendorId={null}
+      onOpenVendor={(): void => {}}
+      journey={null}
+    />,
+  );
+  expect(screen.getByText("Vendor discovery enrichment is paused — provider budget exhausted")).toBeTruthy();
+  expect(screen.getByText("reason: apify_free_credit_exhausted")).toBeTruthy();
+  expect(screen.getByText("retryable: yes")).toBeTruthy();
+  expect(
+    screen.getByText(/Enrichment resumes at the next billing cycle/),
+  ).toBeTruthy();
+  // The authority reminder renders (vendor records remain the source).
+  expect(screen.getByText(/vendor records above remain the authoritative source/)).toBeTruthy();
+});
+
+test("W100C vendors: no discovery binding -> the section is hidden (optional provider)", () => {
+  render(
+    <VendorsScreen
+      phase={{ kind: "ready", view: { ...vendorsData(), discovery: null } }}
+      openVendorId={null}
+      onOpenVendor={(): void => {}}
+      journey={null}
+    />,
+  );
+  expect(screen.queryByText(/Vendor discovery/)).toBeNull();
+});

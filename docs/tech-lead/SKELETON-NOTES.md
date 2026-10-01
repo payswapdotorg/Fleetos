@@ -4063,3 +4063,92 @@ Design rulings (binding on later consumers of these seams):
 141 new tests; full suite 2973/0 = 2832 + 141 (exact arithmetic);
 typecheck 0 errors; check OK (23 packages; the 150-contract snapshot is
 unchanged — W100B adds no package and no contract surface).
+
+
+## W100C — Lane C: durable identity/session/role switching + workload/commerce experiences (2026-10-01)
+
+Delivered on `work/w100c` from `integration/wave0` (0bad13a). Scope per
+PRODUCT-READINESS-HANDOFF W100C: packages/identity, packages/audit,
+packages/integrations/apify (NEW), apps/web/workloads,
+apps/web/commerce (plus the C-owned domain packages' prior art consumed,
+not modified). `bun.lock` changed mechanically (the new workspace package
+registration).
+
+Design rulings (binding on later consumers of these seams):
+
+- **The durable seam is a flat record store, not an ORM.** The
+  `DurableRecordStore` (packages/identity/src/durable/seam.ts) is the
+  single repository seam W102 [TL] implements over Neon: typed table
+  definitions (tables.ts) -> DERIVED DDL (ddl.ts, one source of truth)
+  -> in-memory reference implementation (memory.ts) for the local tier.
+  Rows are flat `DurableValue` columns; nested domain records serialize
+  as canonical JSON into `jsonb` columns at the repository layer. There
+  is NO pg/postgres dependency anywhere in src/.
+- **The one sanctioned cross-tenant read** is the workspace-join
+  invitation-code resolver (`findInvitationByCodeHash`): join happens
+  BEFORE the joining principal holds a tenant context, so the code-hash
+  lookup is an explicit SYSTEM-level operation on the invitation table
+  only (exact-match; returns one row with its tenant scope). The join's
+  subsequent writes execute with the TARGET tenant's context resolved
+  FROM the invitation — a caller can never name the tenant it joins.
+- **The active-role selector is session presentation state ONLY.** The
+  authoritative assigned-role set lives in
+  `fleetos_role_assignments`; `fleetos_sessions.active_role` is a
+  nullable selector. `projectRoleAwareSession` returns the selector, the
+  assigned set, and the effective permissions as THREE DISTINCT things,
+  and the test proves swapping the selector changes nothing but the
+  selector (matrix rule `experience_profiles_do_not_grant_permissions`
+  made structural).
+- **Role-switch refusals audit too.** Every switch writes the trail
+  (`identity.role.switched`); every refusal writes
+  `identity.role.switch_denied` with machine-stable reasons. An
+  idempotent switch (same target) still audits. The cross-tenant
+  session case is `session_unknown` by construction (the tenant-
+  partitioned lookup cannot observe foreign sessions — existence never
+  leaks), which is the STRONGER guarantee; `tenant_mismatch` remains
+  the defensive seam-level reason.
+- **The durable audit log reuses the frozen `AuditLog` interface
+  exactly** (append/records/head/verify/size — still no update/delete).
+  Rows key by the per-tenant sequence; restart continuity is proven
+  (a fresh log over the same store continues the chain); tampering with
+  a persisted row breaks `verify`. Nested fields round-trip through the
+  same `canonicalJson` basis the hash chain uses, so re-read records
+  re-hash identically (byte-equality with the in-memory log proven by
+  test under injected id generators).
+- **The Apify adapter is structurally incapable of authority.** The
+  proposal type has NO field for price/inventory/quantity/SLA/warranty/
+  fulfillment (asserted by a source scan of the interface block + a
+  runtime key allowlist); every record carries the literal
+  `proposalStatus: "PROPOSAL"` + provenance. Provider-unavailable is
+  fail-visible with three machine-stable states (`unconfigured`,
+  `budget_exhausted`, `unreachable`), each with reason + escalation
+  path. Budget discipline: integer-cent reservations BEFORE transport;
+  `unreachable` releases the reservation (the run never reached the
+  provider); provider-side failures keep the spend. The token comes
+  from the `APIFY_TOKEN` environment seam only — values never enter
+  package state or output (test asserts the token string never appears
+  in results).
+- **The journey extension is vocabulary-additive within lane C.**
+  JOURNEY_STAGE_IDS grows from six to eight (vendor-selection,
+  maintenance-service inserted before the connectivity stages); the new
+  stages route to the EXISTING shell vocabulary (commerce.vendors,
+  commerce.maintenance) — no shell route vocabulary changed, no TL file
+  touched. The W090C journey tests were updated accordingly (they are
+  C-owned).
+- **The role-lens surfaces are permission-free by construction.** Both
+  web-workloads and web-commerce gained `role-lens.ts` projections for
+  the four C-lane roles (asset.manager, team.manager, employee,
+  vendor.operator): emphasis ordering + role copy + machine-stable
+  capability notices with escalation paths. The permission-free test
+  walks every object KEY at every depth (the provider-neutrality
+  discipline): human copy explaining that permissions are UNAFFECTED by
+  switching is not permission data — it is the matrix rule rendered.
+- **`bunfig.toml` dependency**: the package-dir `bun test` runs need
+  the repo root (the happy-dom preload list lives in the root
+  bunfig.toml — run `bun test` from the root, as the gates do).
+
+143 new tests; full suite 2975/0 = 2832 + 143 (exact arithmetic);
+typecheck 0 errors; check OK (24 packages — the skeleton verifier and
+contracts checker both picked up packages/integrations/apify
+automatically; the 150-contract snapshot is unchanged; ownership
+respected: every src import is same-lane or @fleetos/contracts).

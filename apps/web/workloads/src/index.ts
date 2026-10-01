@@ -71,6 +71,10 @@ export * from "./state";
 // VERIFIED-connectivity journey view-model + navigation machine
 export * from "./journey";
 
+// W100C — the ROLE-AWARE workload projection (asset.manager /
+// team.manager / employee / vendor.operator lenses — presentation only)
+export * from "./role-lens";
+
 // W090C — the local console design tokens + status vocabulary
 export * from "./ui/tokens";
 export * from "./ui/status";

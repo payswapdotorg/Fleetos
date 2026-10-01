@@ -141,3 +141,14 @@ Runtime dependencies: `@fleetos/contracts` + the declared same-lane
 workspace domain packages. React + the testing stack live in
 devDependencies (the W090A/W090B precedent). No `any` in public
 signatures. Strict TS.
+
+## W100C — role lens + vendor-discovery enrichment
+
+Wave 9 added `src/role-lens.ts` (the role-aware commerce projection for
+the four C-lane roles — area emphasis ordering + capability notices;
+presentation only) and `src/discovery.ts` (the Apify vendor-discovery
+ENRICHMENT view: PROPOSAL-grade rows with per-row attribution and the
+explicit provider-unavailable states with reason + escalation path —
+fail-visible, never fail-silent; a proposal without the literal
+PROPOSAL status refuses the whole build). The vendors screen renders
+the optional discovery section when the shell binds the adapter.
