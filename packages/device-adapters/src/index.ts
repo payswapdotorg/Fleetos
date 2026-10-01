@@ -153,6 +153,13 @@ export * from "./signed-policy-cache";
 // the allow-set; replayed enrollments refused by enrollment digest).
 export * from "./enrollment-security";
 
+// W100A — The enrollment-request flow (the install contract's one-time
+// bootstrap code): tenant-bound, scope-bound, one-time, short-lived,
+// revocable, auditable requests with VERIFIER-ONLY code storage; the
+// four ownership-kind distinctions; machine-stable refusals with human
+// explanations; the device-scoped trust record issued at redemption.
+export * from "./enrollment-request";
+
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).
 export const MODULE_NAME = "device-adapters" as const;

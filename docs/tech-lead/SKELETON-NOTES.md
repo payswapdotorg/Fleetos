@@ -3887,3 +3887,91 @@ Design rulings (binding on future waves, if any):
 typecheck 0 errors; check OK (23 packages — the skeleton verifier and
 contracts checker both picked up the new package automatically; the
 150-contract snapshot is unchanged).
+
+## W100A [Worker A] — installable agent + real enrollment (Wave 9, 2026)
+
+Scope per PRODUCT-READINESS-HANDOFF W100A, all inside worker-a paths:
+packages/device-adapters (enrollment-request), apps/agent (release
+packaging + enrollment client), apps/web/device (install center).
+Nothing outside the lane; bun.lock changed mechanically for two
+test-scope devDependencies (@fleetos/agent, @fleetos/device-adapters on
+@fleetos/web-device — the W100B precedent).
+
+Design rulings (judgment calls, recorded for drift control):
+
+- **Checksum algorithm.** The install contract requires a checksum per
+  artifact but leaves packaging technology to the worker. Chose the
+  lane-local deterministic FNV-1a 64 (fnv1a64, hex) — the repo's
+  established deterministic-hash family (evidence refs ride fnv1a32) —
+  with the algorithm RECORDED on every artifact and verification
+  explicit (`verifyArtifactChecksum` recomputes; an unknown recorded
+  algorithm yields no-match rather than a guess). Deployments wanting
+  a cryptographic digest substitute it at their packaging step; the
+  CONTRACT here is content-derived + recorded + verifiable, and
+  reproducibility is byte-identical manifests for identical inputs.
+- **Manifest digest semantics.** The manifest digest is a CONTENT
+  digest: it covers version metadata, notes, artifacts and steps but
+  NOT the recorded release instant (reproducible-builds semantics —
+  two builds of the same source produce the same digest regardless of
+  when they were stamped; proven by test).
+- **Bootstrap-code storage.** The install contract says the server
+  stores only verifier/hash material. The request record carries ONLY
+  a tenant-scoped FNV-1a verifier; the CODE is returned exactly once
+  at creation (for the install center's display-once card) and never
+  appears on a record, in a log line, or in ANY audit entry (asserted
+  by test over the sink's collected records).
+- **Refusal taxonomy.** The seven install-contract failure states are
+  closed and frozen in device-adapters
+  (code_expired/code_already_used/code_revoked/code_not_found/
+  device_already_enrolled/tenant_role_mismatch/
+  enrollment_refused_by_policy), each carrying its human explanation
+  IN THE REFUSAL SHAPE — so every downstream surface (agent client,
+  install center) renders both verbatim and never re-derives them.
+  code_not_found deliberately conflates unknown request / wrong code /
+  foreign tenant (no existence side channel; proven by test).
+- **Scope binding without a second authority.** Role restriction rides
+  the REQUEST record (allowedRoles, empty = any role in the tenant);
+  redemption fails closed when a restricted request meets no role.
+  Authority itself is never re-derived in this lane: the presenter's
+  role arrives from the boundary (the shell injects identity's real
+  role), and policy inputs (deviceAlreadyEnrolled, enrollmentAllowed)
+  are CONTROL-PLANE inputs on the presentation — the store enforces,
+  the boundary decides.
+- **Ownership kinds.** The install contract's four UI distinctions
+  (corporate-owned/leased/BYOD/third-party managed) are a presentation
+  taxonomy MAPPED onto the frozen W071 classes (corporate_owned and
+  leased -> corporate; byod -> byod; third_party_managed -> managed) —
+  no new domain classes, no change to the frozen three.
+- **Agent-side journey composition.** The enrollment client is THIN
+  (the runtime.ts discipline): it composes the frozen
+  wrapCheckInCommand/validateCheckInCommand/projectCheckInAck and
+  assembles the frozen-contracts observation batch over injected
+  seams. The trust's session token lives in the client CLOSURE — the
+  progress projection never carries it (a credential is not a UI
+  fact). A throwing or shape-invalid seam is control_plane_unreachable
+  — fail-closed, never a fabricated success.
+- **Install center surface discipline.** web-device/src continues to
+  import @fleetos/contracts ONLY; the release manifest, the request
+  record and the agent journey trace arrive through STRUCTURAL seams
+  satisfied by the REAL agent/device-adapters values (proven by the
+  binding test — the W060A/W090A pattern). Destructive affordances
+  (disable code / revoke device trust) are INTENT DESCRIPTORS with
+  requiresAuthorization: true — the install contract's "destructive
+  operation remains behind the existing authorization/approval model";
+  the surface never executes, never mutates authority (the
+  authority-neutrality test proves the store stays pending through
+  every view-model transition).
+- **Where the twin is created.** The Device Twin is created at the
+  BINDING SITE (the shell/control plane: enrollDevice + createTwin +
+  recordTwinObservations), never in the UI and never in
+  device-adapters (worker-b owns device-model; cross-lane imports stay
+  test-only). The binding test performs exactly the shell's role and
+  finishes with verifyEnrollment over the REAL TwinStore => verified
+  in the same tenant — the install contract's acceptance paragraph,
+  executed.
+
+Gates (on the delivery head): check OK (23 packages, 150-contract
+snapshot unchanged) / typecheck 0 errors / bun test 2946/0 = 2832 base
++ 114 new (device-adapters enrollment-request 31, agent release 25,
+agent enrollment-client 20, web-device install-center 22, browser
+render 12, end-to-end binding 4; 31+25+20+22+12+4 = 114 — exact).

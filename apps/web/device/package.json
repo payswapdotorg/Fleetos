@@ -8,6 +8,8 @@
     "@fleetos/contracts": "workspace:*"
   },
   "devDependencies": {
+    "@fleetos/agent": "workspace:*",
+    "@fleetos/device-adapters": "workspace:*",
     "@fleetos/device-model": "workspace:*",
     "@fleetos/health": "workspace:*",
     "@testing-library/dom": "^10.4.0",
