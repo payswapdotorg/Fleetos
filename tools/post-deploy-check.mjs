@@ -32,9 +32,12 @@ async function fetchText(pathname) {
 }
 
 // 1. The console loads with the rendered shell markers.
+// W101 product shell: unauthenticated home IS the ProductGate (title
+// "FleetOS Console" + fos-signin gate chrome + fos-env tier badge);
+// the W092 "fos-scope" console marker was superseded by the gate.
 const home = await fetchText("/");
 if (home.status !== 200) failures.push(`home status ${home.status}`);
-for (const marker of ["FleetOS Console", "fos-scope"]) {
+for (const marker of ["FleetOS Console", "fos-signin", "fos-env"]) {
   if (!home.text.includes(marker)) failures.push(`home missing marker ${marker}`);
 }
 
