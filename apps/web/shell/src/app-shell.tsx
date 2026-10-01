@@ -68,6 +68,12 @@ export interface AppShellProps {
   readonly records: readonly ShellRecordSummary[];
   /** Landing handler for a search result (lands on the record). */
   readonly onSearchLanding: (result: ShellSearchResult) => void;
+  /**
+   * W101 [TL]: session chrome affordances (role switcher, approval
+   * inbox, member chip) rendered in the topbar. Fully controlled;
+   * absent renders exactly the W091 shell.
+   */
+  readonly chrome?: ReactNode;
   readonly children: ReactNode;
 }
 
@@ -362,8 +368,8 @@ export function AppShell(props: AppShellProps): JSX.Element {
               {tenantLabel} · {environmentLabel} · {role}
             </span>
           </span>
+          {props.chrome ? <div className="fos-topbar__chrome">{props.chrome}</div> : null}
         </header>
-
         <div className="fos-content" id="fos-main">
           <div className="fos-content-header">
             <Breadcrumb items={crumbs.map((crumb) => ({ label: crumb.label }))} />

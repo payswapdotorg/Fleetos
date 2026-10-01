@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
-  "description": "FleetOS console — the Next.js runtime (W091 [TL]): composition only over the public domain contracts.",
+  "description": "FleetOS console \u2014 the Next.js runtime (W091 [TL]): composition only over the public domain contracts.",
   "dependencies": {
     "@fleetos/contracts": "workspace:*",
     "@fleetos/device-model": "workspace:*",
@@ -30,7 +30,10 @@
     "@fleetos/web-commerce": "workspace:*",
     "next": "^15.5.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "@fleetos/web-product": "workspace:*",
+    "@fleetos/identity": "workspace:*",
+    "@fleetos/device-adapters": "workspace:*"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.0",
@@ -39,6 +42,7 @@
     "@types/node": "20",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
-    "happy-dom": "^20.0.0"
+    "happy-dom": "^20.0.0",
+    "@fleetos/agent": "workspace:*"
   }
 }

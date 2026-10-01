@@ -20,5 +20,6 @@ preload = [
   "./apps/web/test/dom.preload.ts",
   "./apps/web/workloads/test/dom.preload.ts",
   "./apps/web/commerce/test/dom.preload.ts",
+  "./apps/web/product/test/dom.preload.ts",
 ]
 

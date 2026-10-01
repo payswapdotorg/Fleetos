@@ -67,6 +67,7 @@ export * from "./enrollment";
 // deterministic next-action ladder, and the uninstall/revoke plan
 // (authorization-required intents, never executions).
 export * from "./install-center";
+export * from "./install-center-binding";
 
 // W090A — the local console design tokens + status vocabulary
 export * from "./ui/tokens";

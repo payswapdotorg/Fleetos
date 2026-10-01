@@ -1,25 +1,24 @@
 {
-  "name": "@fleetos/web-device",
+  "name": "@fleetos/web-product",
   "version": "0.1.0",
   "private": true,
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
     "@fleetos/contracts": "workspace:*",
-    "@fleetos/device-adapters": "workspace:*"
+    "@fleetos/identity": "workspace:*",
+    "@fleetos/web-shell": "workspace:*"
   },
   "devDependencies": {
-    "@fleetos/agent": "workspace:*",
-    "@fleetos/device-model": "workspace:*",
-    "@fleetos/health": "workspace:*",
+    "@fleetos/web-security": "workspace:*",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "happy-dom": "^20.0.0",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -41,6 +41,32 @@ import type {
   ScreenPhase,
 } from "@fleetos/web-device";
 import {
+  InstallCenterScreen,
+  initialInstallCenterState,
+  selectInstallPlatform,
+  selectOwnershipKind,
+  recordEnrollmentRequest,
+  recordInstallRefusal,
+  dismissEnrollmentCode,
+  dismissInstallRefusal,
+  createInstallEnrollmentCode,
+} from "@fleetos/web-device";
+import type { InstallCenterState, ReleaseManifestLike, EnrollmentRequestLike } from "@fleetos/web-device";
+import { buildAgentRelease, installerScriptFor, ALL_RELEASE_TARGETS } from "@fleetos/agent";
+import {
+  RoleSwitcher,
+  ApprovalInboxBadge,
+  MemberChip,
+  OnboardingRail,
+  operatorRoleFor,
+  PRODUCT_EXPERIENCE_ROLES,
+} from "@fleetos/web-product";
+import type { ProductActiveSession, ProductExperienceRole } from "@fleetos/web-product";
+
+// W101: the product shell's entry (the session gate) composes THIS
+// console once a session is active.
+export { ConsoleApp } from "./product-gate";
+import {
   ApprovalsQueueScreen,
   FindingsScreen,
   PoliciesScreen,
@@ -133,19 +159,57 @@ function routeFromLocation(): { ok: true; route: ShellRoute } | { ok: false } {
 }
 
 // ---------------------------------------------------------------------------
-// The ConsoleApp
+// The ConsoleSessionApp (the authenticated console body)
 // ---------------------------------------------------------------------------
 
-export interface ConsoleAppProps {
-  /**
-   * The initial route (server-rendered from the path; controlled).
-   * `null` means the initial path REFUSED the route vocabulary — the
-   * app renders the safe-failure state (never a silent redirect).
-   */
+export interface ConsoleSessionAppProps {
+  /** The initial route (server-rendered; null = refused vocabulary). */
   readonly initialRoute?: ShellRoute | null;
+  /** The active product session (the W101 gate's projection). */
+  readonly session: ProductActiveSession;
+  /** Switch the active experience role (audited; assigned-only). */
+  readonly onRoleSwitch: (role: ProductExperienceRole) => void;
+  /** Sign out (revokes the session; returns to the choice screen). */
+  readonly onSignOut: () => void;
+  /** Dismiss the first-run onboarding rail. */
+  readonly onCompleteOnboarding: () => void;
+  /** Re-resolve the session (expiry detection). */
+  readonly onSessionRefresh: () => void;
 }
 
-export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
+let enrollmentCounter = 0;
+/** Deterministic unique enrollment-request ids (composition-level counter). */
+function nextEnrollmentRequestId(): string {
+  enrollmentCounter += 1;
+  return String(enrollmentCounter).padStart(6, "0");
+}
+
+/** The deterministic demo release manifest (the W100A REAL build). */
+function demoReleaseManifest(): ReleaseManifestLike {
+  const built = buildAgentRelease({
+    moduleVersion: "1.2.3",
+    protocolVersion: 1,
+    releasedAt: "2026-10-01T00:00:00Z",
+    releaseNotes: "The productized agent.",
+    payloads: ALL_RELEASE_TARGETS.map((target) => ({
+      target,
+      content: installerScriptFor(target, { moduleVersion: "1.2.3" }),
+    })),
+    uninstallSteps: ["Run the uninstaller from Settings > Apps.", "Remove the agent directory."],
+    rollbackInstructions: ["Revoke the device trust from the console."],
+  });
+  if (!built.ok) throw new Error("demo release build failed");
+  return built.manifest;
+}
+
+export function ConsoleSessionApp({
+  initialRoute,
+  session,
+  onRoleSwitch,
+  onSignOut,
+  onCompleteOnboarding,
+  onSessionRefresh,
+}: ConsoleSessionAppProps): JSX.Element {
   const [route, setRoute] = useState<ShellRoute>(
     initialRoute ?? { area: "overview", view: "home" },
   );
@@ -182,6 +246,13 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
   const [openAdoptionId, setOpenAdoptionId] = useState<string | null>(null);
   const [openPolicySetId, setOpenPolicySetId] = useState<string | null>(null);
   const [openTrailSubject, setOpenTrailSubject] = useState<string | null>(null);
+
+  // W101: the Install Center's controlled state (the W100A machine).
+  const [installState, setInstallState] = useState<InstallCenterState>(() =>
+    initialInstallCenterState(DEMO_TENANT),
+  );
+  const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
+  const release = useMemo<ReleaseManifestLike>(() => demoReleaseManifest(), []);
 
   // The composed views (deterministic; recomputed per render is fine at
   // demo scale — they are pure functions of the frozen seed).
@@ -258,19 +329,55 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
     setOpenAdoptionId,
     openTrailSubject,
     setOpenTrailSubject,
+    installState,
+    setInstallState,
+    release,
+    onCopyCommand: (command: string) => setCopiedCommand(command),
   });
 
   return (
     <AppShell
       route={route}
       onNavigate={navigate}
-      role="owner"
-      tenantLabel="W091 Demo Fleet"
+      role={operatorRoleFor(session.activeRole ?? "employee")}
+      tenantLabel={session.workspaceName}
       environmentLabel={environmentLabel()}
       records={DEMO.searchRecords}
       onSearchLanding={onSearchLanding}
+      chrome={
+        <>
+          <ApprovalInboxBadge
+            pending={approvalsPhase.kind === "ready" ? approvalsPhase.view.total : 0}
+            onOpen={() => navigate({ area: "security", view: "approvals" })}
+          />
+          <RoleSwitcher
+            activeRole={session.activeRole}
+            assignedRoles={session.assignedRoles.filter(
+              (r): r is ProductExperienceRole =>
+                (PRODUCT_EXPERIENCE_ROLES as readonly string[]).includes(r),
+            )}
+            onSwitch={onRoleSwitch}
+          />
+          <MemberChip
+            workspaceName={session.workspaceName}
+            displayName={session.displayName}
+            onSignOut={onSignOut}
+          />
+        </>
+      }
     >
+      {session.isFirstRun && session.phase !== "expired" ? (
+        <OnboardingRail
+          role={session.activeRole}
+          currentStep={2}
+          onDismiss={onCompleteOnboarding}
+        />
+      ) : null}
       {content}
+      {/* The session gate's expiry re-resolution (the resolve truth): */}
+      <span hidden aria-hidden="true">
+        <button type="button" onClick={onSessionRefresh} aria-label="Refresh session" />
+      </span>
     </AppShell>
   );
 }
@@ -316,6 +423,11 @@ interface RenderInput {
   readonly setOpenAdoptionId: (id: string | null) => void;
   readonly openTrailSubject: string | null;
   readonly setOpenTrailSubject: (id: string | null) => void;
+  // W101: the Install Center binding (the W100A machine + REAL release).
+  readonly installState: InstallCenterState;
+  readonly setInstallState: (state: InstallCenterState) => void;
+  readonly release: ReleaseManifestLike;
+  readonly onCopyCommand: (command: string) => void;
 }
 
 function renderRoute(input: RenderInput): JSX.Element {
@@ -360,6 +472,66 @@ function renderRoute(input: RenderInput): JSX.Element {
           onEnroll={() => navigate({ area: "device", view: "enrollment" })}
         />
       );
+    case "device.enrollment": {
+      // W101: the Install Center route — the W100A screen over the REAL
+      // release manifest, with the one-time enrollment code created
+      // through the REAL device-adapters boundary (the frozen journey:
+      // platform -> scope -> code -> install -> first check-in).
+      const onCreateCode = (): void => {
+        if (input.installState.platform === undefined || input.installState.ownershipKind === undefined) {
+          // The screen itself renders the machine-stable refusal; this
+          // guard only avoids creating a request without a selection.
+          input.setInstallState(
+            recordInstallRefusal(input.installState, {
+              reason: "selection_incomplete",
+              explanation:
+                "Choose a platform and an ownership scope before creating an enrollment code.",
+            }),
+          );
+          return;
+        }
+        const created = createInstallEnrollmentCode({
+          tenantId: DEMO_TENANT,
+          requestId: `enr_w101_${nextEnrollmentRequestId()}`,
+          code: "BOOT-W101-0001",
+          ownershipKind: input.installState.ownershipKind as "corporate_owned",
+          ttlMs: 24 * 3_600_000,
+          now: "2026-10-01T00:00:00Z",
+        });
+        if (!created.ok) {
+          input.setInstallState(
+            recordInstallRefusal(input.installState, {
+              reason: "enrollment_refused",
+              explanation: "The enrollment boundary refused this request.",
+            }),
+          );
+          return;
+        }
+        input.setInstallState(
+          recordEnrollmentRequest(input.installState, created.record, created.code),
+        );
+      };
+      return (
+        <InstallCenterScreen
+          state={input.installState}
+          release={input.release}
+          journey={undefined}
+          now="2026-10-01T00:00:00Z"
+          expiringWithinMs={3_600_000}
+          deviceId={undefined}
+          onPlatformChange={(platform, arch) =>
+            input.setInstallState(selectInstallPlatform(input.installState, platform, arch))
+          }
+          onOwnershipKindChange={(kind) => input.setInstallState(selectOwnershipKind(input.installState, kind))}
+          onCreateEnrollmentCode={onCreateCode}
+          onDismissCode={() => input.setInstallState(dismissEnrollmentCode(input.installState))}
+          onCopyCommand={(command) => input.onCopyCommand(command)}
+          onRevokeIntent={() => undefined}
+          onDismissRefusal={() => input.setInstallState(dismissInstallRefusal(input.installState))}
+          onOpenDoctor={() => navigate({ area: "device", view: "doctor" })}
+        />
+      );
+    }
     case "security.findings":
       return (
         <FindingsScreen

@@ -4152,3 +4152,27 @@ typecheck 0 errors; check OK (24 packages — the skeleton verifier and
 contracts checker both picked up packages/integrations/apify
 automatically; the 150-contract snapshot is unchanged; ownership
 respected: every src import is same-lane or @fleetos/contracts).
+
+## W101 [TL] — product shell + auth/onboarding convergence (Wave 10, 2026-10-01)
+
+Scope per PRODUCT-READINESS-HANDOFF W101. Delivered on integration/wave0.
+
+### Judgment calls
+
+1. **The two role vocabularies are BRIDGED, never merged.** W091's shell has a 5-role operator vocabulary (navigation/interaction); the W100C identity + W100B lenses have the 7-role experience matrix. `apps/web/product/src/role-bridge.ts` is the frozen total deterministic mapping (fleet.admin→owner; service.desk/asset.manager→operator; security.compliance/team.manager→approver; employee/vendor.operator→viewer). Presentation-only by construction (matrix rule `experience_profiles_do_not_grant_permissions`); authority stays in identity + Guardian.
+
+2. **The identity-composing runtime lives in the composition root, not the product package.** The ownership law (`only @fleetos/contracts may cross lanes`) initially flagged `apps/web/product` importing `@fleetos/identity` (worker-c lane). Resolution: the PURE presentation contracts (types, phases, refusal vocabulary + frozen explanations, screens, chrome, search context) live in the new TL package `apps/web/product` (`@fleetos/web-product`); the RUNTIME that composes the REAL W100C identity services lives in `apps/web/src/runtime/product-session.ts` — the sanctioned W091 binding-site exception (console runtime may import any public @fleetos/* entry point). This is also architecturally honest: the identity composition IS runtime wiring, not a reusable UI contract.
+
+3. **Disclosed minimal additive edit to lane A (web-device).** The Install Center route needed the REAL `createEnrollmentRequest` boundary at RUNTIME, but the console runtime may not import adapter lanes (`RUNTIME_PROVIDER_IMPORT`). Added `apps/web/device/src/install-center-binding.ts` (public `createInstallEnrollmentCode` wrapping the REAL device-adapters boundary; `@fleetos/device-adapters` moved devDep→dep in web-device). Same-lane binding, zero API-surface change elsewhere. TL owns this edit per the W011 precedent.
+
+4. **Session gate state machine.** signed-out → (create/join/sign-in) → onboarding? → active; expiry → expired (banner + recovery signs the SAME member back into the SAME workspace); sign-out revokes. The runtime holds ONLY the token + session id in memory (browser-session contract); everything else derives from the durable truth per projection.
+
+5. **The onboarding rail current step is 2 (install) for the demo composition** — workspace ✓, role ✓ (founder = fleet.admin), install pending. The rail's step order mirrors the INSTALL-AND-ENROLLMENT-CONTRACT journey verbatim.
+
+6. **Route guards = the shell's frozen navigation law over the bridged role.** No new guard mechanism: `operatorRoleFor(activeRole)` feeds the W091 shell's `canNavigate`/`navItemsFor` (disabled with machine-stable reasons); employee/vendor restricted surfaces render the shell's restricted nav states; unknown routes keep the safe-failure state. One guard added at the top: no session → no console (the gate).
+
+7. **The W091 E2E journeys now sign in through the REAL gate** (`mountApp` creates the workspace through the UI, then dismisses the rail) — the journeys prove the product session gate end-to-end on every run.
+
+### Gates (TL, local, on the exact delivery)
+
+check OK (24 packages, 150-contract snapshot unchanged) / typecheck 0 / bun test 3251/0 (+21: product-session runtime 11, render 10; journeys updated, one assertion upgraded to the Install Center).

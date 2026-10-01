@@ -27,6 +27,15 @@ afterEach(() => {
 
 function mountApp(route: ShellRoute): void {
   render(<ConsoleApp initialRoute={route} />);
+  // W101: the product session gate — the console renders only for an
+  // authenticated session. Create the workspace (the founder session)
+  // through the REAL UI, then dismiss the first-run onboarding rail.
+  fireEvent.click(screen.getAllByText("Create workspace")[0]!.closest("button")!);
+  fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "Northwind Fleet" } });
+  fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Ada Lovelace" } });
+  fireEvent.change(screen.getByLabelText("Your email"), { target: { value: "ada@northwind.example" } });
+  fireEvent.click(screen.getAllByText("Create workspace").at(-1)!.closest("button")!);
+  fireEvent.click(screen.getByText("Dismiss getting started"));
 }
 
 // ---------------------------------------------------------------------------
@@ -51,10 +60,10 @@ test("E2E journey — the Control Tower answers what needs attention with direct
 test("E2E journey — enroll fleet: the entry point navigates to the enrollment view", () => {
   mountApp({ area: "overview", view: "home" });
   fireEvent.click(screen.getByRole("button", { name: /Enroll an existing fleet/ }));
-  // The enrollment view is reachable (its lane screen composition is
-  // the W090A journey test's proven flow; the runtime presents the
-  // honest pending-binding state until the lane composition lands).
-  expect(screen.getByText(/enrollment/i)).toBeDefined();
+  // W101: the enrollment view is now the INSTALL CENTER (the W100A
+  // screen over the REAL release manifest — the productized journey).
+  expect(screen.getByText("Install the FleetOS agent")).toBeDefined();
+  expect(screen.getAllByText(/one-time enrollment code/).length).toBeGreaterThan(0);
 });
 
 // ---------------------------------------------------------------------------
