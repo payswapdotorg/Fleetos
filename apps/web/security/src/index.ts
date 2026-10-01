@@ -60,6 +60,18 @@ export * from "./approvals-queue-view";
 // D1.2 (W090B) — the first-class Policies surface (read-only).
 export * from "./policies-view";
 
+// W100B — the ROLE LENS experience contract (the frozen role model
+// consumed as a public experience contract; the lens grants NOTHING).
+export * from "./role-lens";
+
+// W100B — the role-shaped findings surface (emphasis changes; the
+// record projection is lens-independent).
+export * from "./findings-role-view";
+
+// W100B — the parked-approval explanation ("why is this action parked,
+// and what unlocks it?" — the decision chain + the escalation path).
+export * from "./approval-explanation-view";
+
 // W090B — the local console design tokens + status vocabulary.
 export * from "./ui/tokens";
 export * from "./ui/status";
@@ -73,6 +85,9 @@ export * from "./screens/guardian-decisions-screen";
 export * from "./screens/approvals-queue-screen";
 export * from "./screens/security-doctor-screen";
 export * from "./screens/policies-screen";
+// W100B — the rendered role-lens + parked-explanation sections.
+export * from "./screens/role-lens-section";
+export * from "./screens/parked-explanation-section";
 
 // The tagged error/result contract of every builder.
 export type { SurfaceError, SurfaceResult, SurfaceValidationFailure } from "./internal";

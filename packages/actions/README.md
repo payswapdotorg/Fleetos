@@ -90,3 +90,26 @@ guardian-gate, routing-refusal, tenant-isolation, audit). All gates green
 unchanged; typecheck; bun test). The package never modifies the frozen
 contracts (`PrintIntentPayload` + `FleetActionIntentPayload` shapes are
 already frozen in `@fleetos/contracts`).
+
+## W100B — print DISTRIBUTION planning
+
+`src/print-distribution.ts` adds the W100B product sentence as a
+domain guarantee:
+
+> selected people + document -> each person's approved printer
+> receives the job.
+
+`planPrintDistribution` composes the unchanged W041 `routePrintJob`
+router once per selected person: each person's job routes ONLY among
+THAT person's tenant-matching APPROVED printers (approved === true);
+a person whose approved pool cannot satisfy the document's required
+features receives a REFUSED job record with machine-stable reasons
+(`no_approved_printer` / `no_capable_approved_printer` +
+`unsupported_feature:*`) — visible per person, never emulated, no
+fallback printer, no unapproved printer is ever promoted. The
+observable escalation context (capable-but-unapproved printers are
+COUNTED and NAMED) is data for the restricted-capability explanations
+upstream. Deterministic: entries sorted by userId ascending; one
+summary audit record (`action.print.distribution.planned`) through
+the injected sink. Fail-closed: empty or duplicate people REFUSE.
+See `test/print-distribution.test.ts`.

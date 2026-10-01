@@ -16,7 +16,12 @@
  * records, printer selection from typed printer descriptors, capability-
  * aware routing that refuses unsupported job features — never emulates,
  * deterministic routing rules with injectable preferences, queue-state
- * contracts per printer with observable evidence links), audit + tenancy
+ * contracts per printer with observable evidence links), print
+ * DISTRIBUTION planning (W100B: selected people + document -> each
+ * person's APPROVED printer receives the job; per-person refusals
+ * visible with machine-stable reasons + observable escalation context —
+ * unapproved capable printers counted and named, never promoted), audit
+ * + tenancy
  * (consequential mutations emit audit records through an injected sink —
  * structurally satisfied by @fleetos/audit's sink adapter; tenant
  * isolation by construction — tenant-A context can never read/act on
@@ -106,6 +111,10 @@ export * from "./policy-gate";
 
 // D3 — print orchestration (printer routing + queue state)
 export * from "./print-orchestration";
+
+// D5 (W100B) — print DISTRIBUTION planning (selected people + document
+// -> each person's approved printer receives the job)
+export * from "./print-distribution";
 
 // D4 — the tenant-scoped stores (ActionStore + PrintStore)
 export * from "./action-store";

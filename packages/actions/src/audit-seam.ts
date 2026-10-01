@@ -98,4 +98,6 @@ export const ACTION_AUDIT_ACTIONS = frozen({
   printJobRouted: "action.print.job.routed",
   /** A print job was queued at a printer. */
   printJobQueued: "action.print.job.queued",
+  /** A print distribution was planned (one summary record per plan — W100B). */
+  printDistributionPlanned: "action.print.distribution.planned",
 } as const);

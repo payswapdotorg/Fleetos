@@ -61,6 +61,14 @@ import type {
   EvaluationCasesView,
   OutcomeFeedView,
 } from "../learning-view";
+import type {
+  AdoptionRationaleView,
+  CaseRationaleView,
+  LearningLensLead,
+  SubmitCaseAffordanceView,
+} from "../learning-role-view";
+import type { LearningRoleLensView } from "../role-lens";
+import { RoleLensSection } from "./role-lens-section";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -90,6 +98,32 @@ export interface LearningScreenProps {
   readonly openAdoptionId: string | null;
   readonly onOpenAdoption: (adoptionId: string) => void;
   readonly onCloseAdoption: () => void;
+  /**
+   * W100B: the active role lens (optional — absent renders exactly the
+   * W090B screen). Shapes ONLY the banner emphasis + the lead copy.
+   */
+  readonly roleLens?: LearningRoleLensView | null;
+  /**
+   * W100B: the role-shaped lead (from `buildRoleShapedLearningView`) —
+   * the emphasis copy + spotlights. Optional.
+   */
+  readonly roleLead?: LearningLensLead | null;
+  /**
+   * W100B: the per-case rationales (from
+   * `buildRoleShapedLearningView`). Optional; absent renders the plain
+   * W090B cases panel.
+   */
+  readonly caseRationales?: readonly CaseRationaleView[] | null;
+  /**
+   * W100B: the per-adoption rationales (from
+   * `buildRoleShapedLearningView`). Optional.
+   */
+  readonly adoptionRationales?: readonly AdoptionRationaleView[] | null;
+  /**
+   * W100B: the submit-case affordance (authority-derived availability;
+   * the restricted explanation renders when unavailable). Optional.
+   */
+  readonly submitAffordance?: SubmitCaseAffordanceView | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +225,8 @@ function CasesPanel({ view }: { readonly view: EvaluationCasesView }): JSX.Eleme
 function LedgerPanel(props: {
   readonly view: AdoptionLedgerView;
   readonly onOpenAdoption: (adoptionId: string) => void;
+  /** W100B: the per-adoption rationales, when supplied. */
+  readonly adoptionRationales?: readonly AdoptionRationaleView[] | null;
 }): JSX.Element {
   const { view, onOpenAdoption } = props;
   if (view.items.length === 0) {
@@ -201,6 +237,8 @@ function LedgerPanel(props: {
       />
     );
   }
+  const rationaleFor = (adoptionId: string): AdoptionRationaleView | null =>
+    props.adoptionRationales?.find((rationale) => rationale.adoptionId === adoptionId) ?? null;
   return (
     <div className="fos-table-wrap">
       <table className="fos-table">
@@ -262,6 +300,15 @@ function LedgerPanel(props: {
                 <span className="fos-mono">{entry.approverId}</span>
                 <br />
                 <span className="fos-meta fos-mono">{entry.approvedAt}</span>
+                {rationaleFor(entry.adoptionId) !== null && (
+                  <span
+                    className="fos-meta"
+                    style={{ display: "block", marginTop: "0.25rem" }}
+                    data-testid={`adoption-rationale-${entry.adoptionId}`}
+                  >
+                    {rationaleFor(entry.adoptionId)?.summary}
+                  </span>
+                )}
               </td>
               <td>
                 <Button
@@ -489,11 +536,44 @@ export function LearningScreen(props: LearningScreenProps): JSX.Element {
         <div>
           <h1 className="fos-screen-title">Learning</h1>
           <p className="fos-screen-subtitle">
-            Evaluation cases, capability adoption and certification state — what FleetOS has learned
-            from fleet outcomes.
+            {props.roleLead !== null && props.roleLead !== undefined
+              ? props.roleLead.copy
+              : "Evaluation cases, capability adoption and certification state — what FleetOS has learned from fleet outcomes."}
           </p>
         </div>
       </header>
+      {props.roleLens !== null && props.roleLens !== undefined && (
+        <RoleLensSection lens={props.roleLens} emphasis={[{ label: "Learning", value: props.roleLens.learningEmphasis }]} />
+      )}
+      {props.submitAffordance !== null && props.submitAffordance !== undefined && (
+        <Card
+          title="Proposing evaluation cases"
+          subtitle="Authority-derived (identity + Contract Guardian) — never role-derived"
+        >
+          {props.submitAffordance.available ? (
+            <p className="fos-meta" style={{ margin: 0 }} data-testid="submit-affordance-available">
+              The effective authority includes <span className="fos-mono">{props.submitAffordance.capability}</span>:
+              case submission proposals are offered where outcomes are observed (the Contract
+              Guardian still gates every submission).
+            </p>
+          ) : (
+            <p className="fos-meta" style={{ margin: 0 }} data-testid="submit-affordance-restricted">
+              Restricted — reason{" "}
+              <span className="fos-mono">{props.submitAffordance.restricted?.reason ?? "missing_permission"}</span>;
+              the effective authority lacks <span className="fos-mono">{props.submitAffordance.capability}</span>.{" "}
+              {props.submitAffordance.restricted !== null
+                ? `${props.submitAffordance.restricted.escalation.action} — ${props.submitAffordance.restricted.escalation.requestLabel}.`
+                : "Request the capability from your Fleet Administrator."}{" "}
+              This explanation grants nothing.
+            </p>
+          )}
+        </Card>
+      )}
+      {props.roleLead !== null && props.roleLead !== undefined && props.roleLead.spotlightProposalIds.length > 0 && (
+        <p className="fos-meta" data-testid="learning-spotlight" style={{ margin: 0 }}>
+          Leading cases in this lens: {props.roleLead.spotlightProposalIds.join(", ")}.
+        </p>
+      )}
       <Tabs
         tabs={tabs}
         activeId={props.panel}
@@ -502,13 +582,45 @@ export function LearningScreen(props: LearningScreenProps): JSX.Element {
       />
       {props.panel === "cases" &&
         (props.casesPhase.kind === "ready" ? (
-          <CasesPanel view={props.casesPhase.view} />
+          <>
+            {props.caseRationales !== null && props.caseRationales !== undefined && (
+              <Card
+                title="Why each case carries its disposition"
+                subtitle="The Guardian decision chain + the redaction rationale (identical for every lens)"
+              >
+                <div className="fos-stack">
+                  {props.caseRationales.map((rationale) => (
+                    <div key={rationale.proposalId} data-testid={`case-rationale-${rationale.proposalId}`}>
+                      <p style={{ margin: 0, fontSize: "0.875rem" }}>
+                        <span className="fos-mono">{rationale.proposalId}</span> —{" "}
+                        <Badge>{rationale.disposition}</Badge>
+                      </p>
+                      <p className="fos-meta" style={{ margin: "0.25rem 0 0" }}>
+                        {rationale.dispositionRationale}
+                      </p>
+                      <p className="fos-meta" style={{ margin: "0.25rem 0 0" }}>
+                        {rationale.redactionRationale}
+                        {rationale.redactionPolicies.length > 0 &&
+                          ` (policies: ${rationale.redactionPolicies.join(", ")})`}
+                        . Ground truth: {rationale.groundTruth}.
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+            <CasesPanel view={props.casesPhase.view} />
+          </>
         ) : (
           <PhasePresentation phase={props.casesPhase} loadingLabel="Loading evaluation cases" />
         ))}
       {props.panel === "ledger" &&
         (props.ledgerPhase.kind === "ready" ? (
-          <LedgerPanel view={props.ledgerPhase.view} onOpenAdoption={props.onOpenAdoption} />
+          <LedgerPanel
+            view={props.ledgerPhase.view}
+            onOpenAdoption={props.onOpenAdoption}
+            adoptionRationales={props.adoptionRationales}
+          />
         ) : (
           <PhasePresentation phase={props.ledgerPhase} loadingLabel="Loading adoption ledger" />
         ))}

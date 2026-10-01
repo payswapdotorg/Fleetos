@@ -3975,3 +3975,91 @@ snapshot unchanged) / typecheck 0 errors / bun test 2946/0 = 2832 base
 + 114 new (device-adapters enrollment-request 31, agent release 25,
 agent enrollment-client 20, web-device install-center 22, browser
 render 12, end-to-end binding 4; 31+25+20+22+12+4 = 114 — exact).
+
+
+## W100B — Lane B: role-shaped security/action/learning experiences (2026-09-30)
+
+Delivered on `work/w100b` from `integration/wave0` (0bad13a). Scope per
+PRODUCT-READINESS-HANDOFF W100B: packages/actions (the print
+DISTRIBUTION planner) + the three role-shaped experience surfaces
+apps/web/security, apps/web/actions, apps/web/learning over the
+consumed W060B/W070 prior art (packages/security, packages/policy,
+packages/learning, packages/integrations/arena consumed, not modified).
+`bun.lock` changed mechanically (the `@fleetos/identity` devDependency
+registrations on the three web packages — test-scope binding only).
+
+Design rulings (binding on later consumers of these seams):
+
+- **The role lens is an experience contract PROVEN against the frozen
+  specs.** Each web package declares its local copy of the seven-role
+  matrix (labels, home lenses, primary questions, per-surface emphasis
+  tokens — the W040-disclosed mirror pattern), and
+  `test/role-lens.test.ts` READS `spec/ui/ROLE-EXPERIENCE-MATRIX.yaml`
+  and `spec/ui/ROLEFUL-UX-ARCHITECTURE.md` (test-scope reads only;
+  src/ stays pure) to prove the local tables EQUAL the frozen ones
+  verbatim — drift in either direction fails the suite.
+- **Authority is a structural seam, echoed VERBATIM.** The lens input
+  is (tenant + principal + permission names), structurally satisfied by
+  @fleetos/identity's `ResolvedPermissions`; the view carries the
+  authority echo with `lensGrantsNothing: true` and the permission list
+  verbatim (never widened, never re-derived). `@fleetos/identity` is a
+  devDependency consumed ONLY in test/ (the binding tests prove the
+  lens-derived affordance availability AGREES with the REAL identity
+  resolver); src/ imports nothing from identity — the W090B src
+  discipline is preserved and mechanically re-proven.
+- **The lens never filters records.** Same records in = same records
+  out; the lens changes ONLY emphasis (lead copy, spotlight ids,
+  evidence-first flag). Record scoping (e.g. the employee's own
+  distribution entry) happens at the BINDING SITE, never in the lens.
+  Browser authority-invariance tests assert the product law: same REAL
+  records + different lenses => different emphasis, IDENTICAL
+  permission outcome; two-persona journeys (security.compliance +
+  employee; service.desk + employee) drive REAL domain calls
+  (approveParkedPlan invoked at the binding site).
+- **Restricted capabilities explain, never enable.** Every capability
+  the effective authority lacks renders its machine-stable reason
+  (`missing_permission`), the emphasis roles, a lens-switch affordance
+  ONLY for an ASSIGNED emphasizing role (the copy states switching
+  changes emphasis, never authority), and otherwise the
+  role-assignment escalation path — a REQUEST, never a grant.
+- **The print distribution planner composes the frozen W041 router.**
+  `planPrintDistribution` routes one job per selected person among
+  THAT person's approved, tenant-matching, capability-satisfying
+  printers through the UNCHANGED `routePrintJob`; refusals are
+  per-person, VISIBLE, never emulated (no fallback printer, no
+  capability emulation, no unapproved promotion); escalation context is
+  observable data (`unapprovedCapablePrinterCount`); entries are
+  deterministic userId-ascending; ONE summary audit record
+  (`action.print.distribution.planned`); fail-closed empty/duplicate
+  refusals. The surface consumes the plan through a STRUCTURAL seam,
+  proven structurally satisfied by the binding test.
+- **The parked-approval explanation is two-part and never decides.**
+  WHY-PARKED: the decision chain verbatim (REQUIRE_APPROVAL decision,
+  rules + versions + effects, the engine's machine-stable reasons, the
+  policy version, opaque evidence links). WHAT-UNLOCKS: the
+  human-decision gate (both PARKED transitions confirmation-required —
+  LOCK 16), the deciding permission (`security.approval.decide`),
+  `sessionMayDecide` AUTHORITY-derived (never role-derived), and the
+  escalation path when it may not. The actual transition stays with the
+  W041 `approveParkedPlan`.
+- **The learning rationale is lens-INDEPENDENT domain truth.** The
+  disposition chain (PROPOSED from ALLOW/WARN, PARKED from
+  REQUIRE_APPROVAL, REJECTED from BLOCK), the redaction rationale, the
+  ground truth, and the adoption rationale (the Arena certification
+  basis per ARCHITECTURE-LOCK item 9, the explicit human grant,
+  rollout, rollback plan, verbatim warnings) are IDENTICAL for every
+  lens — the rationale explains domain truth, not role opinion; the
+  lens changes only the lead copy and the spotlight ids (parked cases
+  lead the risk lens; adoptions reaching cohorts lead the team lens).
+- **Screen extensions are OPTIONAL PROPS.** The W100B sections
+  (RoleLensSection, the parked explanation, the print distribution
+  surface) render only when their props are provided — absent props
+  render EXACTLY the W090B screen (the W090B suites pass unchanged on
+  this branch).
+- **`bunfig.toml` dependency** (same as lane C): the happy-dom preloads
+  live in the root bunfig.toml — run `bun test` from the repo root, as
+  the gates do.
+
+141 new tests; full suite 2973/0 = 2832 + 141 (exact arithmetic);
+typecheck 0 errors; check OK (23 packages; the 150-contract snapshot is
+unchanged — W100B adds no package and no contract surface).

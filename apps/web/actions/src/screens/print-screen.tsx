@@ -35,6 +35,8 @@ import {
 } from "../ui/primitives";
 import type { ScreenPhase, TimelineItem } from "../ui/primitives";
 import { decisionConsoleStatus, printConsoleStatus } from "../ui/status";
+import type { ActionsRoleLensView } from "../role-lens";
+import { RoleLensSection } from "./role-lens-section";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -73,6 +75,11 @@ export interface PrintJourneyData {
 export interface PrintScreenProps {
   /** The composite journey phase (loading/error/invalid/ready). */
   readonly phase: ScreenPhase<PrintJourneyData>;
+  /**
+   * W100B: the active role lens (optional — absent renders exactly the
+   * W090B screen). Shapes ONLY the banner emphasis.
+   */
+  readonly roleLens?: ActionsRoleLensView | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +186,15 @@ export function PrintScreen(props: PrintScreenProps): JSX.Element {
           </p>
         </div>
       </header>
+      {props.roleLens !== null && props.roleLens !== undefined && (
+        <RoleLensSection
+          lens={props.roleLens}
+          emphasis={[
+            { label: "Print", value: props.roleLens.printEmphasis },
+            { label: "Evidence", value: props.roleLens.evidenceEmphasis },
+          ]}
+        />
+      )}
       {props.phase.kind === "ready" ? (
         <PrintBody data={props.phase.view} />
       ) : (

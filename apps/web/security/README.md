@@ -100,3 +100,47 @@ ambient types) and is typechecked locally:
 W061 wires lane typechecking into the root gate when the shell lands.
 
 No runtime dependencies. No `any` in public signatures. Strict TS.
+
+## W100B — the ROLE LENS experience contract (role-shaped security)
+
+W100B adds the role-shaped experience layer on top of the W090B
+surfaces (all W090B builders/screens unchanged — the lens is additive
+and optional):
+
+- `src/role-lens.ts` — the frozen role model consumed as a PUBLIC
+  EXPERIENCE CONTRACT (the seven-role union, labels, home lenses,
+  primary questions and the lane emphasis tables mirrored from
+  `spec/ui/ROLE-EXPERIENCE-MATRIX.yaml` + `spec/ui/ROLEFUL-UX-
+  ARCHITECTURE.md`; conformance PROVEN against the spec files by
+  `test/role-lens.test.ts`). The lens consumes the effective authority
+  through a STRUCTURAL SEAM (`RoleLensAuthorityInput`, structurally
+  satisfied by @fleetos/identity's `ResolvedPermissions`) and carries
+  the VERBATIM authority echo with `lensGrantsNothing: true` — the
+  matrix rule `experience_profiles_do_not_grant_permissions` is
+  machine-asserted.
+- `src/findings-role-view.ts` — the role-shaped findings view: the
+  underlying findings projection is LENS-INDEPENDENT (built by the
+  unchanged `buildFindingsListView`); the lens shapes ONLY the lead
+  copy, the spotlight finding ids and the evidence-first flag. The
+  remediation affordance's availability is AUTHORITY-derived, never
+  role-derived.
+- `src/approval-explanation-view.ts` — the parked-approval explanation
+  ("why is this action parked, and what unlocks it?"): the decision
+  chain (REQUIRE_APPROVAL + the rules that fired + machine-stable
+  reasons + policy version + evidence links) and the human-decision
+  gate (the permission a deciding session must hold, whether THIS
+  session may decide — authority-derived — and the role-assignment
+  escalation path when it may not).
+- `src/screens/role-lens-section.tsx` + `src/screens/parked-
+  explanation-section.tsx` — the rendered banner (role + home lens +
+  primary question + emphasis badges + the authority echo line +
+  restricted-capability cards with reason/escalation/lens-switch
+  affordances) and the explanation cards.
+- `test/role-lens.test.ts`, `test/role-views.test.ts`,
+  `test/render-role-lens.test.tsx`, `test/binding-role-lens.test.ts`,
+  `test/journey-role-security.test.tsx` — the matrix conformance, the
+  view-model invariance, the BROWSER authority-invariance (same
+  records + different lens => different emphasis, identical
+  permissions outcome), the REAL identity/policy/security/actions
+  bindings (the lens's derivations AGREE with the REAL `checkPermission`)
+  and the two-persona role journeys (security.compliance + employee).

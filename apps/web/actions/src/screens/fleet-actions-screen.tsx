@@ -36,6 +36,8 @@ import type {
   PlanProgressionView,
   GroupSelectionView,
 } from "../action-plans-view";
+import type { PlanAffordanceView } from "../action-role-view";
+import type { ActionsRoleLensView } from "../role-lens";
 import { ConsoleStyles } from "../ui/tokens";
 import {
   Badge,
@@ -48,6 +50,7 @@ import {
 } from "../ui/primitives";
 import type { ScreenPhase, TimelineItem } from "../ui/primitives";
 import { decisionConsoleStatus, planConsoleStatus } from "../ui/status";
+import { RoleLensSection } from "./role-lens-section";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -78,6 +81,25 @@ export interface FleetActionJourneyData {
 export interface FleetActionsScreenProps {
   /** The composite journey phase (loading/error/invalid/ready). */
   readonly phase: ScreenPhase<FleetActionJourneyData>;
+  /**
+   * W100B: the active role lens (optional — absent renders exactly the
+   * W090B screen). Shapes ONLY the banner emphasis + the lead copy;
+   * the journey records and gates are unchanged.
+   */
+  readonly roleLens?: ActionsRoleLensView | null;
+  /**
+   * W100B: the role-shaped lead copy (from
+   * `buildRoleShapedActionPlanView`). Optional.
+   */
+  readonly roleLeadCopy?: string | null;
+  /**
+   * W100B: the authority-derived affordances (propose/approve), with
+   * the restricted explanations when unavailable. Optional.
+   */
+  readonly affordances?: {
+    readonly propose: PlanAffordanceView;
+    readonly approve: PlanAffordanceView;
+  } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -178,11 +200,43 @@ export function FleetActionsScreen(props: FleetActionsScreenProps): JSX.Element 
         <div>
           <h1 className="fos-screen-title">Fleet Actions</h1>
           <p className="fos-screen-subtitle">
-            The gated action journey — intent to verified outcome, with the authorization, policy
-            and approval states always visible.
+            {props.roleLeadCopy !== null && props.roleLeadCopy !== undefined
+              ? props.roleLeadCopy
+              : "The gated action journey — intent to verified outcome, with the authorization, policy and approval states always visible."}
           </p>
         </div>
       </header>
+      {props.roleLens !== null && props.roleLens !== undefined && (
+        <RoleLensSection
+          lens={props.roleLens}
+          emphasis={[
+            { label: "Fleet Actions", value: props.roleLens.fleetActionsEmphasis },
+            { label: "Evidence", value: props.roleLens.evidenceEmphasis },
+          ]}
+        />
+      )}
+      {props.affordances !== null && props.affordances !== undefined && (
+        <Card
+          title="What this session may do"
+          subtitle="Authority-derived (identity + Contract Guardian) — never role-derived"
+        >
+          <div className="fos-stack">
+            {[props.affordances.propose, props.affordances.approve].map((affordance) => (
+              <p
+                className="fos-meta"
+                style={{ margin: 0 }}
+                key={affordance.capability}
+                data-testid={`affordance-${affordance.capability}`}
+              >
+                <span className="fos-mono">{affordance.capability}</span>:{" "}
+                {affordance.available
+                  ? "available to this session (the gates still apply — never one-click)"
+                  : `restricted — reason ${affordance.restricted?.reason ?? "missing_permission"}; ${affordance.restricted !== null ? `${affordance.restricted.escalation.action} — ${affordance.restricted.escalation.requestLabel}` : "request the capability"}. This explanation grants nothing.`}
+              </p>
+            ))}
+          </div>
+        </Card>
+      )}
       {props.phase.kind === "ready" ? (
         <FleetActionsBody data={props.phase.view} />
       ) : (

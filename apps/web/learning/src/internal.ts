@@ -20,6 +20,7 @@ export const SURFACE_ERROR_CODES = Object.freeze({
   proposalInvalid: "learning_surface.proposal_invalid",
   adoptionInvalid: "learning_surface.adoption_invalid",
   tenantMismatch: "learning_surface.tenant_mismatch",
+  roleLensInvalid: "learning_surface.role_lens_invalid",
 } as const);
 
 /** One machine-stable validation failure (a {path, reason} pair). */

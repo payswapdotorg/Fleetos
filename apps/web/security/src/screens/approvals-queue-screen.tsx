@@ -30,6 +30,8 @@ import type {
   ApprovalsQueueView,
   ParkedApprovalItemView,
 } from "../approvals-queue-view";
+import type { ParkedExplanationView } from "../approval-explanation-view";
+import type { SecurityRoleLensView } from "../role-lens";
 import { ConsoleStyles } from "../ui/tokens";
 import {
   Badge,
@@ -43,6 +45,8 @@ import {
 } from "../ui/primitives";
 import type { ScreenPhase } from "../ui/primitives";
 import { decisionConsoleStatus } from "../ui/status";
+import { RoleLensSection } from "./role-lens-section";
+import { ParkedExplanationSection } from "./parked-explanation-section";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -74,6 +78,16 @@ export interface ApprovalsQueueScreenProps {
   readonly onCancelDecision: () => void;
   /** Confirm the gated transition (routes the intent; the binding site invokes the W041 step). */
   readonly onConfirmDecision: (planId: string, action: "approve" | "reject") => void;
+  /**
+   * W100B: the active role lens (optional — absent renders exactly the
+   * W090B screen). Shapes ONLY the banner emphasis.
+   */
+  readonly roleLens?: SecurityRoleLensView | null;
+  /**
+   * W100B: the per-item "why parked / what unlocks it" explanations
+   * (from `buildParkedExplanationView`), keyed by planId. Optional.
+   */
+  readonly explanations?: Readonly<Record<string, ParkedExplanationView>> | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -263,6 +277,15 @@ export function ApprovalsQueueScreen(props: ApprovalsQueueScreenProps): JSX.Elem
           </span>
         )}
       </header>
+      {props.roleLens !== null && props.roleLens !== undefined && (
+        <RoleLensSection
+          lens={props.roleLens}
+          emphasis={[
+            { label: "Approvals", value: props.roleLens.approvalsEmphasis },
+            { label: "Policies", value: props.roleLens.policiesEmphasis },
+          ]}
+        />
+      )}
       {props.phase.kind === "ready" ? (
         props.phase.view.items.length === 0 ? (
           <EmptyState
@@ -272,13 +295,19 @@ export function ApprovalsQueueScreen(props: ApprovalsQueueScreenProps): JSX.Elem
         ) : (
           <div className="fos-stack">
             {props.phase.view.items.map((item) => (
-              <QueueItemCard
-                key={item.planId}
-                item={item}
-                canDecide={props.actingApprover !== null}
-                pending={props.pendingDecision}
-                onRequestDecision={props.onRequestDecision}
-              />
+              <div className="fos-stack" key={item.planId}>
+                <QueueItemCard
+                  item={item}
+                  canDecide={props.actingApprover !== null}
+                  pending={props.pendingDecision}
+                  onRequestDecision={props.onRequestDecision}
+                />
+                {props.explanations !== null &&
+                  props.explanations !== undefined &&
+                  props.explanations[item.planId] !== undefined && (
+                    <ParkedExplanationSection explanation={props.explanations[item.planId]!} />
+                  )}
+              </div>
             ))}
           </div>
         )

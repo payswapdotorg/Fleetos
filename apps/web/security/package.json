@@ -9,6 +9,7 @@
   },
   "devDependencies": {
     "@fleetos/actions": "workspace:*",
+    "@fleetos/identity": "workspace:*",
     "@fleetos/policy": "workspace:*",
     "@fleetos/security": "workspace:*",
     "@testing-library/dom": "^10.4.0",
