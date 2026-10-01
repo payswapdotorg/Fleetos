@@ -1,6 +1,13 @@
 # FleetOS Project State
 
-STATUS: PRODUCTIZATION PREPARATION — WAVE 8 COMPLETE; W100A/B/C READY FOR PARALLEL DISPATCH; W101/W102/W103 TL FOLLOW-ON
+STATUS: WAVE 9 COMPLETE — W100A ACCEPTED (90abd40), W100B ACCEPTED (f17d51b), W100C ACCEPTED (807f60e); all three lanes merged --no-ff; W101/W102/W103 [TL] convergence UNBLOCKED
+
+Latest accepted Wave 9 verification (2026-10-01, TL harvest after session-death recovery — push truth + local gate re-runs, per the never-trust-worker-numbers law):
+- W100A work/w100a 90abd40: check OK / typecheck 0 / 2946 pass 0 fail (+114) — enrollment-request flow (verifier-only code storage, one-time redemption), reproducible release packaging (content-derived checksums, FAIL-CLOSED credential scanner), agent-side enrollment journey client, web Install Center w/ full-journey browser tests
+- W100B work/w100b f17d51b: check OK / typecheck 0 / 2973 pass 0 fail (+141) — role-lens experience contracts over the frozen 7-role matrix (lensGrantsNothing machine-asserted), parked-approval explanations, print DISTRIBUTION planner, authority-invariance browser tests
+- W100C work/w100c 807f60e: check OK / typecheck 0 / 2975 pass 0 fail (+143, worker report matched exactly) — durable identity lifecycle over DurableRecordStore, durable audit log, optional Apify enrichment adapter (proposal-only, fail-visible), full 8-stage workload/commerce journey
+- Post-merge combined tree: check OK (24 packages, 150-contract snapshot unchanged) / typecheck 0 / 3230 pass 0 fail
+- w100a/w100b sessions died post-push without chat reports; acceptance decided on git truth + local gates (the established harvest law)
 
 Architecture: FROZEN v1.0
 Current source of truth after acceptance: integration/wave0
