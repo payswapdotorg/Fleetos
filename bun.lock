@@ -104,10 +104,10 @@
       "version": "0.1.0",
       "dependencies": {
         "@fleetos/contracts": "workspace:*",
+        "@fleetos/device-adapters": "workspace:*",
       },
       "devDependencies": {
         "@fleetos/agent": "workspace:*",
-        "@fleetos/device-adapters": "workspace:*",
         "@fleetos/device-model": "workspace:*",
         "@fleetos/health": "workspace:*",
         "@testing-library/dom": "^10.4.0",

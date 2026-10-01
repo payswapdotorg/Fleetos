@@ -85,3 +85,9 @@ with the deployment (tools/post-deploy-check.mjs + tools/deployment-manifest.mjs
 - TL triggered the production deployment directly via the Vercel API (gitSource ref=main, target=production) at ~05:52 UTC Oct 1: dpl_9a9NFrpMyxKEpBAAf9WpaHrMkLad, sha 95062b3, READY; the flame alias (`fleetos-staging-flame.vercel.app`) now serves it.
 - `tools/post-deploy-check.mjs` updated to the W101 product-shell markers (unauthenticated home IS the ProductGate: `FleetOS Console` + `fos-signin` + `fos-env`; the W092 `fos-scope` marker is superseded). Acceptance PASSED against the live alias: console-loads / unknown-route-safe / health-healthy / no-credential-leak.
 - W103 final release acceptance driven through the replay browser against the LIVE alias (see spec/PROJECT-STATE.md STATUS for the full journey record).
+
+## 2026-10-01 — W110 harvest + live acceptance (Wave 11 closure)
+
+- W110 delivered on work/w110 9328b8a (worker report matched local gates exactly: check OK / typecheck 0 / 3265-0, +14 over base) — invite-member surface + join-role selection, shell-only scope, zero package changes (runtime change = pure constant extraction).
+- Merged --no-ff into integration/wave0 (c78ef16), pushed; main fast-forwarded; git-hook production deploy READY on the flame alias; post-deploy-check PASSED.
+- Live browser acceptance through the replay browser against production: founder workspace create -> Invite member -> joinw10100000001 display-once (expiry note, copy/hide affordances, verifier note) -> hide-confirm -> code gone from DOM -> sign out -> Join tab (exactly the five member roles, service.desk chosen) -> joined session shows the Service Desk lens + role chip + member identity; switcher lists exactly the assigned role with the audited note.
