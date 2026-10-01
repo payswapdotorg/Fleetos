@@ -13,7 +13,7 @@ import {
 } from "../../src/index";
 
 test("every identity durable table is tenant-scoped with a tenant_id column", () => {
-  expect(IDENTITY_DURABLE_TABLES.length).toBe(5);
+  expect(IDENTITY_DURABLE_TABLES.length).toBe(6);
   for (const table of IDENTITY_DURABLE_TABLES) {
     expect(table.tenantScoped).toBe(true);
     const tenantColumn = table.columns.find((c) => c.name === "tenant_id");
@@ -23,7 +23,7 @@ test("every identity durable table is tenant-scoped with a tenant_id column", ()
   }
 });
 
-test("the declared tables cover the W100C durable surfaces", () => {
+test("the declared tables cover the W100C durable surfaces + the W121 credential surface", () => {
   const names = IDENTITY_DURABLE_TABLES.map((t) => t.name);
   expect(names).toEqual([
     "fleetos_tenants",
@@ -31,7 +31,24 @@ test("the declared tables cover the W100C durable surfaces", () => {
     "fleetos_role_assignments",
     "fleetos_sessions",
     "fleetos_workspace_invitations",
+    "fleetos_password_credentials",
   ]);
+});
+
+test("W121: the password-credentials table stores verifier + salt but never a plain password column", () => {
+  const credentials = findDurableTable("fleetos_password_credentials");
+  expect(credentials).toBeDefined();
+  const columnNames = credentials!.columns.map((c) => c.name);
+  expect(columnNames).toContain("verifier");
+  expect(columnNames).toContain("salt");
+  expect(columnNames).toContain("principal_id");
+  expect(columnNames).toContain("member_ref");
+  expect(columnNames).toContain("revoked_at");
+  // no column could ever carry a plain password
+  expect(columnNames).not.toContain("password");
+  expect(columnNames).not.toContain("plain");
+  expect(credentials!.columns.find((c) => c.name === "revoked_at")!.nullable).toBe(true);
+  expect(credentials!.columns.find((c) => c.name === "verifier")!.nullable).toBe(false);
 });
 
 test("the sessions table carries the active-role selector as a nullable column", () => {

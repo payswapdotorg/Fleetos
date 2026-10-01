@@ -48,7 +48,12 @@ function field(name: string, value: string | number | boolean | null): DurableRo
 }
 
 /** The shared write-refusal reason union (duplicates + tenant mismatches). */
-type WriteRefusal = "already_exists" | "tenant_mismatch" | "unknown_session" | "unknown_invitation";
+type WriteRefusal =
+  | "already_exists"
+  | "tenant_mismatch"
+  | "unknown_session"
+  | "unknown_invitation"
+  | "unknown_credential";
 
 // ---------------------------------------------------------------------------
 // The workspace/tenant repository
@@ -579,6 +584,177 @@ export function createDurableInvitationRepository(store: DurableRecordStore): In
       );
       if (!write.ok) {
         return { ok: false, reason: "unknown_invitation" };
+      }
+      return { ok: true };
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The password-credential repository (W121)
+// ---------------------------------------------------------------------------
+
+/**
+ * A persistent password-credential record (see password.ts for the
+ * seam/lifecycle rules). Carries the VERIFIER + SALT only — the plain
+ * password is never stored, never returned by any projection.
+ */
+export interface PasswordCredentialRecord {
+  readonly tenantId: TenantId;
+  /** Deterministic credential id (`pwd_` prefix). */
+  readonly credentialId: string;
+  /** The credential's principal id (`usr:` grammar). */
+  readonly principalId: string;
+  /** The sign-in member reference (the member's email). */
+  readonly memberRef: string;
+  /** The per-credential salt (injected generator; never the plain password). */
+  readonly salt: string;
+  /** The PasswordHasher verifier output (the plain password is never stored). */
+  readonly verifier: string;
+  /** ISO 8601 credential-creation instant (injected). */
+  readonly createdAt: string;
+  /** The creating principal id. */
+  readonly createdBy: string;
+  /** ISO 8601 revocation instant, when the credential was revoked. */
+  readonly revokedAt: string | null;
+}
+
+/** The tenant-scoped password-credential repository contract. */
+export interface PasswordCredentialRepository {
+  /** Persist a credential record (insert; duplicate refusal on an existing id). */
+  putCredential(
+    ctx: TenantContext,
+    record: PasswordCredentialRecord,
+  ): { readonly ok: true } | { readonly ok: false; readonly reason: WriteRefusal };
+  /** One credential by credential id (own partition only). */
+  getCredential(ctx: TenantContext, credentialId: string): PasswordCredentialRecord | undefined;
+  /** One credential by principal id (own partition only). */
+  getCredentialByPrincipal(
+    ctx: TenantContext,
+    principalId: string,
+  ): PasswordCredentialRecord | undefined;
+  /** The member's credential by member reference (own partition only). */
+  getCredentialByMemberRef(
+    ctx: TenantContext,
+    memberRef: string,
+  ): PasswordCredentialRecord | undefined;
+  /** Every credential in the acting tenant, credential id order. */
+  listCredentials(ctx: TenantContext): readonly PasswordCredentialRecord[];
+  /** Overwrite a credential record in place (lifecycle transitions only). */
+  updateCredential(
+    ctx: TenantContext,
+    record: PasswordCredentialRecord,
+  ): { readonly ok: true } | { readonly ok: false; readonly reason: WriteRefusal };
+}
+
+/** The deterministic credential id: `pwd_` + tenant tail + principal. */
+export function passwordCredentialIdOf(tenantId: TenantId, principalId: string): string {
+  return `pwd_${tenantId.slice(4)}_${principalId.replace(/[:]/g, "-")}`;
+}
+
+/** Create the durable password-credential repository over the seam. */
+export function createDurablePasswordCredentialRepository(
+  store: DurableRecordStore,
+): PasswordCredentialRepository {
+  function toRecord(tenantId: TenantId, stored: DurableStoredRow): PasswordCredentialRecord {
+    return frozen({
+      tenantId,
+      credentialId: text(stored.row, "credential_id"),
+      principalId: text(stored.row, "principal_id"),
+      memberRef: text(stored.row, "member_ref"),
+      salt: text(stored.row, "salt"),
+      verifier: text(stored.row, "verifier"),
+      createdAt: text(stored.row, "created_at"),
+      createdBy: text(stored.row, "created_by"),
+      revokedAt: textOrNull(stored.row, "revoked_at"),
+    });
+  }
+
+  function toRow(record: PasswordCredentialRecord): DurableRow {
+    return frozen({
+      tenant_id: record.tenantId,
+      credential_id: record.credentialId,
+      principal_id: record.principalId,
+      member_ref: record.memberRef,
+      salt: record.salt,
+      verifier: record.verifier,
+      created_at: record.createdAt,
+      created_by: record.createdBy,
+      revoked_at: record.revokedAt,
+    });
+  }
+
+  return frozen({
+    putCredential(
+      ctx: TenantContext,
+      record: PasswordCredentialRecord,
+    ): { readonly ok: true } | { readonly ok: false; readonly reason: WriteRefusal } {
+      const tenantId = requireTenantContext(ctx);
+      if (tenantId !== record.tenantId) {
+        return { ok: false, reason: "tenant_mismatch" };
+      }
+      const write = store.insert(
+        ctx,
+        "fleetos_password_credentials",
+        record.credentialId,
+        toRow(record),
+      );
+      if (!write.ok && write.reason === "already_exists") {
+        return { ok: false, reason: "already_exists" };
+      }
+      return { ok: true };
+    },
+    getCredential(
+      ctx: TenantContext,
+      credentialId: string,
+    ): PasswordCredentialRecord | undefined {
+      const tenantId = requireTenantContext(ctx);
+      const stored = store.get(ctx, "fleetos_password_credentials", credentialId);
+      return stored === undefined ? undefined : toRecord(tenantId, stored);
+    },
+    getCredentialByPrincipal(
+      ctx: TenantContext,
+      principalId: string,
+    ): PasswordCredentialRecord | undefined {
+      const tenantId = requireTenantContext(ctx);
+      const rows = store.list(ctx, "fleetos_password_credentials", {
+        where: frozen({ ...field("principal_id", principalId) }),
+      });
+      const first = rows[0];
+      return first === undefined ? undefined : toRecord(tenantId, first);
+    },
+    getCredentialByMemberRef(
+      ctx: TenantContext,
+      memberRef: string,
+    ): PasswordCredentialRecord | undefined {
+      const tenantId = requireTenantContext(ctx);
+      const rows = store.list(ctx, "fleetos_password_credentials", {
+        where: frozen({ ...field("member_ref", memberRef) }),
+      });
+      const first = rows[0];
+      return first === undefined ? undefined : toRecord(tenantId, first);
+    },
+    listCredentials(ctx: TenantContext): readonly PasswordCredentialRecord[] {
+      const tenantId = requireTenantContext(ctx);
+      return store
+        .list(ctx, "fleetos_password_credentials")
+        .map((stored) => toRecord(tenantId, stored));
+    },
+    updateCredential(
+      ctx: TenantContext,
+      record: PasswordCredentialRecord,
+    ): { readonly ok: true } | { readonly ok: false; readonly reason: WriteRefusal } {
+      const tenantId = requireTenantContext(ctx);
+      if (tenantId !== record.tenantId) {
+        return { ok: false, reason: "tenant_mismatch" };
+      }
+      const existing = store.get(ctx, "fleetos_password_credentials", record.credentialId);
+      if (existing === undefined) {
+        return { ok: false, reason: "unknown_credential" };
+      }
+      const write = store.put(ctx, "fleetos_password_credentials", record.credentialId, toRow(record));
+      if (!write.ok) {
+        return { ok: false, reason: "unknown_credential" };
       }
       return { ok: true };
     },

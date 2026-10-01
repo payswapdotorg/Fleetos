@@ -35,6 +35,12 @@
  *                          grants, PermissionCheck -> deterministic
  *                          allow/deny with machine-stable reasons. (The
  *                          Contract Guardian evaluation strategy is W031.)
+ *   password.ts        W121 — the PasswordHasher SEAM (pure computation,
+ *                          injected implementation; no crypto dependency
+ *                          inside identity) + the password-credential
+ *                          record/service over the durable record seam
+ *                          (machine-stable unknown-account vs
+ *                          wrong-password refusals).
  *   errors.ts          — FleetError-shaped identity errors (validation +
  *                          authorization projections).
  *
@@ -77,6 +83,11 @@ export * from "./session";
 
 // W100C — The auditable active-role switch (never changes tenant)
 export * from "./role-switch";
+
+// W121 — The password-credential seam + service (the PasswordHasher
+// seam, the credential record shape, register/verify over the durable
+// record seam — machine-stable unknown-account vs wrong-password)
+export * from "./password";
 
 // FleetError-shaped identity errors
 export * from "./errors";

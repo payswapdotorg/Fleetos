@@ -32,8 +32,12 @@ import { frozen } from "../internal";
  * definition changes; the W102 migration runner sequences forward from
  * this number (the frozen-surface guard discipline from @fleetos/ops
  * applies: `@fleetos/contracts` is never a migration target).
+ *
+ * v2 (W121): `fleetos_password_credentials` added — the durable
+ * account-credential truth (verifier + salt; the plain password is
+ * never stored).
  */
-export const IDENTITY_DURABLE_SCHEMA_VERSION = 1 as const;
+export const IDENTITY_DURABLE_SCHEMA_VERSION = 2 as const;
 
 // ---------------------------------------------------------------------------
 // Rendering

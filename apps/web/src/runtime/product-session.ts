@@ -4,13 +4,14 @@
  *
  * The COMPOSITION-ONLY product auth/session lifecycle over the REAL
  * W100C durable identity services: the workspace create/join
- * lifecycle, the durable session service (open/resolve/revoke), and
- * the audited role-switch service — over the W100C DurableRecordStore
- * seam (the in-memory reference store; the production seam — Neon —
- * is injected through the same interface). This module owns NO
- * business truth: every domain decision is the identity package's;
- * this runtime only sequences the product journey and projects UI
- * state through the pure types in @fleetos/web-product.
+ * lifecycle, the durable session service (open/resolve/revoke), the
+ * audited role-switch service, and the W121 password-credential
+ * service — over the W100C DurableRecordStore seam (the in-memory
+ * reference store by default; a shared/injected store at the
+ * composition root). This module owns NO business truth: every
+ * domain decision is the identity package's; this runtime only
+ * sequences the product journey and projects UI state through the
+ * pure types in @fleetos/web-product.
  *
  * The product state machine (the shell's session gate):
  *
@@ -18,11 +19,27 @@
  *   active --sign-out(revoke)--> signed-out
  *   active --expiry(resolve refuses)--> expired --recover--> active
  *
+ * W121 (proper authentication) adds, through the REAL identity seams:
+ *   - SIGN-UP: createWorkspace registers the founder's password
+ *     credential (hash through the INJECTED PasswordHasher seam; the
+ *     plain password never persists) before opening the session;
+ *   - SIGN-IN: workspace + email + password verified against the
+ *     stored verifier — machine-stable unknown-account vs
+ *     wrong-password refusals with frozen human words;
+ *   - SIGN-OUT: revokes the session AND clears the persisted browser
+ *     session;
+ *   - PERSISTENT BROWSER SESSIONS: every session-opening transition
+ *     persists the token through the INJECTED session-store seam and
+ *     construction re-resolves it — reload KEEPS the session honest
+ *     (expiry still enforced via the resolve seam; corrupted /
+ *     unknown / mismatched tokens fail closed to the gate; an expired
+ *     or revoked token is never auto-logged-in).
+ *
  * Every timestamp is injected (the `now` seam — no clock reads); every
  * generator is injected (deterministic tests). Fail-closed throughout:
- * unknown principals, expired codes and revoked sessions are machine-
- * stable refusals with frozen human explanations — never fabricated
- * success.
+ * unknown principals, wrong passwords, expired codes and revoked
+ * sessions are machine-stable refusals with frozen human explanations
+ * — never fabricated success.
  */
 
 import { asCorrelationId, asTenantId, asUserId } from "@fleetos/contracts";
@@ -34,11 +51,17 @@ import {
   createDurableRoleAssignmentRepository,
   createDurableSessionRepository,
   createDurableInvitationRepository,
+  createDurablePasswordCredentialRepository,
+  createPasswordCredentialService,
+  createReferencePasswordHasher,
   createSessionService,
   createWorkspaceLifecycleService,
   createRoleSwitchService,
   makeUserPrincipal,
   makeTenantContext,
+  asOpaqueToken,
+  isValidOpaqueToken,
+  MIN_PASSWORD_LENGTH,
 } from "@fleetos/identity";
 import type {
   TenantRepository,
@@ -46,6 +69,10 @@ import type {
   RoleAssignmentRepository,
   SessionRepository,
   InvitationRepository,
+  PasswordCredentialRepository,
+  PasswordHasher,
+  DurableRecordStore,
+  DurableStoredRow,
   RoleDefinition,
   TenantContext,
 } from "@fleetos/identity";
@@ -54,6 +81,8 @@ import type {
   ProductActiveSession,
   ProductAuthRefusal,
   ProductSessionSeams,
+  ProductSessionStore,
+  ProductPersistedSession,
   ProductWorkspaceSummary,
   IssueInvitationResult,
   ProductTransitionResult,
@@ -99,18 +128,185 @@ function counterGenerator(prefix: string, pad: number): () => string {
 }
 
 // ---------------------------------------------------------------------------
+// W121 — the browser-tier PasswordHasher (injected at the gate)
+// ---------------------------------------------------------------------------
+
+/**
+ * The durable record-store shape the runtime composes: the W100C seam
+ * plus the snapshot view the workspace directory lists (the shape
+ * `createInMemoryDurableRecordStore` returns; the composition root's
+ * browser/localStorage store implements the same surface).
+ */
+export type ProductDurableStore = DurableRecordStore & {
+  readonly snapshot: Readonly<Record<string, Readonly<Record<string, readonly DurableStoredRow[]>>>>;
+};
+
+/**
+ * The composition-root seams this runtime accepts beyond the pure
+ * presentation seams (`ProductSessionSeams` — web-product types):
+ * identity-owned seam types can only be named HERE, at the sanctioned
+ * binding site (apps/web/src — the composition root; the web-product
+ * package stays free of identity imports by the lane-ownership law).
+ */
+export interface ProductRuntimeSeams extends ProductSessionSeams {
+  /**
+   * The password hasher the credential service uses. Default: the
+   * identity package's deterministic reference (local/test tier). The
+   * composition root injects `createBrowserPasswordHasher()` (an
+   * iterated SHA-256 — see below) for the browser tier.
+   */
+  readonly passwordHasher?: PasswordHasher;
+  /** The per-credential salt generator (deterministic default). */
+  readonly saltGenerator?: () => string;
+  /**
+   * The session-token generator (must match the `fst_` grammar).
+   * Inject UNIQUE-per-runtime sequences when a durable store is shared:
+   * the session table enforces token uniqueness across ALL records
+   * (revoked ones stay), so reloaded runtimes need fresh sequences.
+   */
+  readonly sessionToken?: () => string;
+  /**
+   * The session-id generator (`ses_` prefix). Same uniqueness ruling
+   * as the token generator: session ids are the durable primary key.
+   */
+  readonly sessionId?: () => string;
+  /**
+   * The durable identity store. Default: a fresh in-memory store (the
+   * W100C reference). The composition root injects a SHARED store so
+   * the durable identity records survive the runtime — "the underlying
+   * durable store survives the runtime (sessions persist)".
+   */
+  readonly durableStore?: ProductDurableStore;
+}
+
+/** The SHA-256 round constants (FIPS 180-4). */
+const SHA256_K: readonly number[] = Object.freeze([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]);
+
+/** Rotate a 32-bit word right by `n` bits. */
+function rotr(x: number, n: number): number {
+  return ((x >>> n) | (x << (32 - n))) >>> 0;
+}
+
+/**
+ * Pure SHA-256 (FIPS 180-4) over a UTF-8 string, hex output.
+ * Deterministic, dependency-free, synchronous — the honest browser-tier
+ * building block for the injected PasswordHasher (the async WebCrypto
+ * API cannot fit the synchronous identity seam). Verified against the
+ * standard test vectors by machine test.
+ */
+export function sha256Hex(message: string): string {
+  const bytes = new TextEncoder().encode(message);
+  const bitLength = bytes.length * 8;
+  // padded to a 64-byte multiple: message || 0x80 || zeros || 64-bit bit length
+  const padded = new Uint8Array((((bytes.length + 8) >> 6) + 1) << 6);
+  padded.set(bytes);
+  padded[bytes.length] = 0x80;
+  const view = new DataView(padded.buffer);
+  view.setUint32(padded.length - 8, Math.floor(bitLength / 2 ** 32), false);
+  view.setUint32(padded.length - 4, bitLength >>> 0, false);
+
+  const h = [
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+  ];
+  const w = new Array<number>(64).fill(0);
+  for (let offset = 0; offset < padded.length; offset += 64) {
+    for (let i = 0; i < 16; i += 1) {
+      w[i] = view.getUint32(offset + i * 4, false);
+    }
+    for (let i = 16; i < 64; i += 1) {
+      const x = w[i - 15]!;
+      const y = w[i - 2]!;
+      const s0 = rotr(x, 7) ^ rotr(x, 18) ^ (x >>> 3);
+      const s1 = rotr(y, 17) ^ rotr(y, 19) ^ (y >>> 10);
+      w[i] = (w[i - 16]! + s0 + w[i - 7]! + s1) >>> 0;
+    }
+    let [a, b, c, d, e, f, g, hh] = h;
+    for (let i = 0; i < 64; i += 1) {
+      const S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const t1 = (hh + S1 + ch + SHA256_K[i]! + w[i]!) >>> 0;
+      const S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const t2 = (S0 + maj) >>> 0;
+      hh = g;
+      g = f;
+      f = e;
+      e = (d + t1) >>> 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (t1 + t2) >>> 0;
+    }
+    h[0] = (h[0]! + a) >>> 0;
+    h[1] = (h[1]! + b) >>> 0;
+    h[2] = (h[2]! + c) >>> 0;
+    h[3] = (h[3]! + d) >>> 0;
+    h[4] = (h[4]! + e) >>> 0;
+    h[5] = (h[5]! + f) >>> 0;
+    h[6] = (h[6]! + g) >>> 0;
+    h[7] = (h[7]! + hh) >>> 0;
+  }
+  return h.map((word) => word.toString(16).padStart(8, "0")).join("");
+}
+
+/**
+ * The browser-tier hash rounds: an iterated salted SHA-256 (a
+ * deliberate poor-man's KDF for the demo/local composition — one
+ * thousand single-block compressions keeps sign-in well under a
+ * frame while making offline inversion of the stored verifiers a
+ * real, non-trivial computation; a server-side KDF replaces it at
+ * the future Neon binding).
+ */
+export const BROWSER_PASSWORD_ROUNDS = 1000 as const;
+
+/**
+ * The REAL PasswordHasher the composition root injects (W121): an
+ * iterated salted SHA-256 — pure, synchronous, dependency-free (the
+ * identity package's seam discipline holds: no crypto dependency
+ * inside identity; the implementation is injected HERE).
+ *
+ * @param rounds the iteration count (defaults to BROWSER_PASSWORD_ROUNDS)
+ * @returns the frozen hasher
+ */
+export function createBrowserPasswordHasher(rounds: number = BROWSER_PASSWORD_ROUNDS): PasswordHasher {
+  function derive(plain: string, salt: string): string {
+    let acc = sha256Hex(`${salt}::fleetos-password::${plain}`);
+    for (let round = 1; round < rounds; round += 1) {
+      acc = sha256Hex(`${acc}${salt}`);
+    }
+    return `pwv_${acc}`;
+  }
+  return Object.freeze({
+    hash: (plain: string, salt: string): string => derive(plain, salt),
+    verify: (plain: string, salt: string, verifier: string): boolean =>
+      typeof verifier === "string" && derive(plain, salt) === verifier,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // The runtime
 // ---------------------------------------------------------------------------
 
 /**
  * Create the product session runtime over the REAL identity services.
  *
- * One runtime instance == one browser session's product lifecycle. The
- * underlying durable store survives the runtime (sessions persist);
- * the runtime holds the CURRENT token + session id in memory only —
- * exactly the browser-session contract.
+ * One runtime instance == one browser session's product lifecycle. With
+ * an injected durable store + session store (the composition root's
+ * binding) the durable identity records and the session token SURVIVE
+ * the runtime — reload KEEPS the session honest through the resolve
+ * seam; without them (the default, and every deterministic test) each
+ * runtime is a fresh browser session over a fresh in-memory store.
  */
-export function createProductSessionRuntime(seams: ProductSessionSeams): {
+export function createProductSessionRuntime(seams: ProductRuntimeSeams): {
   /** List the workspaces (the choice screen's directory). */
   readonly listWorkspaces: () => readonly ProductWorkspaceSummary[];
   /** Issue a join invitation for the active workspace (code shown once). */
@@ -120,6 +316,8 @@ export function createProductSessionRuntime(seams: ProductSessionSeams): {
     readonly name: string;
     readonly founderDisplayName: string;
     readonly founderEmail: string;
+    /** The founder's sign-up password (hashed through the injected seam; never stored). */
+    readonly password: string;
   }) => ProductTransitionResult;
   /** Join a workspace with a one-time code (joiner becomes a session). */
   readonly joinWorkspace: (input: {
@@ -128,10 +326,12 @@ export function createProductSessionRuntime(seams: ProductSessionSeams): {
     readonly email: string;
     readonly roles?: readonly string[];
   }) => ProductTransitionResult;
-  /** Sign in to a listed workspace by member email. */
+  /** Sign in to a listed workspace by member email + password. */
   readonly signIn: (input: {
     readonly tenantId: string;
     readonly email: string;
+    /** The sign-in password (verified against the stored verifier; never stored). */
+    readonly password: string;
   }) => ProductTransitionResult;
   /** Switch the active experience role (audited; assigned-only). */
   readonly switchActiveRole: (role: ProductExperienceRole) => ProductTransitionResult;
@@ -153,16 +353,20 @@ export function createProductSessionRuntime(seams: ProductSessionSeams): {
     seams.correlationId ?? counterGenerator("cor_w101p", 8);
 
   // -- the REAL durable composition (the W100C seam + services) --------
-  const store = createInMemoryDurableRecordStore();
+  const store: ProductDurableStore = seams.durableStore ?? createInMemoryDurableRecordStore();
   const tenants: TenantRepository = createDurableTenantRepository(store);
   const principals: PrincipalRepository = createDurablePrincipalRepository(store);
   const assignments: RoleAssignmentRepository = createDurableRoleAssignmentRepository(store);
   const sessions: SessionRepository = createDurableSessionRepository(store);
   const invitations: InvitationRepository = createDurableInvitationRepository(store);
+  const credentials: PasswordCredentialRepository = createDurablePasswordCredentialRepository(store);
 
   const sessionService = createSessionService({
     sessions,
-    generators: seams.sessionToken ? { token: seams.sessionToken } : undefined,
+    generators:
+      seams.sessionToken !== undefined || seams.sessionId !== undefined
+        ? { token: seams.sessionToken, sessionId: seams.sessionId }
+        : undefined,
   });
   const workspaceService = createWorkspaceLifecycleService({
     tenants,
@@ -174,6 +378,14 @@ export function createProductSessionRuntime(seams: ProductSessionSeams): {
   const roleSwitchService = createRoleSwitchService({
     sessions,
     assignmentsOf: (ctx: TenantContext) => assignments.listAssignments(ctx),
+  });
+  // W121: the password-credential service over the SAME durable store —
+  // the hasher is the INJECTED seam (deterministic reference default;
+  // the composition root injects the browser-tier SHA-256 hasher).
+  const passwordService = createPasswordCredentialService({
+    credentials,
+    hasher: seams.passwordHasher ?? createReferencePasswordHasher(),
+    saltGenerator: seams.saltGenerator,
   });
 
   // -- the runtime's browser-session memory (token + id, memory only) --
@@ -292,8 +504,83 @@ export function createProductSessionRuntime(seams: ProductSessionSeams): {
     sessionId = opened.session.sessionId;
     rememberedTenantId = tenantId;
     rememberedEmail = email;
+    // W121: persist the session token through the INJECTED store seam so
+    // reload re-resolves THIS session (fail-closed — see restore below).
+    persistSession({ tenantId, token: opened.session.token });
     return { ok: true, state: project(onboardingDone ? "active" : "onboarding") };
   }
+
+  // -- W121: the persisted browser-session seam (fail-closed) ----------
+
+  /** Persist (or clear) the current session token through the seam. */
+  function persistSession(session: ProductPersistedSession | null): void {
+    const sessionStore: ProductSessionStore | undefined = seams.sessionStore;
+    if (sessionStore === undefined) return;
+    try {
+      sessionStore.save(session);
+    } catch {
+      // Persistence is best-effort availability-wise, but NEVER a
+      // fabricated session: a failing store cannot break authentication.
+    }
+  }
+
+  /**
+   * Validate an UNTRUSTED loaded value against the persisted-session
+   * shape + the frozen grammars (the store's own impl may have already
+   * refused it — the runtime re-validates defensively either way).
+   */
+  function asValidPersistedSession(loaded: unknown): ProductPersistedSession | null {
+    if (typeof loaded !== "object" || loaded === null) return null;
+    const candidate = loaded as { readonly tenantId?: unknown; readonly token?: unknown };
+    if (typeof candidate.tenantId !== "string" || typeof candidate.token !== "string") {
+      return null;
+    }
+    if (!candidate.tenantId.startsWith("tnt_")) return null;
+    if (!isValidOpaqueToken(asOpaqueToken(candidate.token))) return null;
+    return { tenantId: candidate.tenantId, token: candidate.token };
+  }
+
+  /**
+   * RELOAD RESTORE: re-resolve the persisted token through the REAL
+   * session seam at the injected `now`. Fail-closed on everything —
+   * corrupted shape, grammar refusal, unknown token, tenant mismatch,
+   * revocation, expiry: the runtime stays signed-out (the gate) and
+   * the dead residue is cleared. An expired or revoked token is NEVER
+   * auto-logged-in.
+   */
+  function restorePersistedSession(): void {
+    const sessionStore: ProductSessionStore | undefined = seams.sessionStore;
+    if (sessionStore === undefined) return;
+    let loaded: unknown;
+    try {
+      loaded = sessionStore.load();
+    } catch {
+      return; // an unreadable store never widens access
+    }
+    if (loaded === null || loaded === undefined) return; // nothing persisted
+    const persisted = asValidPersistedSession(loaded);
+    if (persisted === null) {
+      // corrupted beyond recognition — clear the residue, stay signed-out
+      persistSession(null);
+      return;
+    }
+    const resolved = sessionService.resolveSession(ctxOf(persisted.tenantId), persisted.token, now());
+    if (resolved.ok) {
+      token = resolved.session.token;
+      sessionId = resolved.session.sessionId;
+      rememberedTenantId = resolved.session.tenantId as string;
+      rememberedEmail = resolved.session.principalMemberRef;
+      return;
+    }
+    // unknown / mismatched / revoked / expired: never auto-login — clear
+    // the dead token so the next reload starts honest at the gate.
+    persistSession(null);
+  }
+
+  // The reload restore runs ONCE at construction (before any caller
+  // observes state): a re-created runtime over a shared durable store
+  // + session store re-enters the session the browser persisted.
+  restorePersistedSession();
 
   return {
     listWorkspaces,
@@ -330,6 +617,16 @@ export function createProductSessionRuntime(seams: ProductSessionSeams): {
           message: "createWorkspace: workspace name, display name and email are required",
         };
       }
+      if (
+        typeof input.password !== "string" ||
+        input.password.length < MIN_PASSWORD_LENGTH
+      ) {
+        return {
+          ok: false,
+          reason: "invalid_input",
+          message: `createWorkspace: a password of at least ${String(MIN_PASSWORD_LENGTH)} characters is required`,
+        };
+      }
       const created = workspaceService.createWorkspace({
         now: now(),
         name: input.name.trim(),
@@ -338,6 +635,25 @@ export function createProductSessionRuntime(seams: ProductSessionSeams): {
         initialRoles: ["fleet.admin"],
         correlationId: asCorrelationId(nextCorr()),
       });
+      // W121: the signed-up founder gets a durable password credential
+      // (hashed through the injected seam; the plain password never
+      // persists) BEFORE the first session opens.
+      const registered = passwordService.registerCredential({
+        now: now(),
+        tenantId: created.tenantId,
+        principalId: created.principalId,
+        memberRef: input.founderEmail.trim(),
+        plainPassword: input.password,
+        createdBy: created.principalId,
+        correlationId: asCorrelationId(nextCorr()),
+      });
+      if (!registered.ok) {
+        return {
+          ok: false,
+          reason: "invalid_input",
+          message: `createWorkspace: credential registration refused (${registered.reason}): ${registered.message}`,
+        };
+      }
       return openSession(created.tenantId as string, input.founderEmail.trim(), ["fleet.admin"]);
     },
 
@@ -381,11 +697,11 @@ export function createProductSessionRuntime(seams: ProductSessionSeams): {
     },
 
     signIn: (input) => {
-      if (!input.tenantId.trim() || !input.email.trim()) {
+      if (!input.tenantId.trim() || !input.email.trim() || !input.password) {
         return {
           ok: false,
           reason: "invalid_input",
-          message: "signIn: workspace and email are required",
+          message: "signIn: workspace, email and password are required",
         };
       }
       const workspace = workspacesOfTenant(input.tenantId.trim());
@@ -405,6 +721,25 @@ export function createProductSessionRuntime(seams: ProductSessionSeams): {
           ok: false,
           reason: "unknown_principal",
           message: `signIn: no member ${input.email} in ${workspace.name}`,
+        };
+      }
+      // W121: the password requirement — verified against the STORED
+      // verifier through the identity seam. Unknown account (no
+      // credential for this member), wrong password and revoked
+      // credentials are machine-stable refusals with frozen words.
+      const verified = passwordService.verifyCredential({
+        tenantId: asTenantId(input.tenantId.trim()),
+        memberRef: input.email.trim(),
+        plainPassword: input.password,
+        correlationId: asCorrelationId(nextCorr()),
+      });
+      if (!verified.ok) {
+        const reason: ProductAuthRefusal =
+          verified.reason === "credential_already_exists" ? "invalid_input" : verified.reason;
+        return {
+          ok: false,
+          reason,
+          message: `signIn refused (${verified.reason}): ${verified.message}`,
         };
       }
       const assigned = assignmentsOf(input.tenantId.trim(), membership.principalId);
@@ -478,6 +813,9 @@ export function createProductSessionRuntime(seams: ProductSessionSeams): {
       sessionId = null;
       rememberedTenantId = null;
       rememberedEmail = null;
+      // W121: sign-out clears the persisted browser session — a reload
+      // after signing out lands on the gate, never a resurrected session.
+      persistSession(null);
       return { ok: true, state: { phase: "signed-out" } };
     },
 

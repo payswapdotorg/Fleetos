@@ -44,7 +44,7 @@ test("the workspace choice screen renders the three modes with a listed workspac
 });
 
 test("the choice screen's create tab wires the controlled callback", () => {
-  let created: { name: string; displayName: string; email: string } | null = null;
+  let created: { name: string; displayName: string; email: string; password: string } | null = null;
   render(createElement(WorkspaceChoiceScreen, {
     workspaces: WORKSPACES,
     environmentLabel: "staging",
@@ -61,15 +61,68 @@ test("the choice screen's create tab wires the controlled callback", () => {
   const nameBox = screen.getByLabelText("Workspace name");
   const displayBox = screen.getByLabelText("Your name");
   const emailBox = screen.getByLabelText("Your email");
+  const passwordBox = screen.getByLabelText("Password");
   fireEvent.change(nameBox, { target: { value: "Northwind Fleet" } });
   fireEvent.change(displayBox, { target: { value: "Ada Lovelace" } });
   fireEvent.change(emailBox, { target: { value: "ada@northwind.example" } });
+  fireEvent.change(passwordBox, { target: { value: "founder-pass-0001" } });
   // the submit button is the LAST 'Create workspace' button (inside the card)
   const submit = screen.getAllByText("Create workspace").at(-1)!.closest("button");
   expect(submit).toBeTruthy();
   expect(submit).not.toBe(createTab);
   fireEvent.click(submit!);
-  expect(created).toEqual({ name: "Northwind Fleet", displayName: "Ada Lovelace", email: "ada@northwind.example" });
+  expect(created).toEqual({ name: "Northwind Fleet", displayName: "Ada Lovelace", email: "ada@northwind.example", password: "founder-pass-0001" });
+});
+
+// ---------------------------------------------------------------------------
+// W121 — the password fields (the never-render law)
+// ---------------------------------------------------------------------------
+
+test("W121: the create tab's password field is type=password (masked, never rendered)", () => {
+  render(createElement(WorkspaceChoiceScreen, {
+    workspaces: WORKSPACES,
+    environmentLabel: "staging",
+    onCreate: () => {},
+    onJoin: () => {},
+    onSignIn: () => {},
+  }));
+  fireEvent.click(screen.getAllByText("Create workspace")[0]!.closest("button")!);
+  const passwordBox = screen.getByLabelText("Password") as HTMLInputElement;
+  expect(passwordBox.type).toBe("password");
+  expect(passwordBox.autocomplete).toBe("new-password");
+  // the submit stays disabled until EVERY field (incl. the password) is set
+  const submit = screen.getAllByText("Create workspace").at(-1)!.closest("button") as HTMLButtonElement;
+  expect(submit.disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "Northwind Fleet" } });
+  fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Ada Lovelace" } });
+  fireEvent.change(screen.getByLabelText("Your email"), { target: { value: "ada@northwind.example" } });
+  expect(submit.disabled).toBe(true); // still disabled: no password yet
+  fireEvent.change(passwordBox, { target: { value: "founder-pass-0001" } });
+  expect(submit.disabled).toBe(false);
+});
+
+test("W121: the sign-in tab's password field is type=password and flows through onSignIn", () => {
+  let signedIn: { tenantId: string; email: string; password: string } | null = null;
+  render(createElement(WorkspaceChoiceScreen, {
+    workspaces: WORKSPACES,
+    environmentLabel: "staging",
+    onCreate: () => {},
+    onJoin: () => {},
+    onSignIn: (input) => {
+      signedIn = input;
+    },
+  }));
+  const passwordBox = screen.getByLabelText("Password") as HTMLInputElement;
+  expect(passwordBox.type).toBe("password");
+  expect(passwordBox.autocomplete).toBe("current-password");
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "ada@northwind.example" } });
+  fireEvent.change(passwordBox, { target: { value: "founder-pass-0001" } });
+  fireEvent.click(screen.getAllByText("Sign in").at(-1)!.closest("button")!);
+  expect(signedIn).toEqual({
+    tenantId: "tnt_w101test0001",
+    email: "ada@northwind.example",
+    password: "founder-pass-0001",
+  });
 });
 
 test("the refusal explanation renders the machine reason AND the human words verbatim", () => {
