@@ -62,3 +62,11 @@ W101,W092,W100C -> W102 [TL] durable free-tier staging deployment
 W101,W102 -> W103 [TL] UX operational simulation + final product acceptance
 
 Wave 9 rule: W100A/B/C may run concurrently on the existing disjoint worker scopes. Shared role/session contracts that cross ownership boundaries are TL-owned and must be exposed as public seams rather than imported internals.
+
+Wave 12 - Operator product directives (2026-10-01): real auth, demo accounts, Stripe-adapted UX
+W120 -> W122 ; W121 -> W122
+W120 [worker, TL-scope grant] Stripe-adapted design system (tokens + shell + chrome; visual language only, no logic, no auth screens)
+W121 [worker, C-scope + shell grant] proper authentication: account credentials (sign-up/sign-in/sign-out with passwords through the identity seam), persistent browser sessions
+W122 [worker, after W120+W121] demo accounts with quick links + strict demo-data isolation (demo records render ONLY in demo tenants)
+
+Wave 12 rule: W120 and W121 run concurrently on disjoint files (W120 owns every .css file and the shell/chrome visual layer; W121 owns identity + the gate/session logic files and styles ONLY through existing fos-* classes). W122 dispatches on the merged W120+W121 tree.
