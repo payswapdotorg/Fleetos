@@ -16,12 +16,14 @@
  */
 import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { asTenantId } from "@fleetos/contracts";
 import {
   AppShell,
   ControlTowerScreen,
   EvidenceIndexScreen,
   EvidenceTrailScreen,
   EmptyState,
+  Badge,
   Button,
   validateShellRoute,
 } from "@fleetos/web-shell";
@@ -88,14 +90,9 @@ import type {
   OutcomeFeedView,
 } from "@fleetos/web-learning";
 import {
-  DEMO,
-  TENANT_ID as DEMO_TENANT,
-  deviceFleetView,
-  securityFindingsView,
-  approvalsQueueView,
-  policiesView,
-  learningViews,
+  composeConsoleAreas,
 } from "./runtime/demo-fleet";
+import type { ConsoleAreaComposition } from "./runtime/demo-fleet";
 import { environmentLabel } from "./runtime/env";
 
 // ---------------------------------------------------------------------------
@@ -247,31 +244,57 @@ export function ConsoleSessionApp({
   const [openPolicySetId, setOpenPolicySetId] = useState<string | null>(null);
   const [openTrailSubject, setOpenTrailSubject] = useState<string | null>(null);
 
-  // W101: the Install Center's controlled state (the W100A machine).
+  // W101: the Install Center's controlled state (the W100A machine) —
+  // W122: bound to the ACTIVE session's tenant (never a static one).
   const [installState, setInstallState] = useState<InstallCenterState>(() =>
-    initialInstallCenterState(DEMO_TENANT),
+    initialInstallCenterState(asTenantId(session.tenantId)),
   );
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
   const release = useMemo<ReleaseManifestLike>(() => demoReleaseManifest(), []);
 
-  // The composed views (deterministic; recomputed per render is fine at
-  // demo scale — they are pure functions of the frozen seed).
+  // W122 — THE ISOLATION LAW: the console areas resolve per the ACTIVE
+  // session's tenant (the operator role shapes the tower): the demo
+  // tenant sees the rich demo fleet; every non-demo workspace sees ONLY
+  // its own records — honest empty states for fresh workspaces, never
+  // a silent fallback to demo data (the composition fails closed).
+  const areasResult = useMemo(
+    () => composeConsoleAreas(session.tenantId, operatorRoleFor(session.activeRole ?? "employee")),
+    [session.tenantId, session.activeRole],
+  );
+  const areas: ConsoleAreaComposition | null = areasResult.ok ? areasResult.view : null;
+
+  // The composed views (deterministic; pure functions of the tenant).
   const fleetPhase = useMemo(() => {
-    const result = deviceFleetView();
+    if (areas === null) return { kind: "error" as const, message: "The workspace data refused to compose." };
+    const result = areas.fleetView;
     return result.ok ? { kind: "ready" as const, view: result.view } : { kind: "error" as const, message: "The fleet roster refused to compose." };
-  }, []);
+  }, [areas]);
   const findingsPhase = useMemo(() => {
-    const result = securityFindingsView();
+    if (areas === null) return { kind: "error" as const, message: "The workspace data refused to compose." };
+    const result = areas.findingsView;
     return result.ok ? { kind: "ready" as const, view: result.view } : { kind: "error" as const, message: "The findings view refused to compose." };
-  }, []);
+  }, [areas]);
   const approvalsPhase = useMemo(() => {
-    const result = approvalsQueueView();
+    if (areas === null) return { kind: "error" as const, message: "The workspace data refused to compose." };
+    const result = areas.approvalsView;
     return result.ok ? { kind: "ready" as const, view: result.view } : { kind: "error" as const, message: "The approvals queue refused to compose." };
-  }, []);
+  }, [areas]);
   const policiesPhases = useMemo<RenderInput["policiesPhases"]>(() => {
-    const result = policiesView();
+    if (areas === null) {
+      return {
+        list: { kind: "error", message: "The workspace data refused to compose." },
+        detail: { kind: "ready", view: undefined },
+        history: { kind: "ready", view: {
+          tenantId: asTenantId(session.tenantId),
+          total: 0,
+          decisionCounts: { ALLOW: 0, WARN: 0, REQUIRE_APPROVAL: 0, BLOCK: 0 },
+          items: [],
+        } },
+      };
+    }
+    const result = areas.policiesView;
     const historyView: PolicyDecisionHistoryView = {
-      tenantId: result.ok ? result.view.tenantId : DEMO_TENANT,
+      tenantId: result.ok ? result.view.tenantId : asTenantId(session.tenantId),
       total: 0,
       decisionCounts: { ALLOW: 0, WARN: 0, REQUIRE_APPROVAL: 0, BLOCK: 0 },
       items: [],
@@ -283,15 +306,22 @@ export function ConsoleSessionApp({
       detail: { kind: "ready", view: undefined },
       history: { kind: "ready", view: historyView },
     };
-  }, []);
+  }, [areas, session.tenantId]);
   const learningPhases = useMemo(() => {
-    const views = learningViews();
+    if (areas === null) {
+      return {
+        feed: { kind: "error" as const, message: "The workspace data refused to compose." },
+        cases: { kind: "error" as const, message: "The workspace data refused to compose." },
+        ledger: { kind: "error" as const, message: "The workspace data refused to compose." },
+      };
+    }
+    const views = areas.learning;
     return {
       feed: views.feed.ok ? { kind: "ready" as const, view: views.feed.view } : { kind: "error" as const, message: "feed refused" },
       cases: views.cases.ok ? { kind: "ready" as const, view: views.cases.view } : { kind: "error" as const, message: "cases refused" },
       ledger: views.ledger.ok ? { kind: "ready" as const, view: views.ledger.view } : { kind: "error" as const, message: "ledger refused" },
     };
-  }, []);
+  }, [areas]);
 
   const onSearchLanding = useCallback(
     (result: ShellSearchResult): void => {
@@ -301,39 +331,57 @@ export function ConsoleSessionApp({
     [navigate],
   );
 
-  const content = renderRoute({
-    route,
-    navigate,
-    routeValid: !initialRefused && pathToRouteCurrent(route),
-    towerView: DEMO.towerView,
-    evidenceIndex: DEMO.evidenceIndex,
-    evidenceTrails: DEMO.evidenceTrails,
-    fleetPhase,
-    fleetQuery,
-    setFleetQuery,
-    fleetSelection,
-    setFleetSelection,
-    findingsPhase,
-    severityFilter,
-    setSeverityFilter,
-    openFindingId,
-    setOpenFindingId,
-    approvalsPhase,
-    policiesPhases,
-    openPolicySetId,
-    setOpenPolicySetId,
-    learningPhases,
-    learningPanel,
-    setLearningPanel,
-    openAdoptionId,
-    setOpenAdoptionId,
-    openTrailSubject,
-    setOpenTrailSubject,
-    installState,
-    setInstallState,
-    release,
-    onCopyCommand: (command: string) => setCopiedCommand(command),
-  });
+  const content =
+    areas === null ? (
+      // W122 fail-closed: the composition refused machine-stably (an
+      // invalid tenant grammar) — the honest safe-failure state, never
+      // a silent fallback to demo data.
+      <EmptyState
+        title="This workspace's data refused to compose"
+        hint={`${areasResult.ok ? "" : areasResult.message} The console renders only records scoped to the active session's tenant; a refusal here is machine-stable — never a fallback.`}
+        action={
+          <Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>
+            Back to Control Tower
+          </Button>
+        }
+      />
+    ) : (
+      renderRoute({
+        route,
+        navigate,
+        routeValid: !initialRefused && pathToRouteCurrent(route),
+        towerView: areas.towerView,
+        evidenceIndex: areas.evidenceIndex,
+        evidenceTrails: areas.evidenceTrails,
+        fleetPhase,
+        fleetQuery,
+        setFleetQuery,
+        fleetSelection,
+        setFleetSelection,
+        findingsPhase,
+        severityFilter,
+        setSeverityFilter,
+        openFindingId,
+        setOpenFindingId,
+        approvalsPhase,
+        policiesPhases,
+        openPolicySetId,
+        setOpenPolicySetId,
+        learningPhases,
+        learningPanel,
+        setLearningPanel,
+        openAdoptionId,
+        setOpenAdoptionId,
+        openTrailSubject,
+        setOpenTrailSubject,
+        installState,
+        setInstallState,
+        release,
+        onCopyCommand: (command: string) => setCopiedCommand(command),
+        sessionTenantId: session.tenantId,
+        actingApproverId: session.principalId,
+      })
+    );
 
   return (
     <AppShell
@@ -342,10 +390,15 @@ export function ConsoleSessionApp({
       role={operatorRoleFor(session.activeRole ?? "employee")}
       tenantLabel={session.workspaceName}
       environmentLabel={environmentLabel()}
-      records={DEMO.searchRecords}
+      records={areas === null ? [] : areas.searchRecords}
       onSearchLanding={onSearchLanding}
       chrome={
         <>
+          {/* W122: the honest DEMO label — the demo session's chrome
+              carries the explicit badge (existing classes only). */}
+          {areas !== null && areas.isDemo ? (
+            <Badge status="informational">Demo workspace</Badge>
+          ) : null}
           <ApprovalInboxBadge
             pending={approvalsPhase.kind === "ready" ? approvalsPhase.view.total : 0}
             onOpen={() => navigate({ area: "security", view: "approvals" })}
@@ -428,6 +481,10 @@ interface RenderInput {
   readonly setInstallState: (state: InstallCenterState) => void;
   readonly release: ReleaseManifestLike;
   readonly onCopyCommand: (command: string) => void;
+  // W122 (the isolation law): the ACTIVE session's tenant + principal —
+  // every tenant-scoped binding below uses these, never a static id.
+  readonly sessionTenantId: string;
+  readonly actingApproverId: string;
 }
 
 function renderRoute(input: RenderInput): JSX.Element {
@@ -491,7 +548,7 @@ function renderRoute(input: RenderInput): JSX.Element {
           return;
         }
         const created = createInstallEnrollmentCode({
-          tenantId: DEMO_TENANT,
+          tenantId: asTenantId(input.sessionTenantId),
           requestId: `enr_w101_${nextEnrollmentRequestId()}`,
           code: "BOOT-W101-0001",
           ownershipKind: input.installState.ownershipKind as "corporate_owned",
@@ -548,7 +605,7 @@ function renderRoute(input: RenderInput): JSX.Element {
       return (
         <ApprovalsQueueScreen
           phase={input.approvalsPhase}
-          actingApprover={{ userId: "usr_w091demoop001" } satisfies ActingApprover}
+          actingApprover={{ userId: input.actingApproverId } satisfies ActingApprover}
           pendingDecision={null}
           onRequestDecision={() => undefined}
           onCancelDecision={() => undefined}

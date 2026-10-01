@@ -1,7 +1,7 @@
 "use client";
 /**
  * @fleetos/web-product — the session screens (W101 [TL]; W110 join-role
- * selection; W121 password credentials).
+ * selection; W121 password credentials; W122 demo quick links).
  *
  * The sign-in / workspace-choice / onboarding surfaces of the product
  * shell: fully presentational, fully controlled (the W090 pattern —
@@ -20,10 +20,21 @@
  * the password value NEVER renders visibly (masked input, controlled
  * for the disabled logic only) and flows only into the controlled
  * callbacks bound to the identity seam's verifier inputs.
+ *
+ * W122: the sign-in screen carries the clearly-labeled DEMO quick-
+ * links strip — one one-click persona button per experience role. The
+ * strip is FULLY CONTROLLED: the persona catalog and the open intent
+ * arrive as optional props (the gate wires them to the session
+ * runtime's demo surface); when the props are absent the strip never
+ * renders (fail-closed — no demo affordance without the sanctioned
+ * entry). The quick link is the DEMO personas' sanctioned entry (they
+ * carry no passwords — no second auth path); the click flows through
+ * the controlled `onOpenDemoPersona` callback to the runtime's
+ * session-open seam. Style comes ONLY from the existing fos-* classes.
  */
 import type { JSX } from "react";
 import { useState } from "react";
-import { Button, Card, EmptyState } from "@fleetos/web-shell";
+import { Badge, Button, Card, EmptyState } from "@fleetos/web-shell";
 import type { ProductWorkspaceSummary, ProductSessionState, ProductAuthRefusal } from "./product-session-types";
 import { PRODUCT_REFUSAL_EXPLANATIONS } from "./product-session-types";
 import type { ProductExperienceRole } from "./role-bridge";
@@ -41,6 +52,86 @@ export function RefusalExplanation(props: {
       </p>
       <p className="fos-refusal-words">{PRODUCT_REFUSAL_EXPLANATIONS[props.reason]}</p>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// W122 — the DEMO quick links (the sign-in screen's demo persona strip)
+// ---------------------------------------------------------------------------
+
+/**
+ * A demo persona summary (the quick-links strip's controlled input):
+ * the pre-seeded named principal for one experience role in the
+ * dedicated demo tenant. Pure presentation data — the runtime derives
+ * it from the demo tenant's seeded records (the seeded catalog), and
+ * the honest identity truth never enters this package.
+ */
+export interface ProductDemoPersonaSummary {
+  /** The stable persona id (the quick-link seam's selector). */
+  readonly personaId: string;
+  /** The persona's experience role (the frozen matrix vocabulary). */
+  readonly role: ProductExperienceRole;
+  /** The honest display name ("Demo — <matrix label>"). */
+  readonly displayName: string;
+  /** The demo workspace's display name (the session the link opens). */
+  readonly workspaceName: string;
+}
+
+/**
+ * The honest helper copy (frozen): what the quick links are, and the
+ * sanctioned-entry law — demo personas carry no passwords; the click
+ * IS the entry through the same session-open seam.
+ */
+export const DEMO_QUICK_LINK_NOTE: string =
+  "One click opens the shared demo workspace as that persona — clearly labeled sample data. The demo personas carry no passwords: the quick link is the sanctioned entry, through the same session-open seam as sign-in.";
+
+/**
+ * The DEMO quick-links strip (W122; fully controlled): one button per
+ * demo persona. Renders ONLY when the catalog + the open callback are
+ * both provided (the gate wires them to the session runtime's demo
+ * surface); otherwise the strip never appears — no demo affordance
+ * without the sanctioned entry. Style ONLY through existing fos-*
+ * classes (W120 owns every stylesheet).
+ */
+export function DemoQuickLinks(props: {
+  readonly personas: readonly ProductDemoPersonaSummary[];
+  readonly onOpen: (personaId: string) => void;
+}): JSX.Element {
+  if (props.personas.length === 0) {
+    return (
+      <Card title="DEMO workspaces" subtitle="The one-click demo personas">
+        <EmptyState
+          title="No demo personas available"
+          hint="The demo workspace personas could not be listed. Use sign-in, create or join instead."
+        />
+      </Card>
+    );
+  }
+  return (
+    <section className="fos-card" aria-label="Demo workspace quick links" data-testid="demo-quicklinks">
+      <div className="fos-spread">
+        <div>
+          <h2 className="fos-card-title">
+            DEMO workspaces <Badge status="informational">sample data</Badge>
+          </h2>
+          <p className="fos-card-subtitle">
+            One click per persona opens {props.personas[0]!.workspaceName}
+          </p>
+        </div>
+      </div>
+      <p className="fos-meta">{DEMO_QUICK_LINK_NOTE}</p>
+      <div className="fos-row">
+        {props.personas.map((persona) => (
+          <Button
+            key={persona.personaId}
+            variant="secondary"
+            onClick={() => props.onOpen(persona.personaId)}
+          >
+            {persona.displayName}
+          </Button>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -66,6 +157,17 @@ export function WorkspaceChoiceScreen(props: {
     readonly password: string;
   }) => void;
   readonly refusal?: { readonly reason: ProductAuthRefusal; readonly message: string } | null;
+  /**
+   * W122: the demo persona catalog (the quick-links strip's input).
+   * Optional + fail-closed: when absent (or empty) the strip never
+   * renders — no demo affordance without the sanctioned entry.
+   */
+  readonly demoPersonas?: readonly ProductDemoPersonaSummary[];
+  /**
+   * W122: open a demo persona's workspace session (the sanctioned
+   * demo entry — the runtime's session-open seam, no second auth path).
+   */
+  readonly onOpenDemoPersona?: (personaId: string) => void;
 }): JSX.Element {
   const [tab, setTab] = useState<"signin" | "create" | "join">("signin");
   const [name, setName] = useState("");
@@ -191,6 +293,13 @@ export function WorkspaceChoiceScreen(props: {
             Join workspace
           </Button>
         </Card>
+      ) : null}
+      {/* W122: the clearly-labeled DEMO quick-links strip (fail-closed:
+          absent props -> no demo affordance on this screen). */}
+      {props.demoPersonas !== undefined &&
+      props.demoPersonas.length > 0 &&
+      props.onOpenDemoPersona !== undefined ? (
+        <DemoQuickLinks personas={props.demoPersonas} onOpen={props.onOpenDemoPersona} />
       ) : null}
     </main>
   );

@@ -20,6 +20,14 @@
  * the Service Desk member role, the session shows the Service Desk
  * lens, the role switcher lists the joined role — and only it
  * (assigned-only; fleet.admin was never assigned to the joiner).
+ *
+ * W122 — THE ISOLATION LAW reshapes the mounting: the demo-data
+ * journeys now enter through the sign-in screen's DEMO quick link
+ * (the sanctioned entry — one click opens the demo workspace session,
+ * clearly labeled DEMO) instead of a fresh created workspace. A fresh
+ * workspace sees ONLY its own records (honest empty states — asserted
+ * by the W122 isolation suite); demo data renders ONLY inside the
+ * demo tenant's session.
  */
 import { test, expect, afterEach } from "bun:test";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
@@ -38,12 +46,26 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-function mountApp(route: ShellRoute): void {
+/**
+ * Mount the console inside the DEMO workspace session (W122): the
+ * sign-in screen's one-click quick link — the sanctioned demo entry —
+ * opens the demo persona's session through the REAL session-open seam
+ * (no credentials; the Fleet Administrator persona). The demo tenant's
+ * session then renders the rich demo fleet.
+ */
+function mountDemoApp(route: ShellRoute): void {
   render(<ConsoleApp initialRoute={route} />);
-  // W101: the product session gate — the console renders only for an
-  // authenticated session. Create the workspace (the founder session,
-  // WITH the W121 sign-up password) through the REAL UI, then dismiss
-  // the first-run onboarding rail.
+  fireEvent.click(screen.getByRole("button", { name: "Demo — Fleet Administrator" }));
+  fireEvent.click(screen.getByText("Dismiss getting started"));
+}
+
+/**
+ * Mount the console inside a FRESH created workspace (the W121 sign-up
+ * journey): the founder's session over an empty workspace — its own
+ * records only (the W122 isolation law).
+ */
+function mountWorkspaceApp(route: ShellRoute): void {
+  render(<ConsoleApp initialRoute={route} />);
   fireEvent.click(screen.getAllByText("Create workspace")[0]!.closest("button")!);
   fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "Northwind Fleet" } });
   fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Ada Lovelace" } });
@@ -59,7 +81,7 @@ function mountApp(route: ShellRoute): void {
 // ---------------------------------------------------------------------------
 
 test("E2E journey — the Control Tower answers what needs attention with direct record links", () => {
-  mountApp({ area: "overview", view: "home" });
+  mountDemoApp({ area: "overview", view: "home" });
   // The primary attention stream shows the CRITICAL finding...
   expect(screen.getByText(/CRITICAL — .*disk encryption/i)).toBeDefined();
   // ...with its direct link into Security and its evidence link.
@@ -73,7 +95,7 @@ test("E2E journey — the Control Tower answers what needs attention with direct
 });
 
 test("E2E journey — enroll fleet: the entry point navigates to the enrollment view", () => {
-  mountApp({ area: "overview", view: "home" });
+  mountDemoApp({ area: "overview", view: "home" });
   fireEvent.click(screen.getByRole("button", { name: /Enroll an existing fleet/ }));
   // W101: the enrollment view is now the INSTALL CENTER (the W100A
   // screen over the REAL release manifest — the productized journey).
@@ -86,7 +108,7 @@ test("E2E journey — enroll fleet: the entry point navigates to the enrollment 
 // ---------------------------------------------------------------------------
 
 test("E2E journey — the Devices fleet list presents the REAL composed roster", () => {
-  mountApp({ area: "device", view: "list" });
+  mountDemoApp({ area: "device", view: "list" });
   expect(screen.getByText(/ThinkPad T14/i)).toBeDefined();
   expect(screen.getByText(/MacBook Air M3/i)).toBeDefined();
   expect(screen.getByText(/Pixel 9/i)).toBeDefined();
@@ -98,13 +120,13 @@ test("E2E journey — the Devices fleet list presents the REAL composed roster",
 // ---------------------------------------------------------------------------
 
 test("E2E journey — the Security findings view presents the CRITICAL finding", () => {
-  mountApp({ area: "security", view: "findings" });
+  mountDemoApp({ area: "security", view: "findings" });
   expect(screen.getAllByText(/CRITICAL/i).length).toBeGreaterThan(0);
   expect(screen.getAllByText(/disk encryption/i).length).toBeGreaterThan(0);
 });
 
 test("E2E journey — the approvals queue shows the REAL parked plan awaiting the owner decision", () => {
-  mountApp({ area: "security", view: "approvals" });
+  mountDemoApp({ area: "security", view: "approvals" });
   expect(screen.getByText(/w091-demo-enable-encryption/i)).toBeDefined();
 });
 
@@ -113,7 +135,7 @@ test("E2E journey — the approvals queue shows the REAL parked plan awaiting th
 // ---------------------------------------------------------------------------
 
 test("E2E journey — the Policies area is first-class: the REAL compiled rule set is visible", () => {
-  mountApp({ area: "policies", view: "list" });
+  mountDemoApp({ area: "policies", view: "list" });
   // The frozen policy surface renders the compiled rule-set row: the
   // opaque rule-set id, the version, and the enabled/total rule counts
   // (the rule NAME lives in the detail sheet — read-only by design).
@@ -127,14 +149,14 @@ test("E2E journey — the Policies area is first-class: the REAL compiled rule s
 // ---------------------------------------------------------------------------
 
 test("E2E journey — Evidence & Audit is first-class: the index lists the composed trails", () => {
-  mountApp({ area: "evidence", view: "trail" });
+  mountDemoApp({ area: "evidence", view: "trail" });
   expect(screen.getAllByText(/Evidence trail index/i).length).toBeGreaterThan(0);
   // The three composed subjects are listed with their chain state.
   expect(screen.getAllByText(/Succeeded/i).length).toBeGreaterThan(0);
 });
 
 test("E2E journey — opening a trail shows the recorded stages with the verification state", () => {
-  mountApp({ area: "evidence", view: "trail" });
+  mountDemoApp({ area: "evidence", view: "trail" });
   const open = screen.getAllByRole("button", { name: /Evidence trail/i });
   fireEvent.click(open[0]!);
   // The trail detail: the recorded audit stages + the chain state.
@@ -146,7 +168,7 @@ test("E2E journey — opening a trail shows the recorded stages with the verific
 // ---------------------------------------------------------------------------
 
 test("E2E journey — Learning is first-class: the outcome feed shows the observed outcome", () => {
-  mountApp({ area: "learning", view: "cases" });
+  mountDemoApp({ area: "learning", view: "cases" });
   expect(screen.getAllByText(/action\.plan/i).length).toBeGreaterThan(0);
 });
 
@@ -155,7 +177,7 @@ test("E2E journey — Learning is first-class: the outcome feed shows the observ
 // ---------------------------------------------------------------------------
 
 test("E2E journey — global search lands on the record's area route", () => {
-  mountApp({ area: "overview", view: "home" });
+  mountDemoApp({ area: "overview", view: "home" });
   fireEvent.click(screen.getByRole("button", { name: /Open global search/i }));
   const input = screen.getByRole("textbox", { name: /Search records, capabilities, areas/i });
   fireEvent.change(input, { target: { value: "thinkpad" } });
@@ -171,7 +193,7 @@ test("E2E journey — global search lands on the record's area route", () => {
 // ---------------------------------------------------------------------------
 
 test("E2E journey — every one of the TEN areas is navigable from the sidebar", () => {
-  mountApp({ area: "overview", view: "home" });
+  mountDemoApp({ area: "overview", view: "home" });
   const nav = screen.getByRole("navigation", { name: "Primary navigation" });
   const links = nav.querySelectorAll(".fos-sidebar__link");
   expect(links.length).toBe(10);
@@ -187,7 +209,7 @@ test("E2E journey — unknown routes fail safely with a way forward", () => {
   // refusal + the safe-failure composition directly.
   const refused = pathToRoute(["nonsense", "view"]);
   expect(refused.ok).toBe(false);
-  mountApp({ area: "overview", view: "home" });
+  mountDemoApp({ area: "overview", view: "home" });
   // (The ConsoleApp renders the safe-failure state for refused
   // routes — verified by the shell render tests; here the path
   // vocabulary refusal is the contract.)
@@ -231,7 +253,9 @@ test("the demo composition is deterministic: the tower view is identical across 
 // ---------------------------------------------------------------------------
 
 test("E2E journey — the founder issues an invitation; a member joins with the Service Desk role through the gate", () => {
-  mountApp({ area: "overview", view: "home" });
+  // W122: the invite/join closure runs on a REAL created workspace (the
+  // founder's sign-up journey) — the demo tenant is not involved.
+  mountWorkspaceApp({ area: "overview", view: "home" });
   // The invite affordance is discoverable in the session chrome.
   fireEvent.click(screen.getByText("Invite member…"));
   // The raw join code renders DISPLAY-ONCE with the copy + hide confirm.
