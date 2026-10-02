@@ -70,3 +70,15 @@ W121 [worker, C-scope + shell grant] proper authentication: account credentials 
 W122 [worker, after W120+W121] demo accounts with quick links + strict demo-data isolation (demo records render ONLY in demo tenants)
 
 Wave 12 rule: W120 and W121 run concurrently on disjoint files (W120 owns every .css file and the shell/chrome visual layer; W121 owns identity + the gate/session logic files and styles ONLY through existing fos-* classes). W122 dispatches on the merged W120+W121 tree.
+
+Wave 13 - adoption roadmap (SIM-B ground truth): lane composition + server-side control plane
+W140 [worker, TL-scope grant] server-side control plane + real agent check-in (API routes + server-only Neon store + agent check-in client)
+W141 [A] Device Doctor + Recovery deep-screen runtime bindings
+W142 [B] Security Doctor walk + Fleet Actions plans bindings + approvals execution
+W143 [C] Workloads planning + Commerce procurement bindings
+W145 [A] declared-import device records + mobile roster cards (justified split: both device-lane SIM-B asks 5+7, one owner)
+W141,W142,W143 -> W144 [TL] runtime composition + deployment convergence
+W140 -> W144 (server-session composition-root wiring)
+W145 -> W144
+
+Wave 13 rule: W140/W141/W142 run concurrently on disjoint scopes (W140 owns apps/web/app/api + apps/web/src/server + apps/agent; W141 owns apps/web/device + apps/web/recovery; W142 owns apps/web/security + apps/web/actions). W143 + W145 dispatch as worker slots free (limit 3). W144 composes on the merged tree. The frozen packages gain no new dependencies; the Neon driver lives server-only in apps/web.
