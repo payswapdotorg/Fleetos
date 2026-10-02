@@ -1,6 +1,12 @@
 # FleetOS Project State
 
-STATUS: WAVE 11 COMPLETE — W110 delivered (9328b8a, merged --no-ff c78ef16): the two W103-recorded product gaps closed — InviteMemberControl over the REAL issueInvitation() seam (raw join code DISPLAY-ONCE: copy affordance + hide-confirm discards from shell memory, expiry from seam TTL, refusals render machine-stable reason) and the Join-tab role select (exactly the five member roles, labels verbatim; fleet.admin + vendor.operator excluded — never self-service through a bearer code). TL gates on the exact delivery: check OK / typecheck 0 / 3265-0 (+14); live browser acceptance on production (flame alias): founder issues joinw10100000001 -> display-once verified -> sign-out -> join with code + service.desk selected -> Service Desk lens + role chip + member identity + assigned-only switcher. Roadmap Waves 1-11 shipped; 3265/0 tests
+STATUS: ROADMAP COMPLETE — WAVE 12 COMPLETE; Waves 1-12 shipped; final main 1f7a3ad (integration/wave0 in sync); 3323/0 tests
+
+Latest accepted Wave 12 verification (2026-10-01, operator product directives — the W110-era "WAVE 11 COMPLETE" record immediately precedes this block and remains true as written):
+- W120 Stripe-adapted design system (work/w120 95c8a27, merged --no-ff 856347a): light cool foundation, #635BFF accent, Inter/system font stack, 6px/8px radii, grouped light sidebar with uppercase group labels; every css file lane-owned; TL gates check OK / typecheck 0 / 3266-0 (+1); CI 36883403131 SUCCESS
+- W121 proper authentication (work/w121 0305e1e, merged --no-ff fca8bea): PasswordHasher as a pure injected seam (identity stays zero-dep, no clock reads), salt+verifier-only credential records (plain passwords never persist, never render), sign-up/sign-in/sign-out with machine-stable unknown_account vs wrong_password refusals, persistent browser sessions through the injected session-store seam with fail-closed token resolution (corrupted/unknown/mismatched/expired/revoked all refuse); TL gates check OK / typecheck 0 / 3295-0 (+29); CI 36921528713 SUCCESS
+- W122 demo accounts + strict demo-data isolation (work/w122 42b7667, merged --no-ff 1f7a3ad): one demo persona per frozen experience role seeded LAZILY + IDEMPOTENTLY in the dedicated demo tenant, DEMO quick links through the SAME session-open seam (no second auth route; personas carry no passwords), ISOLATION LAW machine-tested (console areas compose per ACTIVE session tenant; cross-tenant demo-record resolution is a machine-stable NOTHING; fresh non-demo workspaces see honest empty states, zero demo content; global search matches nothing fresh); product-gate diff judged pure composition-root wiring; TL gates check OK / typecheck 0 / 3323-0 (+28); CI 36936781830 SUCCESS
+- WAVE 12 LIVE PRODUCTION ACCEPTANCE PASSED on https://fleetos-staging-flame.vercel.app serving the git-hook production deploy of 1f7a3ad: (1) demo quick link "Demo — Fleet Administrator" -> demo session through the same session seam -> rich demo data (CRITICAL disk-encryption finding sec_042000b6 + evidence + parked plan w091-demo-enable-encryption + approvals inbox 1 pending) with honest DEMO labels; (2) fresh workspace "Acceptance Test Co" created with credentials -> ZERO demo content (0 demo mentions, no w091 ids, no demo tenant) + honest empty states in every area; (3) W121 lifecycle on production: sign-up -> RELOAD PERSISTS (session, workspace, role kept) -> SIGN-OUT clears to the gate; (4) Stripe-language review: Inter/system stack live, light cool foundation, #635BFF accent, 6px/8px radii, grouped light sidebar with uppercase group labels + topbar account area
 
 Latest accepted Wave 9 verification (2026-10-01, TL harvest after session-death recovery — push truth + local gate re-runs, per the never-trust-worker-numbers law):
 - W100A work/w100a 90abd40: check OK / typecheck 0 / 2946 pass 0 fail (+114) — enrollment-request flow (verifier-only code storage, one-time redemption), reproducible release packaging (content-derived checksums, FAIL-CLOSED credential scanner), agent-side enrollment journey client, web Install Center w/ full-journey browser tests
@@ -10,10 +16,10 @@ Latest accepted Wave 9 verification (2026-10-01, TL harvest after session-death 
 - w100a/w100b sessions died post-push without chat reports; acceptance decided on git truth + local gates (the established harvest law)
 
 Architecture: FROZEN v1.0
-Current source of truth after acceptance: integration/wave0
-Preparation branch: integration/product-readiness
-Accepted base: W090A + W090B + W090C + W091 + W092
-Current staging URL: https://fleetos-staging-flame.vercel.app
+Current source of truth after acceptance: integration/wave0 (= main at 1f7a3ad)
+Preparation branch: integration/product-readiness — CONSUMED historical record (its W100-W103 extension shipped through the wave 9/10 lineage; its supersession notes landed on main)
+Accepted base: W090A + W090B + W090C + W091 + W092 + W100A + W100B + W100C + W101 + W102 + W103 + W110 + W120 + W121 + W122
+Current staging URL: https://fleetos-staging-flame.vercel.app (Vercel Hobby production deploys from main)
 
 Latest accepted Wave 8 verification:
 - 2832 tests passed, 0 failed
@@ -24,28 +30,22 @@ Latest accepted Wave 8 verification:
 - browser verification covers ten-area navigation, global search, evidence, safe unknown routes, responsive shell, and 13 acceptance journeys
 - W092 staging acceptance: console loads, unknown-route-safe, health-healthy, no-credential-leak
 
-Productization reality:
+Productization reality (delivered through W103 + W110 + wave 12):
 - rendered console: YES
 - free-tier staging base: YES
-- complete durable user/workspace/session onboarding: NOT YET
-- multi-role role switching: NOT YET
-- installable signed agent distribution + first check-in UX: NOT YET
-- role-shaped interfaces/personalized Control Tower: NOT YET
-- Apify integration: NOT YET (optional enrichment)
-- Resend integration: NOT YET (optional email channel)
+- complete durable user/workspace/session onboarding: YES (W100C durable lifecycle over DurableRecordStore; W121 password credentials + persistent browser sessions with fail-closed token resolution)
+- multi-role role switching: YES (W100C auditable active-role semantics; W101 role switcher + route guards; W110 join-tab role select over the five member roles, admin/vendor excluded)
+- installable agent distribution + first check-in UX: YES (W100A: reproducible content-checksummed release packaging + FAIL-CLOSED credential scanner + enrollment-request flow + agent journey client + web Install Center; W102 agent artifact release in CI; integrity is content-derived checksums — cryptographic code-signing was never scoped in the catalog)
+- role-shaped interfaces/personalized Control Tower: YES (W100B role-lens experiences over the frozen 7-role matrix, lensGrantsNothing machine-asserted; W101 role-shaped Control Tower + role-aware search; W110 Service Desk lens + role chip + assigned-only switcher)
+- Apify integration: YES (optional; W100C provider-neutral enrichment adapter, proposal-only, fail-visible)
+- Resend integration: NOT YET (optional email channel; never scoped in a work item)
 
-Next implementation:
-- W100A [A] installable agent + real enrollment
-- W100B [B] role-shaped security/action/learning experiences
-- W100C [C] durable identity/session/role switching + workload/commerce + optional Apify
-- W101 [TL] product shell/auth/onboarding convergence
-- W102 [TL] durable free-tier staging deployment
-- W103 [TL] UX simulation + final acceptance
+Next implementation: NONE — the catalog is fully shipped (W001-W080 original roadmap; W090-W092 render wave; W100-W103 productization; W110 gap closure; W120-W122 operator product directives). The frontier is CLOSED; new work begins only with new operator directives recorded in spec/work-items/WORK-ITEM-CATALOG.md.
 
-Product-ready target:
-1. install and use end to end;
-2. reproducible non-commercial free-tier staging;
-3. solid roleful frontend with explicit role switching.
+Product-ready target (achieved through W103 + W110 + wave 12):
+1. install and use end to end: YES
+2. reproducible non-commercial free-tier staging: YES (flame alias serving production deploys from main)
+3. solid roleful frontend with explicit role switching: YES
 
 Worker limit: 3
 
