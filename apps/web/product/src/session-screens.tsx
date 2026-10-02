@@ -45,12 +45,20 @@ export function RefusalExplanation(props: {
   readonly reason: ProductAuthRefusal;
   readonly message: string;
 }): JSX.Element {
+  // W130 — fail-visible: the frozen words are keyed by the machine reason;
+  // an out-of-vocabulary reason (corrupted state, a stale build's value)
+  // renders the honest fallback sentence — NEVER an empty alert (the
+  // sim-b "silent empty <alert>" defect class).
+  const words = PRODUCT_REFUSAL_EXPLANATIONS[props.reason];
   return (
     <div className="fos-refusal" role="alert">
       <p className="fos-refusal-reason">
         <strong>{props.reason}</strong>
       </p>
-      <p className="fos-refusal-words">{PRODUCT_REFUSAL_EXPLANATIONS[props.reason]}</p>
+      <p className="fos-refusal-words">
+        {words ??
+          "This action was refused and no further explanation is available for it. Go back, check what you entered, and try again — or ask an administrator for help."}
+      </p>
     </div>
   );
 }
@@ -267,7 +275,7 @@ export function WorkspaceChoiceScreen(props: {
       {tab === "join" ? (
         <Card title="Join a workspace" subtitle="Use the one-time code you were given">
           <label htmlFor="fos-code">Join code</label>
-          <input id="fos-code" value={code} placeholder="joinw101…" onChange={(e) => setCode(e.target.value)} />
+          <input id="fos-code" value={code} placeholder="joinw…" onChange={(e) => setCode(e.target.value)} />
           <label htmlFor="fos-joindisplay">Your name</label>
           <input id="fos-joindisplay" value={displayName} placeholder="Grace Hopper" onChange={(e) => setDisplayName(e.target.value)} />
           <label htmlFor="fos-joinemail">Your email</label>

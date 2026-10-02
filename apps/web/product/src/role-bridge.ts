@@ -138,3 +138,43 @@ export function experienceRoleFromAssignment(
     ? (roleName as ProductExperienceRole)
     : null;
 }
+
+// ---------------------------------------------------------------------------
+// W130 — honest denials for restricted roles (the ROLE-EXPERIENCE-MATRIX
+// law: unavailable_capabilities_show_reason_and_escalation_path)
+// ---------------------------------------------------------------------------
+
+/**
+ * The machine-stable view of a restricted role's denied action: the
+ * frozen reason (the shell's interaction-matrix vocabulary) plus the
+ * frozen human explanation (why the capability is unavailable + the
+ * escalation path). Pure presentation copy — the AUTHORITY is the
+ * shell's frozen interaction matrix, checked at the composition root.
+ */
+export interface RestrictedActionDenialView {
+  /** The machine-stable reason (the shell's frozen refusal vocabulary). */
+  readonly reason: string;
+  /** The frozen human words: why unavailable + the escalation path. */
+  readonly explanation: string;
+}
+
+/**
+ * The honest denial for a restricted role attempting to CREATE AN
+ * ENROLLMENT CODE (the Install Center's viewer-role control, W130):
+ * viewer roles (employee / vendor.operator) can OBSERVE the Install
+ * Center but cannot issue enrollment codes — the click renders this
+ * explanation instead of a silent no-op (the sim-b blocker).
+ */
+export function enrollmentCodeCreationDenial(
+  role: ProductExperienceRole | null,
+): RestrictedActionDenialView {
+  const label =
+    role === null ? "your current role" : PRODUCT_EXPERIENCE_ROLE_LABELS[role];
+  return {
+    reason: "interaction_forbidden",
+    explanation:
+      `Your active role (${label}) can observe the Install Center but cannot create enrollment codes — ` +
+      "issuing a one-time enrollment code is reserved for operator-and-above roles. " +
+      "Ask your workspace's Fleet Administrator or Service Desk to create the enrollment code for you.",
+  };
+}

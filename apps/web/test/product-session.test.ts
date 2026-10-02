@@ -21,6 +21,10 @@ import {
   createBrowserPasswordHasher,
   sha256Hex,
   INVITATION_TTL_SECONDS,
+  createCryptoJoinCodeGenerator,
+  JOIN_CODE_PREFIX,
+  JOIN_CODE_BODY_LENGTH,
+  JOIN_CODE_PATTERN,
 } from "../src/runtime/product-session";
 import {
   PRODUCT_REFUSAL_EXPLANATIONS,
@@ -183,8 +187,10 @@ describe("W101 product session runtime (REAL identity services)", () => {
     });
     expect(reused.ok).toBe(false);
     if (reused.ok) return;
-    expect(reused.reason).toBe("revoked_code");
-    expect(PRODUCT_REFUSAL_EXPLANATIONS[reused.reason]).toContain("revoked");
+    // W130: a redeemed code is the machine-stable already_used (with the
+    // frozen human words + resolve guidance)
+    expect(reused.reason).toBe("already_used");
+    expect(PRODUCT_REFUSAL_EXPLANATIONS[reused.reason]).toContain("redeemed");
   });
 
   test("signIn resolves a known member fail-closed (unknown member/workspace refused)", () => {
@@ -816,5 +822,288 @@ describe("W121 browser-tier PasswordHasher (the composition root's injection)", 
       password: FOUNDER_PASSWORD,
     });
     expect(ok.ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// W130 — invite/join integrity: high-entropy tenant-scoped codes, strict
+// tenant-scoped redemption, machine-stable redemption errors
+// ---------------------------------------------------------------------------
+
+describe("W130 invite/join integrity (entropy + tenant-scoped redemption)", () => {
+  /** Seams WITHOUT a joinCode injection — the W130 crypto-random default. */
+  function entropySeams(): ProductSessionSeams {
+    return {
+      now: () => T0,
+      ttlSeconds: TTL,
+      tenantId: counter("tnt_w130test", 4),
+      sessionToken: counter("fst_w130test", 19),
+      correlationId: counter("cor_w130t", 6),
+    };
+  }
+
+  /** A minimal (non-member) projection of the store's principals, per tenant. */
+  function principalsByTenant(
+    store: ReturnType<typeof createInMemoryDurableRecordStore>,
+  ): Record<string, string[]> {
+    const out: Record<string, string[]> = {};
+    const table = store.snapshot["fleetos_principals"] ?? {};
+    for (const [tenantId, rows] of Object.entries(table)) {
+      out[tenantId] = rows.map((row) => String(row.row["member_ref"]));
+    }
+    return out;
+  }
+
+  test("(a) the DEFAULT generator issues two different codes in the same workspace (high entropy, never the sequential first code)", () => {
+    const rt = createProductSessionRuntime(entropySeams());
+    rt.createWorkspace({
+      name: "Northwind Fleet",
+      founderDisplayName: "Ada Lovelace",
+      founderEmail: "ada@northwind.example",
+      password: FOUNDER_PASSWORD,
+    });
+    const first = rt.issueInvitation();
+    const second = rt.issueInvitation();
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    // two sequential issues differ (the display-once law is untouched)
+    expect(first.rawCode).not.toBe(second.rawCode);
+    // the grammar: the joinw prefix + the 20-char unambiguous base32 body
+    expect(first.rawCode).toMatch(/^joinw[A-Z2-7]{20}$/);
+    expect(second.rawCode).toMatch(/^joinw[A-Z2-7]{20}$/);
+    // NEVER the historical sequential first code (the sim-b defect)
+    expect(first.rawCode).not.toBe("joinw10100000001");
+    expect(first.rawCode).not.toMatch(/^joinw101\d+$/);
+    // the crypto generator's own contract: 100 fresh codes all distinct
+    const gen = createCryptoJoinCodeGenerator();
+    const minted = new Set(Array.from({ length: 100 }, () => gen()));
+    expect(minted.size).toBe(100);
+    for (const code of minted) {
+      expect(code).toMatch(/^joinw[A-Z2-7]{20}$/);
+    }
+  });
+
+  test("(b) two different workspaces' FIRST codes differ — and two fresh runtimes (page loads) never share a first code", () => {
+    const store = createInMemoryDurableRecordStore();
+    // two workspaces in ONE shared store, distinct tenant seams
+    const rtA = createProductSessionRuntime({
+      ...entropySeams(),
+      tenantId: () => "tnt_w130wsa0000001",
+      durableStore: store,
+    });
+    rtA.createWorkspace({
+      name: "Workspace A",
+      founderDisplayName: "Ada Lovelace",
+      founderEmail: "ada@alpha.example",
+      password: FOUNDER_PASSWORD,
+    });
+    const rtB = createProductSessionRuntime({
+      ...entropySeams(),
+      tenantId: () => "tnt_w130wsb0000001",
+      durableStore: store,
+    });
+    rtB.createWorkspace({
+      name: "Workspace B",
+      founderDisplayName: "Bob Babbage",
+      founderEmail: "bob@beta.example",
+      password: FOUNDER_PASSWORD,
+    });
+    const codeA = rtA.issueInvitation();
+    const codeB = rtB.issueInvitation();
+    expect(codeA.ok).toBe(true);
+    expect(codeB.ok).toBe(true);
+    if (!codeA.ok || !codeB.ok) return;
+    // the sim-b defect is dead: no shared first code across workspaces
+    expect(codeA.rawCode).not.toBe(codeB.rawCode);
+
+    // two FRESH runtimes (the page-load analog over separate stores) too
+    const freshOne = createProductSessionRuntime(entropySeams());
+    freshOne.createWorkspace({
+      name: "One",
+      founderDisplayName: "Oda One",
+      founderEmail: "one@alpha.example",
+      password: FOUNDER_PASSWORD,
+    });
+    const freshTwo = createProductSessionRuntime(entropySeams());
+    freshTwo.createWorkspace({
+      name: "Two",
+      founderDisplayName: "Tue Two",
+      founderEmail: "two@beta.example",
+      password: FOUNDER_PASSWORD,
+    });
+    const one = freshOne.issueInvitation();
+    const two = freshTwo.issueInvitation();
+    expect(one.ok).toBe(true);
+    expect(two.ok).toBe(true);
+    if (!one.ok || !two.ok) return;
+    expect(one.rawCode).not.toBe(two.rawCode);
+    expect(one.rawCode).not.toBe("joinw10100000001");
+    expect(two.rawCode).not.toBe("joinw10100000001");
+  });
+
+  test("(c) redeeming workspace A's code while joined against workspace B's context is unknown_code — never a cross-tenant principal", () => {
+    const store = createInMemoryDurableRecordStore();
+    const rtA = createProductSessionRuntime({
+      ...entropySeams(),
+      tenantId: () => "tnt_w130wsa0000001",
+      durableStore: store,
+    });
+    const createdA = rtA.createWorkspace({
+      name: "Workspace A",
+      founderDisplayName: "Ada Lovelace",
+      founderEmail: "ada@alpha.example",
+      password: FOUNDER_PASSWORD,
+    });
+    expect(createdA.ok).toBe(true);
+    const codeA = rtA.issueInvitation();
+    expect(codeA.ok).toBe(true);
+    if (!codeA.ok) return;
+
+    // workspace B's member session (the runtime is JOINED against B)
+    const rtB = createProductSessionRuntime({
+      ...entropySeams(),
+      tenantId: () => "tnt_w130wsb0000001",
+      durableStore: store,
+    });
+    const createdB = rtB.createWorkspace({
+      name: "Workspace B",
+      founderDisplayName: "Bob Babbage",
+      founderEmail: "bob@beta.example",
+      password: FOUNDER_PASSWORD,
+    });
+    expect(createdB.ok).toBe(true);
+    if (!createdB.ok) return;
+    expect(rtB.state().phase).toBe("onboarding");
+
+    // B's session redeems A's code: machine-stable unknown_code
+    const joined = rtB.joinWorkspace({
+      code: codeA.rawCode,
+      displayName: "Eve Crosser",
+      email: "eve@crosser.example",
+      roles: ["employee"],
+    });
+    expect(joined.ok).toBe(false);
+    if (joined.ok) return;
+    expect(joined.reason).toBe("unknown_code");
+    expect(PRODUCT_REFUSAL_EXPLANATIONS[joined.reason]).toContain("fresh invitation");
+
+    // NEVER a cross-tenant principal: Eve exists in NO tenant (A, B or
+    // anywhere else) — the redemption wrote nothing anywhere.
+    const principals = principalsByTenant(store);
+    for (const members of Object.values(principals)) {
+      expect(members).not.toContain("eve@crosser.example");
+    }
+    // B's own session is untouched by the refused redemption
+    expect(rtB.state().phase).toBe("onboarding");
+
+    // the CONTROL: B's OWN code still redeems in B's session scope
+    const codeB = rtB.issueInvitation();
+    expect(codeB.ok).toBe(true);
+    if (!codeB.ok) return;
+    const selfJoined = rtB.joinWorkspace({
+      code: codeB.rawCode,
+      displayName: "Bob Junior",
+      email: "bob.junior@beta.example",
+      roles: ["employee"],
+    });
+    expect(selfJoined.ok).toBe(true);
+  });
+
+  test("the demo tenant is NEVER a redemption scope: a demo-issued code is unknown_code at the gate (the sim-b misroute, dead)", () => {
+    const store = createInMemoryDurableRecordStore();
+    const sessionStore = makeSessionStore();
+    const rt = createProductSessionRuntime({
+      ...entropySeams(),
+      tenantId: counter("tnt_w130dm", 4),
+      durableStore: store,
+      sessionStore,
+      sessionToken: counter("fst_w130dm", 20),
+      sessionId: counter("ses_w130dm", 16),
+    });
+    // the demo persona session (the sanctioned entry) issues an invite
+    // inside the DEMO tenant
+    expect(rt.openDemoPersonaSession("demo-fleet-admin").ok).toBe(true);
+    const demoCode = rt.issueInvitation();
+    expect(demoCode.ok).toBe(true);
+    if (!demoCode.ok) return;
+    // sign out to the gate (remembered context cleared)
+    rt.signOut();
+    expect(rt.state().phase).toBe("signed-out");
+    // the demo code must NOT resolve at the gate — the demo tenant is
+    // not in the directory, so the redemption scope excludes it
+    const joined = rt.joinWorkspace({
+      code: demoCode.rawCode,
+      displayName: "Victim Of Misroute",
+      email: "victim@fresh.example",
+      roles: ["employee"],
+    });
+    expect(joined.ok).toBe(false);
+    if (joined.ok) return;
+    expect(joined.reason).toBe("unknown_code");
+    // no principal was created in the DEMO tenant by the refusal
+    const demoMembers = principalsByTenant(store)["tnt_w091demo000001"] ?? [];
+    expect(demoMembers).not.toContain("victim@fresh.example");
+  });
+
+  test("a signed-out join resolves within the workspace directory (the normal gate journey holds)", () => {
+    const store = createInMemoryDurableRecordStore();
+    const rt = createProductSessionRuntime({
+      ...entropySeams(),
+      durableStore: store,
+      sessionToken: counter("fst_w130g", 20),
+      sessionId: counter("ses_w130g", 16),
+    });
+    rt.createWorkspace({
+      name: "Northwind Fleet",
+      founderDisplayName: "Ada Lovelace",
+      founderEmail: "ada@northwind.example",
+      password: FOUNDER_PASSWORD,
+    });
+    const invited = rt.issueInvitation();
+    expect(invited.ok).toBe(true);
+    if (!invited.ok) return;
+    // the founder signs out: the gate's Join tab redeems the code into
+    // the directory-listed workspace (the W110 journey unchanged)
+    rt.signOut();
+    const joined = rt.joinWorkspace({
+      code: invited.rawCode,
+      displayName: "Grace Hopper",
+      email: "grace@northwind.example",
+      roles: ["service.desk"],
+    });
+    expect(joined.ok).toBe(true);
+    if (!joined.ok) return;
+    expect(joined.state.phase).toBe("onboarding");
+    if (joined.state.phase === "signed-out") return;
+    expect(joined.state.tenantId).toBe("tnt_w130test0001");
+    expect(joined.state.activeRole).toBe("service.desk");
+  });
+
+  test("an unresolved code (never issued) is the machine-stable unknown_code", () => {
+    const rt = createProductSessionRuntime(entropySeams());
+    rt.createWorkspace({
+      name: "Northwind Fleet",
+      founderDisplayName: "Ada Lovelace",
+      founderEmail: "ada@northwind.example",
+      password: FOUNDER_PASSWORD,
+    });
+    rt.signOut();
+    const joined = rt.joinWorkspace({
+      code: "joinwTOTALLYBOGUSCODE1",
+      displayName: "Grace Hopper",
+      email: "grace@northwind.example",
+      roles: ["employee"],
+    });
+    expect(joined.ok).toBe(false);
+    if (joined.ok) return;
+    expect(joined.reason).toBe("unknown_code");
+    expect(PRODUCT_REFUSAL_EXPLANATIONS[joined.reason]).toContain("does not match any workspace");
+  });
+
+  test("the join-code grammar exports are frozen (prefix + body + pattern)", () => {
+    expect(JOIN_CODE_PREFIX).toBe("joinw");
+    expect(JOIN_CODE_BODY_LENGTH).toBe(20);
+    expect(JOIN_CODE_PATTERN).toBe("joinw[A-Z2-7]{20}");
   });
 });
