@@ -306,3 +306,142 @@ test("E2E journey — the founder issues an invitation; a member joins with the 
   // the audited note stays verbatim
   expect(screen.getByText("Role switches are audited and never change your permissions.")).toBeDefined();
 });
+
+// ---------------------------------------------------------------------------
+// W130 journeys: honest denials + invite/join integrity at the browser tier
+// ---------------------------------------------------------------------------
+
+test("E2E journey — an operator role still creates the enrollment code (the J2 drill, unchanged)", () => {
+  mountDemoApp({ area: "device", view: "enrollment" });
+  fireEvent.click(screen.getByRole("button", { name: /Select Windows \(x64\) installer/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Select ownership scope: Corporate-owned/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Create enrollment code" }));
+  // the one-time code renders with the display-once law verbatim
+  const code = screen.getByTestId("enrollment-code-value").textContent ?? "";
+  expect(code).toBe("BOOT-W101-0001");
+  expect(screen.getByText(/Shown once — copy it now\./)).toBeDefined();
+  expect(
+    screen.getByText(/this code cannot be shown again\./),
+  ).toBeDefined();
+});
+
+test("E2E journey — a viewer-role vendor clicking Create enrollment code gets the HONEST denial (never a silent no-op)", () => {
+  // the sim-b blocker: the vendor persona reaches the Install Center,
+  // selects the platform + scope, clicks — and (before W130) nothing
+  // happened. Now the machine-stable refusal + the frozen explanation
+  // with the escalation path render through the surface's own pattern.
+  render(<ConsoleApp initialRoute={{ area: "overview", view: "home" }} />);
+  fireEvent.click(screen.getByRole("button", { name: "Demo — Vendor / Service Operator" }));
+  const rail = screen.queryByText("Dismiss getting started");
+  if (rail !== null) fireEvent.click(rail);
+  fireEvent.click(screen.getByRole("button", { name: /Enroll an existing fleet/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Select Windows \(x64\) installer/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Select ownership scope: Corporate-owned/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Create enrollment code" }));
+  // the refusal card renders the machine-stable reason verbatim
+  expect(screen.getByText("Enrollment refused")).toBeDefined();
+  expect(screen.getByText("Refusal: interaction_forbidden")).toBeDefined();
+  // the frozen human words: WHY unavailable + the escalation path
+  expect(screen.getByText(/Your active role \(Vendor \/ Service Operator\) can observe the Install Center but cannot create enrollment codes/)).toBeDefined();
+  expect(screen.getByText(/Ask your workspace's Fleet Administrator or Service Desk to create the enrollment code for you\./)).toBeDefined();
+  // NO code was created (the denial is real, not cosmetic)
+  expect(screen.queryByTestId("enrollment-code-value")).toBeNull();
+  // the dismissal works — the honest way back
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss the refusal" }));
+  expect(screen.queryByText("Enrollment refused")).toBeNull();
+});
+
+test("E2E journey — the same denial renders for the Employee lens (the other restricted role)", () => {
+  render(<ConsoleApp initialRoute={{ area: "overview", view: "home" }} />);
+  fireEvent.click(screen.getByRole("button", { name: "Demo — Employee / Device Owner" }));
+  const rail = screen.queryByText("Dismiss getting started");
+  if (rail !== null) fireEvent.click(rail);
+  fireEvent.click(screen.getByRole("button", { name: /Enroll an existing fleet/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Select Linux \(x64\) installer/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Select ownership scope: BYOD/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Create enrollment code" }));
+  expect(screen.getByText("Refusal: interaction_forbidden")).toBeDefined();
+  expect(screen.getByText(/Your active role \(Employee \/ Device Owner\) can observe the Install Center but cannot create enrollment codes/)).toBeDefined();
+  expect(screen.queryByTestId("enrollment-code-value")).toBeNull();
+});
+
+test("E2E journey — W130 invite/join integrity: distinct codes across page loads over ONE shared browser store; the right tenant redeems; the demo code is unknown_code", () => {
+  // The sim-b scenario, end to end at the browser tier: a shared
+  // default browser session (one localStorage) where the DEMO workspace
+  // issued the first invite code, then a REAL workspace issues its own.
+  // Before W130 both first codes were the identical "joinw10100000001"
+  // and the real joiner was created as a principal in the DEMO tenant.
+  const DURABLE_KEY = "fleetos.w121.durable";
+  const SESSION_KEY = "fleetos.w121.session";
+
+  // -- page load 1: the demo admin issues a code inside the demo tenant
+  render(<ConsoleApp initialRoute={{ area: "overview", view: "home" }} />);
+  fireEvent.click(screen.getByRole("button", { name: "Demo — Fleet Administrator" }));
+  fireEvent.click(screen.queryByText("Dismiss getting started")!);
+  fireEvent.click(screen.getByText("Invite member…"));
+  const demoCode = screen.getByTestId("invitation-code-value").textContent ?? "";
+  expect(demoCode).toMatch(/^joinw[A-Z2-7]{20}$/);
+  fireEvent.click(screen.getByText("I copied it — hide it"));
+  fireEvent.click(screen.getByText("Sign out"));
+  cleanup();
+  window.history.replaceState({}, "/");
+
+  // -- page load 2: a REAL workspace over the SAME shared store
+  render(<ConsoleApp initialRoute={{ area: "overview", view: "home" }} />);
+  fireEvent.click(screen.getAllByText("Create workspace")[0]!.closest("button")!);
+  fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "SIMB-TRN-LG" } });
+  fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Marta Kowalski" } });
+  fireEvent.change(screen.getByLabelText("Your email"), { target: { value: "marta@trnlg.example" } });
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "founder-pass-0001" } });
+  fireEvent.click(screen.getAllByText("Create workspace").at(-1)!.closest("button")!);
+  fireEvent.click(screen.getByText("Dismiss getting started"));
+  fireEvent.click(screen.getByText("Invite member…"));
+  const realCode = screen.getByTestId("invitation-code-value").textContent ?? "";
+  // THE COLLISION IS DEAD: the two first codes differ (crypto entropy)
+  expect(realCode).toMatch(/^joinw[A-Z2-7]{20}$/);
+  expect(realCode).not.toBe(demoCode);
+  fireEvent.click(screen.getByText("I copied it — hide it"));
+  fireEvent.click(screen.getByText("Sign out"));
+  cleanup();
+  window.history.replaceState({}, "/");
+
+  // -- page load 3: the member redeems the REAL code at the gate
+  render(<ConsoleApp initialRoute={{ area: "overview", view: "home" }} />);
+  fireEvent.click(screen.getAllByText("Join workspace")[0]!.closest("button")!);
+  fireEvent.change(screen.getByLabelText("Join code"), { target: { value: realCode } });
+  fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Dwayne Carter" } });
+  fireEvent.change(screen.getByLabelText("Your email"), { target: { value: "dwayne@trnlg.example" } });
+  fireEvent.change(screen.getByLabelText("Join as"), { target: { value: "service.desk" } });
+  fireEvent.click(screen.getAllByText("Join workspace").at(-1)!.closest("button")!);
+  // the joiner landed in the REAL workspace — NEVER the demo tenant
+  const session = JSON.parse(window.localStorage.getItem(SESSION_KEY) ?? "{}") as {
+    tenantId?: string;
+  };
+  expect(session.tenantId).toBe("tnt_w101prod00000001");
+  expect(screen.getByText("Dwayne Carter")).toBeDefined();
+  const chip = screen.getByTitle("Switch your active role (audited)");
+  expect(chip.textContent).toContain(PRODUCT_EXPERIENCE_ROLE_LABELS["service.desk"]);
+  fireEvent.click(screen.getByText("Sign out"));
+
+  // -- the demo-issued code does NOT resolve at the gate: the machine-
+  // stable unknown_code renders with its frozen words (never empty)
+  fireEvent.click(screen.getAllByText("Join workspace")[0]!.closest("button")!);
+  fireEvent.change(screen.getByLabelText("Join code"), { target: { value: demoCode } });
+  fireEvent.change(screen.getByLabelText("Your name"), { target: { value: "Eve Crosser" } });
+  fireEvent.change(screen.getByLabelText("Your email"), { target: { value: "eve@fresh.example" } });
+  fireEvent.click(screen.getAllByText("Join workspace").at(-1)!.closest("button")!);
+  const alert = document.querySelector('[role="alert"]');
+  expect(alert).not.toBeNull();
+  expect(alert!.textContent).toContain("unknown_code");
+  expect(alert!.textContent).toContain("does not match any workspace you can join");
+  // and no principal for Eve was created in the DEMO tenant by the refusal
+  const durable = JSON.parse(window.localStorage.getItem(DURABLE_KEY) ?? "{}") as Record<
+    string,
+    Record<string, Record<string, Record<string, string>>>
+  >;
+  const demoPrincipals = Object.values(
+    durable["fleetos_principals"]?.["tnt_w091demo000001"] ?? {},
+  );
+  expect(demoPrincipals.every((row) => row["member_ref"] !== "eve@fresh.example")).toBe(true);
+  expect(demoPrincipals.every((row) => row["member_ref"] !== "dwayne@trnlg.example")).toBe(true);
+});

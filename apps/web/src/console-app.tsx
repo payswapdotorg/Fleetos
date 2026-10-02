@@ -25,6 +25,7 @@ import {
   EmptyState,
   Badge,
   Button,
+  canInteract,
   validateShellRoute,
 } from "@fleetos/web-shell";
 import type {
@@ -61,6 +62,7 @@ import {
   MemberChip,
   OnboardingRail,
   operatorRoleFor,
+  enrollmentCodeCreationDenial,
   PRODUCT_EXPERIENCE_ROLES,
 } from "@fleetos/web-product";
 import type { ProductActiveSession, ProductExperienceRole } from "@fleetos/web-product";
@@ -380,6 +382,7 @@ export function ConsoleSessionApp({
         onCopyCommand: (command: string) => setCopiedCommand(command),
         sessionTenantId: session.tenantId,
         actingApproverId: session.principalId,
+        actingExperienceRole: session.activeRole,
       })
     );
 
@@ -485,6 +488,11 @@ interface RenderInput {
   // every tenant-scoped binding below uses these, never a static id.
   readonly sessionTenantId: string;
   readonly actingApproverId: string;
+  // W130 (honest denials): the ACTIVE session's experience role — the
+  // Install Center's enrollment-code creation checks the REAL shell
+  // interaction matrix against it (viewer roles get the explanation,
+  // never a silent no-op).
+  readonly actingExperienceRole: ProductExperienceRole | null;
 }
 
 function renderRoute(input: RenderInput): JSX.Element {
@@ -534,7 +542,28 @@ function renderRoute(input: RenderInput): JSX.Element {
       // release manifest, with the one-time enrollment code created
       // through the REAL device-adapters boundary (the frozen journey:
       // platform -> scope -> code -> install -> first check-in).
+      //
+      // W130 (honest denials): creating an enrollment code is a
+      // PROPOSE-class interaction — the REAL authority is the shell's
+      // frozen interaction matrix (viewer roles observe only). A
+      // restricted role's click renders the machine-stable refusal +
+      // the frozen explanation with the escalation path through the
+      // screen's own refusal pattern — never a silent no-op.
+      const actingRole = input.actingExperienceRole;
+      const roleCheck = canInteract(
+        operatorRoleFor(actingRole ?? "employee"),
+        "propose",
+      );
       const onCreateCode = (): void => {
+        if (!roleCheck.ok) {
+          input.setInstallState(
+            recordInstallRefusal(
+              input.installState,
+              enrollmentCodeCreationDenial(actingRole),
+            ),
+          );
+          return;
+        }
         if (input.installState.platform === undefined || input.installState.ownershipKind === undefined) {
           // The screen itself renders the machine-stable refusal; this
           // guard only avoids creating a request without a selection.

@@ -54,9 +54,9 @@ export type ProductAuthRefusal =
   | "invalid_input"
   | "unknown_workspace"
   | "unknown_principal"
-  | "invalid_code"
+  | "unknown_code"
   | "expired_code"
-  | "revoked_code"
+  | "already_used"
   | "role_not_assigned"
   | "unknown_session"
   | "no_experience_role"
@@ -64,7 +64,12 @@ export type ProductAuthRefusal =
   | "wrong_password"
   | "credential_revoked";
 
-/** The frozen human explanations for every refusal code. */
+/**
+ * The frozen human explanations for every refusal code (W130: the join
+ * tab's redemption vocabulary is unknown_code / expired_code /
+ * already_used — machine-stable reason + human sentence + resolve
+ * guidance, per the honest-denial law).
+ */
 export const PRODUCT_REFUSAL_EXPLANATIONS: Readonly<Record<ProductAuthRefusal, string>> =
   Object.freeze({
     invalid_input:
@@ -73,12 +78,12 @@ export const PRODUCT_REFUSAL_EXPLANATIONS: Readonly<Record<ProductAuthRefusal, s
       "That workspace was not found. Pick a listed workspace or create one.",
     unknown_principal:
       "No member with that email exists in this workspace. Ask an administrator to invite you.",
-    invalid_code:
-      "That join code is not valid for any workspace. Check the code and try again.",
+    unknown_code:
+      "That join code does not match any workspace you can join from here. Check the code for typos, then ask the inviting workspace's administrator for a fresh invitation.",
     expired_code:
       "That join code has expired. Ask an administrator for a fresh invitation.",
-    revoked_code:
-      "That join code was revoked. Ask an administrator for a fresh invitation.",
+    already_used:
+      "That join code has already been redeemed — each code joins exactly one member. Ask an administrator for a fresh invitation.",
     role_not_assigned:
       "That role is not assigned to you in this workspace, so it cannot be activated.",
     unknown_session: "The session could not be found. Sign in again to continue.",

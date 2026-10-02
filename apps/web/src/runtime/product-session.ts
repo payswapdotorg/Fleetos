@@ -35,6 +35,21 @@
  *     unknown / mismatched tokens fail closed to the gate; an expired
  *     or revoked token is never auto-logged-in).
  *
+ * W130 (invite/join integrity) adds, at THIS composition root:
+ *   - HIGH-ENTROPY JOIN CODES: the default `joinCode` generator is
+ *     CRYPTO-RANDOM (Web Crypto over an unambiguous base32 body,
+ *     ~100 bits) — never sequential, never predictable, never the
+ *     same first code across workspaces/processes/page loads. The
+ *     display-once law and the 24h TTL are the identity seam's
+ *     unchanged truth;
+ *   - TENANT-SCOPED REDEMPTION: joinWorkspace resolves the invitation
+ *     STRICTLY within the redemption scope (the active session's
+ *     tenant when signed in; the workspace directory's tenants at the
+ *     gate — the demo tenant is never a scope). A code outside the
+ *     scope is a machine-stable unknown_code; a redeemed/expired code
+ *     is already_used/expired_code — never a fall-through into
+ *     another tenant's record, never a cross-tenant principal.
+ *
  * Every timestamp is injected (the `now` seam — no clock reads); every
  * generator is injected (deterministic tests). Fail-closed throughout:
  * unknown principals, wrong passwords, expired codes and revoked
@@ -62,6 +77,7 @@ import {
   makeRoleAssignment,
   asOpaqueToken,
   isValidOpaqueToken,
+  joinCodeHash,
   MIN_PASSWORD_LENGTH,
 } from "@fleetos/identity";
 import type {
@@ -131,6 +147,66 @@ function counterGenerator(prefix: string, pad: number): () => string {
   return () => {
     n += 1;
     return `${prefix}${String(n).padStart(pad, "0")}`;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// W130 — the crypto-random join-code generator (entropy at the composition
+// root, exactly like the salts/tokens the gate injects; the identity
+// package's purity law — no randomness inside packages/identity — holds)
+// ---------------------------------------------------------------------------
+
+/**
+ * The join-code body alphabet: RFC 4648 base32 (A-Z, 2-7) — 32
+ * unambiguous characters (no 0/O or 1/I confusion) and exactly a power
+ * of two, so `byte % 32` is bias-free over Web Crypto's uniform bytes.
+ */
+const JOIN_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" as const;
+
+/** The join-code grammar prefix (human-recognizable; the body carries the entropy). */
+export const JOIN_CODE_PREFIX = "joinw" as const;
+
+/**
+ * The join-code body length: 20 base32 characters = 100 bits of
+ * entropy. Two workspaces (or two processes, or two page loads over a
+ * shared durable store) issuing colliding codes is computationally
+ * negligible — the W130 fix for the sequential first-code collision
+ * ("joinw10100000001" everywhere).
+ */
+export const JOIN_CODE_BODY_LENGTH = 20 as const;
+
+/** The frozen join-code grammar (prefix + base32 body), as a regex source. */
+export const JOIN_CODE_PATTERN = `${JOIN_CODE_PREFIX}[A-Z2-7]{${JOIN_CODE_BODY_LENGTH}}` as const;
+
+/**
+ * The crypto-random join-code generator (W130): a high-entropy,
+ * collision-resistant raw code over the generous unambiguous base32
+ * alphabet — every issued code is unique across workspaces, processes
+ * and page loads by construction, so a code-hash can never resolve into
+ * another tenant's invitation record.
+ *
+ * Entropy is injected HERE (the composition root) — the identity seam
+ * stays pure (deterministic tests inject their own `joinCode` seam).
+ * Falls back to a best-effort `Math.random` body when the Web Crypto
+ * RNG is unavailable (the same tier discipline as the gate's session
+ * token / salt generators).
+ */
+export function createCryptoJoinCodeGenerator(): () => string {
+  const root: Crypto | undefined = typeof crypto === "undefined" ? undefined : crypto;
+  if (root !== undefined && typeof root.getRandomValues === "function") {
+    const bytes = new Uint8Array(JOIN_CODE_BODY_LENGTH);
+    return () => {
+      root.getRandomValues(bytes);
+      const body = Array.from(bytes, (b) => JOIN_CODE_ALPHABET[b % 32]!).join("");
+      return `${JOIN_CODE_PREFIX}${body}`;
+    };
+  }
+  return () => {
+    let body = "";
+    for (let i = 0; i < JOIN_CODE_BODY_LENGTH; i += 1) {
+      body += JOIN_CODE_ALPHABET[Math.floor(Math.random() * 32)]!;
+    }
+    return `${JOIN_CODE_PREFIX}${body}`;
   };
 }
 
@@ -372,7 +448,12 @@ export function createProductSessionRuntime(seams: ProductRuntimeSeams): {
   const now = seams.now;
   const nextTenantId: () => string =
     seams.tenantId ?? counterGenerator("tnt_w101prod", 8);
-  const nextJoinCode = seams.joinCode ?? counterGenerator("joinw101", 8);
+  // W130: the join-code generator's DEFAULT is crypto-random — a
+  // per-runtime counter would seed identically on every page load, so
+  // every workspace's first issued code would collide (the sim-b
+  // defect). Deterministic tests inject their own `joinCode` seam.
+  const nextJoinCode: () => string =
+    seams.joinCode ?? createCryptoJoinCodeGenerator();
   const nextCorr =
     seams.correlationId ?? counterGenerator("cor_w101p", 8);
 
@@ -430,6 +511,27 @@ export function createProductSessionRuntime(seams: ProductRuntimeSeams): {
   function workspacesOfTenant(tenantId: string): ProductWorkspaceSummary | null {
     const record = tenants.getWorkspace(ctxOf(tenantId));
     return record ? { tenantId: record.tenantId, name: record.name, createdAt: record.createdAt } : null;
+  }
+
+  /**
+   * W130 — TENANT-SCOPED REDEMPTION: the tenants a join code may resolve
+   * within, at this instant of the product journey:
+   *
+   *   - SIGNED IN: strictly the ACTIVE session's tenant (a member of
+   *     workspace B redeeming workspace A's code is an unknown_code —
+   *     never a fall-through into another tenant's invitation record);
+   *   - SIGNED OUT (the gate's Join tab): the workspace directory's
+   *     tenants — the runtime's honest composition scope. The dedicated
+   *     demo tenant is NEVER a redemption scope (the W122 isolation
+   *     law: the demo workspace is reachable only through its quick
+   *     links), so a demo-issued code can never route a real joiner
+   *     into the demo tenant — the sim-b cross-tenant defect.
+   */
+  function redemptionScope(): ReadonlySet<string> {
+    if (rememberedTenantId !== null) {
+      return new Set([rememberedTenantId]);
+    }
+    return new Set(listWorkspaces().map((ws) => ws.tenantId));
   }
 
   function listWorkspaces(): readonly ProductWorkspaceSummary[] {
@@ -793,6 +895,25 @@ export function createProductSessionRuntime(seams: ProductRuntimeSeams): {
           message: "joinWorkspace: code, display name and email are required",
         };
       }
+      // W130 — TENANT-SCOPED REDEMPTION: the invitation resolves STRICTLY
+      // within the redemption scope (the active session's tenant when
+      // signed in; the workspace directory's tenants at the gate). The
+      // frozen identity seam's code-hash lookup is system-level, so the
+      // composition root enforces the scope BEFORE delegating: a code
+      // that does not exist in the scope is a machine-stable
+      // unknown_code — it NEVER falls through to another tenant's
+      // record (never a cross-tenant principal).
+      const scope = redemptionScope();
+      const resolvable = invitations.findInvitationByCodeHash(
+        joinCodeHash(input.code.trim()),
+      );
+      if (resolvable === undefined || !scope.has(resolvable.tenantId as string)) {
+        return {
+          ok: false,
+          reason: "unknown_code",
+          message: `joinWorkspace: no invitation matches this code within the redemption scope (${resolvable === undefined ? "unresolved code" : `tenant ${resolvable.tenantId} is outside the scope`})`,
+        };
+      }
       const roles = input.roles && input.roles.length > 0 ? input.roles : ["employee"];
       const joined = workspaceService.joinWorkspace({
         now: now(),
@@ -805,11 +926,11 @@ export function createProductSessionRuntime(seams: ProductRuntimeSeams): {
       if (!joined.ok) {
         const reason: ProductAuthRefusal =
           joined.reason === "invitation_unknown"
-            ? "invalid_code"
+            ? "unknown_code"
             : joined.reason === "invitation_expired"
               ? "expired_code"
               : joined.reason === "invitation_already_used"
-                ? "revoked_code"
+                ? "already_used"
                 : "invalid_input";
         return {
           ok: false,

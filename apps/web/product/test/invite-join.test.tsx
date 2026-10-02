@@ -26,8 +26,16 @@ import { createElement } from "react";
 import { WorkspaceChoiceScreen, JOIN_MEMBER_ROLES, JOIN_ROLE_NOTE } from "../src/session-screens";
 import { InviteMemberControl } from "../src/session-chrome";
 import type { InviteMemberState } from "../src/session-chrome";
-import { PRODUCT_EXPERIENCE_ROLE_LABELS, PRODUCT_EXPERIENCE_ROLES } from "../src/role-bridge";
+import {
+  PRODUCT_EXPERIENCE_ROLE_LABELS,
+  PRODUCT_EXPERIENCE_ROLES,
+  RESTRICTED_EXPERIENCE_ROLES,
+  operatorRoleFor,
+  enrollmentCodeCreationDenial,
+} from "../src/role-bridge";
 import { PRODUCT_REFUSAL_EXPLANATIONS } from "../src/product-session-types";
+import type { ProductAuthRefusal } from "../src/product-session-types";
+import { canInteract } from "@fleetos/web-shell";
 
 afterEach(cleanup);
 
@@ -279,4 +287,124 @@ test("the join submit keeps the employee default when the role is untouched", ()
     email: "alan@northwind.example",
     role: "employee",
   });
+});
+
+// ---------------------------------------------------------------------------
+// W130 — the gate's Join tab: EXPLICIT redemption errors (machine-stable
+// reason + frozen human words + resolve guidance — never an empty alert)
+// ---------------------------------------------------------------------------
+
+test("the Join tab renders the machine-stable unknown_code with its frozen words (never an empty alert)", () => {
+  render(
+    createElement(WorkspaceChoiceScreen, {
+      workspaces: WORKSPACES,
+      environmentLabel: "staging",
+      onCreate: () => {},
+      onJoin: () => {},
+      onSignIn: () => {},
+      refusal: {
+        reason: "unknown_code",
+        message: "joinWorkspace: no invitation matches this code within the redemption scope (unresolved code)",
+      },
+    }),
+  );
+  const alert = screen.getByRole("alert");
+  expect(alert.textContent).toContain("unknown_code");
+  expect(alert.textContent).toContain(PRODUCT_REFUSAL_EXPLANATIONS["unknown_code"]);
+  // the frozen words carry the resolve guidance (the honest pattern)
+  expect(PRODUCT_REFUSAL_EXPLANATIONS["unknown_code"]).toContain("fresh invitation");
+  // never an empty alert: both the machine reason and the human words render
+  expect(alert.textContent!.trim().length).toBeGreaterThan("unknown_code".length);
+});
+
+test("the Join tab renders the machine-stable expired_code and already_used with their frozen words", () => {
+  const { rerender } = render(
+    createElement(WorkspaceChoiceScreen, {
+      workspaces: WORKSPACES,
+      environmentLabel: "staging",
+      onCreate: () => {},
+      onJoin: () => {},
+      onSignIn: () => {},
+      refusal: { reason: "expired_code", message: "joinWorkspace refused (invitation_expired)" },
+    }),
+  );
+  expect(screen.getByRole("alert").textContent).toContain("expired_code");
+  expect(screen.getByRole("alert").textContent).toContain(PRODUCT_REFUSAL_EXPLANATIONS["expired_code"]);
+
+  rerender(
+    createElement(WorkspaceChoiceScreen, {
+      workspaces: WORKSPACES,
+      environmentLabel: "staging",
+      onCreate: () => {},
+      onJoin: () => {},
+      onSignIn: () => {},
+      refusal: {
+        reason: "already_used",
+        message: "joinWorkspace refused (invitation_already_used)",
+      },
+    }),
+  );
+  expect(screen.getByRole("alert").textContent).toContain("already_used");
+  expect(screen.getByRole("alert").textContent).toContain(PRODUCT_REFUSAL_EXPLANATIONS["already_used"]);
+  expect(PRODUCT_REFUSAL_EXPLANATIONS["already_used"]).toContain("Ask an administrator");
+});
+
+test("an out-of-vocabulary refusal reason renders the fail-visible fallback — the alert is NEVER empty", () => {
+  // the corrupted-state defense: a reason the frozen map does not know
+  // (a stale build's value, a persisted bug) still renders a visible,
+  // honest sentence instead of the sim-b "silent empty <alert>".
+  render(
+    createElement(WorkspaceChoiceScreen, {
+      workspaces: WORKSPACES,
+      environmentLabel: "staging",
+      onCreate: () => {},
+      onJoin: () => {},
+      onSignIn: () => {},
+      refusal: {
+        reason: "mystery_refusal" as ProductAuthRefusal,
+        message: "stale build value",
+      },
+    }),
+  );
+  const alert = screen.getByRole("alert");
+  expect(alert.textContent).toContain("mystery_refusal");
+  expect(alert.textContent!.trim().length).toBeGreaterThan("mystery_refusal".length);
+  expect(alert.textContent).toContain("no further explanation is available");
+});
+
+test("the honest-denial copy for restricted roles carries why + the escalation path (the matrix law)", () => {
+  const denial = enrollmentCodeCreationDenial("vendor.operator");
+  expect(denial.reason).toBe("interaction_forbidden");
+  // why unavailable
+  expect(denial.explanation).toContain("Vendor / Service Operator");
+  expect(denial.explanation).toContain("cannot create enrollment codes");
+  // the escalation path
+  expect(denial.explanation).toContain("Ask your workspace's Fleet Administrator or Service Desk");
+  // the same frozen copy for the employee lens, and the null-role case
+  const employeeDenial = enrollmentCodeCreationDenial("employee");
+  expect(employeeDenial.reason).toBe("interaction_forbidden");
+  expect(employeeDenial.explanation).toContain("Employee / Device Owner");
+  const nullDenial = enrollmentCodeCreationDenial(null);
+  expect(nullDenial.explanation).toContain("your current role");
+  // the restricted roles are exactly the viewer lenses
+  expect(RESTRICTED_EXPERIENCE_ROLES).toEqual(["employee", "vendor.operator"]);
+});
+
+test("viewer roles are observe-only in the shell's REAL interaction matrix (the denial's authority)", () => {
+  // the frozen matrix is the authority the composition root checks:
+  // viewer (employee + vendor.operator) may NOT propose; the five
+  // operator-and-above roles may.
+  expect(canInteract("viewer", "propose")).toEqual({
+    ok: false,
+    reason: "interaction_forbidden",
+    role: "viewer",
+    interaction: "propose",
+  });
+  expect(canInteract(operatorRoleFor("employee"), "propose").ok).toBe(false);
+  expect(canInteract(operatorRoleFor("vendor.operator"), "propose").ok).toBe(false);
+  expect(canInteract(operatorRoleFor("fleet.admin"), "propose").ok).toBe(true);
+  expect(canInteract(operatorRoleFor("service.desk"), "propose").ok).toBe(true);
+  expect(canInteract(operatorRoleFor("asset.manager"), "propose").ok).toBe(true);
+  expect(canInteract(operatorRoleFor("team.manager"), "propose").ok).toBe(true);
+  expect(canInteract(operatorRoleFor("security.compliance"), "propose").ok).toBe(true);
 });
