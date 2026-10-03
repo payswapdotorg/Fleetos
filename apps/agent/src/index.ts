@@ -45,6 +45,12 @@ export * from "./release";
 // refusals machine-stable with human explanations.
 export * from "./enrollment-client";
 
+// W140 — the REAL control-plane HTTP transports (the deployment-layer
+// bindings for the enrollment journey's seams over the server
+// control plane's routes; the frozen sync seams remain the
+// deterministic dev/test binding).
+export * from "./control-plane-http";
+
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).
 export const MODULE_NAME = "agent" as const;

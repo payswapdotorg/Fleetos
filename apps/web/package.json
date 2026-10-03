@@ -33,7 +33,8 @@
     "react-dom": "^19.1.0",
     "@fleetos/web-product": "workspace:*",
     "@fleetos/identity": "workspace:*",
-    "@fleetos/device-adapters": "workspace:*"
+    "@fleetos/device-adapters": "workspace:*",
+    "@neondatabase/serverless": "^0.10.4"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.0",
