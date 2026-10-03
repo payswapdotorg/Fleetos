@@ -13,6 +13,12 @@ Latest accepted post-roadmap verification (2026-10-02, the operator's industry-a
 - Regression checks inherited from SIM-B: six placeholder lanes, inert approval/destructive controls, client-side-only control-plane limitation, and narrow-screen device-roster overflow must not silently return.
 - Current code status: no W140/W141/W142 delivery branches are present in GitHub yet; therefore Wave 13 is OPEN/IN FLIGHT and not implementation-certified. Do not claim completion from planning commits alone.
 
+## Wave 14 — Predictive Twin / World Model
+- ADR-0002 accepted: model-neutral Predictive Twin / World Model Layer.
+- Canonical Fleet Device Twin remains authoritative; predictive representations are versioned advisory interpretations with provenance, uncertainty and evidence.
+- GitHub issue #3 tracks W150/W151/W152/W153 after Wave 13 acceptance.
+- Wave 14 must not block or alter the SIM-C/Wave 13 acceptance gate.
+
 
 Latest accepted Wave 12 verification (2026-10-01, operator product directives — the W110-era "WAVE 11 COMPLETE" record immediately precedes this block and remains true as written):
 - W120 Stripe-adapted design system (work/w120 95c8a27, merged --no-ff 856347a): light cool foundation, #635BFF accent, Inter/system font stack, 6px/8px radii, grouped light sidebar with uppercase group labels; every css file lane-owned; TL gates check OK / typecheck 0 / 3266-0 (+1); CI 36883403131 SUCCESS
