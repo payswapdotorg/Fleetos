@@ -34,6 +34,9 @@
 import type {
   DeviceLifecycleState,
   DeviceId,
+  EvidenceRef,
+  GuardianDecision,
+  Observation,
   TenantId,
   UserId,
   WorkloadId,
@@ -263,4 +266,67 @@ export interface DoctorSources {
     readonly hash: string;
     readonly hashAlgorithm: string;
   }[];
+}
+
+// ---------------------------------------------------------------------------
+// W141 — the runtime-composition seams (the Device Doctor's full journey)
+// ---------------------------------------------------------------------------
+
+/**
+ * The tenant-partitioned source of the device's IMMUTABLE observations
+ * (the raw check-in records the doctor's stages render from — the
+ * real-observations-only doctrine's source). INJECTED at the binding
+ * site: the REAL `@fleetos/device-model` twin telemetry (or the
+ * server-side observation store at the deployed tier) satisfies this
+ * structurally.
+ */
+export interface DeviceObservationSource {
+  /** The device's observations (immutable, verbatim; may be empty — honest). */
+  observations(tenantId: TenantId, deviceId: DeviceId): readonly Observation[];
+}
+
+/** The operator's recorded disposition of a treatment proposal. */
+export type RemediationDisposition = "not_decided" | "accepted" | "dismissed";
+
+/**
+ * A durable remediation request record — the REAL runtime state of what
+ * happened after an operator acted on a treatment proposal. The
+ * structural projection the binding site derives from the REAL action
+ * boundary's records (fleet action plans, recovery intents, maintenance
+ * requests — whichever the treatment's `proposedIntentKind` routes to);
+ * every field passes through verbatim, never re-derived.
+ */
+export interface RemediationRequestLike {
+  /** The treatment recommendation this request disposes. */
+  readonly treatmentId: string;
+  readonly tenantId: TenantId;
+  readonly deviceId: DeviceId;
+  /** The routed intent kind (the treatment's proposal, verbatim). */
+  readonly intentKind: string;
+  /** The operator's disposition of the proposal. */
+  readonly disposition: Exclude<RemediationDisposition, "not_decided">;
+  /** The durable request's machine-stable status (open vocabulary, verbatim). */
+  readonly status: string;
+  readonly requestedAt: string;
+  readonly requestedBy: string | undefined;
+  /** The FROZEN Guardian decision, when the boundary evaluated the request. */
+  readonly decision?: GuardianDecision;
+  readonly decidedAt: string | undefined;
+  /** The execution outcome, when the request reached the adapter. */
+  readonly outcome: "executed" | "failed" | undefined;
+  readonly executedAt: string | undefined;
+  /** The OPAQUE evidence refs the request accumulated (verbatim). */
+  readonly evidence: readonly EvidenceRef[];
+  readonly contentDigest: string;
+}
+
+/**
+ * The tenant-partitioned remediation-request source. INJECTED at the
+ * binding site (the REAL action/recovery/maintenance records projected
+ * per treatment). The latest record per treatment wins; the records are
+ * append-only at the domain — this seam only READS.
+ */
+export interface RemediationRequestSource {
+  /** The device's remediation request records (latest per treatment). */
+  requests(tenantId: TenantId, deviceId: DeviceId): readonly RemediationRequestLike[];
 }

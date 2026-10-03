@@ -27,7 +27,21 @@ Lane: `worker-a` (per `spec/worker-ownership.yaml`: `apps/web/device/`).
 | `src/enrollment.ts` | D5 (W090A) | The existing-fleet ENROLLMENT journey view-model: the pure multi-step machine (initiate -> review -> confirm -> verified/failed), the draft validation with machine-stable reasons, the explicit scope acknowledgment, the COMMAND view (an intent, never an execution), and the VERIFIED-outcome derivation from the twin source (three checks + the durable evidence block). |
 | `src/ui/` | W090A | The LOCAL console design tokens (`tokens.tsx`, per `spec/ui/CONSOLE-DESIGN.md`), the status-vocabulary mapping (`status.ts`), and the local shadcn-style component vocabulary implemented in plain React + CSS (`primitives.tsx`) — no external UI library dependency. |
 | `src/install-center.ts` | W100A | The INSTALL CENTER view-model (the install contract's first-class surface): platform facets over the release manifest, the four ownership-scope presentations (BYOD conservative note included), the one-time enrollment-code card (display-once semantics + status bands from the injected instant), the install plan (artifact data verbatim + the download/verify-checksum/copy-command/install steps), installation verification over the agent journey trace, the deterministic next-action ladder, and the uninstall/revoke plan (authorization-required INTENTS, never executions). |
-| `src/screens/` | W090A+W100A | The RENDERED device screens (fully controlled, presentational): the roster (`device-fleet-screen.tsx`), Device Doctor (`device-doctor-screen.tsx`), the lifecycle machine with visible transition authorization (`device-lifecycle-screen.tsx`), and the enrollment journey (`enrollment-screen.tsx`). Browser-facing tests run against happy-dom (see `test/dom.preload.ts` + the root `bunfig.toml` preload). |
+| `src/lane-phase.ts` | W141 | The honest LANE PHASE vocabulary (loading / empty / ready / blocked / approval_required / error / unsupported) carried alongside the screens' render `ScreenPhase`, with the total `toDeviceScreenPhase` mapping — the machine-proven semantic state the runtime feeds expose. |
+| `src/doctor-journey.ts` | W141 | The Device Doctor JOURNEY view-model: the full nine-stage operator walk (device -> observations -> symptoms -> diagnosis -> remediation -> authorization -> action -> result -> evidence) with the SYMPTOM WALK (one step per real anomaly, severity-first, evidence-anchored) and the REMEDIATION WALK (proposal -> disposition -> Guardian decision -> durable request -> result) — honest not-yet-observed states, never fabricated observations. |
+| `src/doctor-feed.ts` | W141 | The Device Doctor RUNTIME FEED: the composition function carrying the runtime state contract into the screen's phase props (`phase` + `lanePhase` + `journey` + per-treatment gating/dispositions), over the injected structural sources (twin store, health pipeline, observations, remediation records). |
+| `src/screens/` | W090A+W100A+W141 | The RENDERED device screens (fully controlled, presentational): the roster (`device-fleet-screen.tsx`), Device Doctor (`device-doctor-screen.tsx`), the lifecycle machine with visible transition authorization (`device-lifecycle-screen.tsx`), and the enrollment journey (`enrollment-screen.tsx`). Browser-facing tests run against happy-dom (see `test/dom.preload.ts` + the root `bunfig.toml` preload). |
+
+## W141 — the runtime composition
+
+The lane's deep screens are now RUNTIME-BINDABLE: `composeDeviceDoctorFeed`
+carries the real runtime state (the REAL twin store + the REAL health
+pipeline + the REAL remediation records, injected at the binding site)
+into the accepted Device Doctor screen's exact phase props. Every
+lane-phase transition is machine-proven (loading -> ready / blocked /
+error; ready -> approval_required when a remediation request is PARKED;
+the fresh tenant's honest `empty`). The screens gained ADDITIVE optional
+props (`journey`) — the console binding is W144 [TL] composition work.
 
 ## Design rules (frozen by this surface contract)
 
