@@ -11,7 +11,7 @@ Latest accepted post-roadmap verification (2026-10-02, the operator's industry-a
 - Scope: 10 industries × 3 firm sizes × 30 real workspaces; repeated project/operational journeys, mobile passes, and cross-role handoffs; benchmark relevant current incumbent product sets factually.
 - Acceptance: run against the live product, record blockers, fix all in-scope blockers, redeploy, rerun the same journeys, and publish before/after adoption results (SWITCH-ONLY / MAIN-INTERFACE / COMPLEMENT / RETAIN).
 - Regression checks inherited from SIM-B: six placeholder lanes, inert approval/destructive controls, client-side-only control-plane limitation, and narrow-screen device-roster overflow must not silently return.
-- Current code status: no W140/W141/W142 delivery branches are present in GitHub yet; therefore Wave 13 is OPEN/IN FLIGHT and not implementation-certified. Do not claim completion from planning commits alone.
+- Current code status: W140 (work/w140 `a039db8`, merged `--no-ff` `0f08fd7`) and W141 (work/w141 `f7c18a9`, merged `--no-ff` `c6bfe45`) ACCEPTED on TL independent gates at the exact commits and merged into integration/wave0 (post-merge composition gates 3435/0, check 4/4, typecheck 0; SIM-C report skeleton @ `76c92c3`). W142/W143 packets are parked server-side in healthy `general_agent` chats awaiting the GLM-5.3 capacity gate — autonomous re-fire machinery armed overnight (honest timeline: `docs/simulations/sim-c-report.md` §3.1); W145/W144 queue behind them. Wave 13 is therefore OPEN/IN FLIGHT and not implementation-certified. Do not claim completion from planning commits alone.
 
 ## Wave 14 — Predictive Twin / World Model
 - ADR-0002 accepted: model-neutral Predictive Twin / World Model Layer.
