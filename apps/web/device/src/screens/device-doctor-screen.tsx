@@ -37,6 +37,12 @@ import type {
   DoctorPanelState,
   TreatmentPanelRow,
 } from "../doctor";
+import type {
+  DeviceDoctorJourney,
+  DoctorJourneyStage,
+  DoctorRemediationStep,
+  DoctorSymptomStep,
+} from "../doctor-journey";
 import { ConsoleStyles } from "../ui/tokens";
 import {
   AlertError,
@@ -50,8 +56,9 @@ import {
   Skeleton,
   StatusIndicator,
   Tabs,
+  Timeline,
 } from "../ui/primitives";
-import type { ScreenPhase } from "../ui/primitives";
+import type { ScreenPhase, TimelineItem } from "../ui/primitives";
 import {
   CONSOLE_STATUS_LABEL,
   anomalyConsoleStatus,
@@ -86,6 +93,15 @@ export interface DeviceDoctorScreenProps {
   readonly treatmentGating?: Readonly<Record<string, TreatmentGatingView>>;
   /** Per-treatment operator disposition (optional; keyed by treatment id). */
   readonly treatmentDisposition?: Readonly<Record<string, TreatmentDisposition>>;
+  /**
+   * W141: the composed diagnosis JOURNEY (optional; the runtime feed
+   * supplies it). The full nine-stage walk — device -> observations ->
+   * symptoms -> diagnosis -> remediation -> authorization -> action ->
+   * result -> evidence — with the symptom walk and the remediation
+   * walk, every stage from real runtime state (honest not-yet-observed
+   * states; never fabricated observations).
+   */
+  readonly journey?: DeviceDoctorJourney;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +143,180 @@ function WhyItMatters({ view }: { readonly view: DeviceDoctorViewModel }): JSX.E
     <Card title="Why it matters">
       <p style={{ margin: 0, fontSize: "0.875rem" }}>{text}</p>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// W141 — the diagnosis journey (the full nine-stage walk + the two walks)
+// ---------------------------------------------------------------------------
+
+/** The journey stage's timeline state (honest, never color alone). */
+function journeyStageTimelineState(state: DoctorJourneyStage["state"]): TimelineItem["state"] {
+  switch (state) {
+    case "ready":
+      return "done";
+    case "not_yet_observed":
+      return "pending";
+    case "empty":
+      return "pending";
+    case "blocked":
+      return "blocked";
+    case "approval_required":
+      return "current";
+  }
+}
+
+function SymptomWalkCard({ journey }: { readonly journey: DeviceDoctorJourney }): JSX.Element {
+  if (journey.symptoms.state === "no_anomalies_detected") {
+    return (
+      <Card title="Symptom walk" subtitle="The anomaly-driven operator steps, from real detections only.">
+        <EmptyState
+          title="No anomalies detected"
+          hint="Nothing crossed a detection rule in the current window. The walk stays empty — no symptom is ever invented; an absence of evidence is not evidence of health."
+        />
+      </Card>
+    );
+  }
+  return (
+    <Card title="Symptom walk" subtitle="One step per detected anomaly, severity first — each anchored to its evidence observations.">
+      <div className="fos-table-wrap">
+        <table className="fos-table">
+          <caption>Detected symptoms, severity first</caption>
+          <thead>
+            <tr>
+              <th scope="col">Severity</th>
+              <th scope="col">Symptom (rule)</th>
+              <th scope="col">Signal</th>
+              <th scope="col">Observed at</th>
+              <th scope="col">Evidence observations</th>
+            </tr>
+          </thead>
+          <tbody>
+            {journey.symptoms.steps.map((step: DoctorSymptomStep) => (
+              <tr key={step.anomalyId}>
+                <td>
+                  <StatusIndicator
+                    status={anomalyConsoleStatus(step.severity)}
+                    label={`${step.severity} — ${CONSOLE_STATUS_LABEL[anomalyConsoleStatus(step.severity)]}`}
+                  />
+                </td>
+                <td>
+                  <span className="fos-mono">{step.ruleId}</span>
+                  <br />
+                  <span className="fos-meta">anomaly <span className="fos-mono">{step.anomalyId}</span></span>
+                </td>
+                <td>
+                  {step.value} {step.unit}
+                  <br />
+                  <span className="fos-meta">{step.signalKind}</span>
+                </td>
+                <td><span className="fos-mono fos-meta">{step.observedAt}</span></td>
+                <td>{step.evidenceObservationIds.length} observation{step.evidenceObservationIds.length === 1 ? "" : "s"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+function RemediationWalkCard({ journey }: { readonly journey: DeviceDoctorJourney }): JSX.Element {
+  if (journey.remediation.state === "no_recommendations_yet") {
+    return (
+      <Card title="Remediation walk" subtitle="The gated path each proposal takes, from real request records.">
+        <EmptyState
+          title="No treatment recommendations"
+          hint="Treatments are proposed once a diagnosis identifies a remediable cause. Until then this walk stays honestly empty — no recommendation is invented."
+        />
+      </Card>
+    );
+  }
+  return (
+    <Card title="Remediation walk" subtitle="Each proposal on its gated path: disposition, Guardian decision, durable request, result. A recommendation is never an executed action.">
+      <div className="fos-stack">
+        {journey.remediation.steps.map((step: DoctorRemediationStep) => (
+          <Card key={step.treatmentId} title={`Proposal: ${step.rationale}`} subtitle={`Treatment ${step.treatmentId} · intent ${step.proposedIntentKind}`}>
+            <DefinitionList
+              entries={[
+                { term: "Disposition", value: step.disposition === "not_decided" ? "Not decided yet" : step.disposition === "accepted" ? "Accepted — routed to the intent boundary" : "Dismissed by the operator" },
+                {
+                  term: "Guardian decision",
+                  value:
+                    step.gating === "not_evaluated" ? (
+                      <span className="fos-meta">Not evaluated — nothing has been routed</span>
+                    ) : (
+                      <StatusIndicator
+                        status={guardianConsoleStatus(step.gating)}
+                        label={`${step.gating} — ${CONSOLE_STATUS_LABEL[guardianConsoleStatus(step.gating)]}`}
+                      />
+                    ),
+                },
+                {
+                  term: "Durable request",
+                  value:
+                    step.request === "not_requested" ? (
+                      <span className="fos-meta">Not requested</span>
+                    ) : (
+                      <span className="fos-mono">{step.request.status}</span>
+                    ),
+                },
+                {
+                  term: "Execution result",
+                  value:
+                    step.request === "not_requested" || step.request.outcome === undefined ? (
+                      <span className="fos-meta">Not executed — no outcome exists</span>
+                    ) : (
+                      <StatusIndicator
+                        status={step.request.outcome === "executed" ? "succeeded" : "failed"}
+                        label={`${step.request.outcome} at ${step.request.executedAt}`}
+                      />
+                    ),
+                },
+              ]}
+            />
+            {step.request !== "not_requested" && step.request.status === "PARKED" && (
+              <p style={{ margin: "0.75rem 0 0" }}>
+                <Badge status="approval_required">Awaiting a human decision</Badge>{" "}
+                <span className="fos-meta">The request is PARKED — approval happens at the action boundary, never here.</span>
+              </p>
+            )}
+          </Card>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/** The composed diagnosis journey: the nine-stage timeline + the walks. */
+function DiagnosisJourney({ journey }: { readonly journey: DeviceDoctorJourney }): JSX.Element {
+  const items: TimelineItem[] = journey.stages.map((stage) => ({
+    id: stage.id,
+    label: stage.headline,
+    detail: stage.rows.map((row) => `${row.label}: ${row.value}`).join(" · "),
+    state: journeyStageTimelineState(stage.state),
+    stateLabel:
+      stage.state === "ready"
+        ? undefined
+        : stage.state === "not_yet_observed"
+          ? "Not yet observed"
+          : stage.state === "empty"
+            ? "Nothing to show — honest empty"
+            : stage.state === "approval_required"
+              ? "Approval required"
+              : "Blocked",
+  }));
+  return (
+    <>
+      <Card
+        title="The diagnosis journey"
+        subtitle={`The full operator walk as of ${journey.asOf} — device, observations, symptoms, diagnosis, remediation, authorization, action, result, evidence. Every stage reflects real runtime state; stages the runtime has no records for say so.`}
+      >
+        <Timeline items={items} ariaLabel="Device diagnosis journey" />
+      </Card>
+      <SymptomWalkCard journey={journey} />
+      <RemediationWalkCard journey={journey} />
+    </>
   );
 }
 
@@ -522,6 +712,7 @@ export function DeviceDoctorScreen(props: DeviceDoctorScreenProps): JSX.Element 
       <>
         <DoctorSummary view={view} />
         <WhyItMatters view={view} />
+        {props.journey !== undefined && <DiagnosisJourney journey={props.journey} />}
         <Card
           title="Current state and interpretations"
           subtitle="Signals, baselines, anomalies, versioned diagnoses, and treatment proposals."

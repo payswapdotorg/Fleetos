@@ -56,6 +56,22 @@ export * from "./lifecycle";
 // D3 — the Device Doctor detail view-model + the panel state machine
 export * from "./doctor";
 
+// W141 — the honest lane-phase vocabulary (loading/empty/ready/blocked/
+// approval-required/error/unsupported) + the ScreenPhase mapping
+export * from "./lane-phase";
+
+// W141 — the Device Doctor JOURNEY view-model: the full nine-stage walk
+// (device -> observations -> symptoms -> diagnosis -> remediation ->
+// authorization -> action -> result -> evidence) with the symptom walk
+// and the remediation walk, every stage derived from real runtime state
+// (honest not-yet-observed states; never fabricated observations).
+export * from "./doctor-journey";
+
+// W141 — the Device Doctor RUNTIME FEED: the composition function that
+// carries the runtime state contract into the screen's phase props
+// (phase + lanePhase + journey + gating + dispositions).
+export * from "./doctor-feed";
+
 // D5 (W090A) — the existing-fleet enrollment journey view-model
 // (initiate -> review -> confirm -> verified, with evidence)
 export * from "./enrollment";

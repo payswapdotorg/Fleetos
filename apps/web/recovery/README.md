@@ -24,8 +24,29 @@ Lane: `worker-a` (per `spec/worker-ownership.yaml`: `apps/web/recovery/`).
 | `src/recovery-case.ts`    | D2 | The recovery case view-models: the PROPOSAL-gated transitions surfaced read-only (injected table), the versioned append-only history, the evidence basis (typed refs), machine-stable closure reasons, and the VISIBLE destructive-gate precondition (`gating.acceptsDestructive`). |
 | `src/fleet-actions.ts`    | D3 | The Fleet Action surfaces (W041): the group-selection display (recursive selector tree), the policy-gated plan state machines with the REQUIRE_APPROVAL PARKED states VISIBLE, and the plan list with the parked human-approval queue first. |
 | `src/destructive-actions.ts` | D4 | The destructive action surfaces: lock/locate/wipe/reboot displayed with the W031 Guardian decision context and the GATED-PATH-ONLY affordance — there is NO direct-execution variant; the surface contracts make one-click execution unrepresentable (ARCHITECTURE-LOCK items 16 + 19). |
+| `src/lane-phase.ts` | W141 | The honest LANE PHASE vocabulary (loading / empty / ready / blocked / approval_required / error / unsupported) carried alongside the screens' render `ScreenPhase`, with the total `toRecoveryScreenPhase` mapping — the machine-proven semantic state the runtime feeds expose. |
+| `src/recovery-journey.ts` | W141 | The RECOVERY CASE JOURNEY view-model: the seven-stage operator walk (lost/stolen signal -> recovery case -> locate/secure decision -> authorization -> action -> evidence -> closure/escalation), every stage derived from real runtime state with honest not-yet-observed states. |
+| `src/confirmation.ts` | W141 | The DESTRUCTIVE-ACTION CONFIRMATION flow: the gated explicit-confirmation state machine (acknowledge the consequences + type the exact `CONFIRM <ACTION> <deviceId>` phrase), the injected REAL gated boundary + the append-only audit seam (structurally the `@fleetos/audit` sink shape), machine-stable refusals, and visible feedback for every outcome — the user is never left to infer that a click failed. |
+| `src/recovery-feed.ts` | W141 | The RECOVERY RUNTIME FEEDS: the composition functions carrying the runtime state contract into the screens' phase props — the cases list/detail + per-case journeys, Find My Device, and the gated destructive actions (the four actions' affordances + latest requests + the lost-flow context + the capability-gated unsupported states). |
 | `src/ui/` | W090A | The LOCAL console design tokens (`tokens.tsx`, per `spec/ui/CONSOLE-DESIGN.md`), the status-vocabulary mapping (`status.ts`), and the local shadcn-style component vocabulary implemented in plain React + CSS (`primitives.tsx`) — no external UI library dependency. |
-| `src/screens/` | W090A | The RENDERED recovery screens (fully controlled, presentational): the cases list + Sheet detail (`recovery-cases-screen.tsx`), Find My Device (`find-my-device-screen.tsx`), and the gated destructive-action presentation with the LOST-device flow timeline (`destructive-action-screen.tsx`). Browser-facing tests run against happy-dom (see `test/dom.preload.ts` + the root `bunfig.toml` preload). |
+| `src/screens/` | W090A+W141 | The RENDERED recovery screens (fully controlled, presentational): the cases list + Sheet detail (`recovery-cases-screen.tsx`), Find My Device (`find-my-device-screen.tsx`), and the gated destructive-action presentation with the LOST-device flow timeline (`destructive-action-screen.tsx`). Browser-facing tests run against happy-dom (see `test/dom.preload.ts` + the root `bunfig.toml` preload). |
+
+## W141 — the runtime composition + the confirmation flow
+
+The lane's deep screens are now RUNTIME-BINDABLE: the three feeds
+(`composeRecoveryCasesFeed`, `composeFindMyDeviceFeed`,
+`composeDestructiveActionsFeed`) carry the real runtime state (the REAL
+recovery case store, destructive-request store, last-seen ledger and
+adapter capabilities, injected at the binding site) into the accepted
+screens' exact phase props, with the per-case seven-stage RECOVERY
+JOURNEY (signal -> case -> locate/secure decision -> authorization ->
+action -> evidence -> closure/escalation). The destructive-action
+CONFIRMATION FLOW (`src/confirmation.ts`) is the gated, explicit-
+confirmation state machine: acknowledge + type-the-phrase, the injected
+REAL gated boundary, the audit seam (the REAL `@fleetos/audit` log via
+its sink adapter), and visible feedback for every refusal, cancellation
+and outcome — the user is never left to infer that a click failed. The
+console binding is W144 [TL] composition work.
 
 ## Design rules (frozen by this surface contract)
 

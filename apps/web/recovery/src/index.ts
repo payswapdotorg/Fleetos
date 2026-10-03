@@ -66,6 +66,28 @@ export * from "./fleet-actions";
 // D4 — the destructive action surfaces (gated path ONLY)
 export * from "./destructive-actions";
 
+// W141 — the honest lane-phase vocabulary (loading/empty/ready/blocked/
+// approval-required/error/unsupported) + the ScreenPhase mapping
+export * from "./lane-phase";
+
+// W141 — the RECOVERY CASE JOURNEY view-model: the seven-stage walk
+// (lost/stolen signal -> recovery case -> locate/secure decision ->
+// authorization -> action -> evidence -> closure/escalation), every
+// stage derived from real runtime state.
+export * from "./recovery-journey";
+
+// W141 — the DESTRUCTIVE-ACTION CONFIRMATION flow: the gated,
+// explicit-confirmation state machine (acknowledge + type-the-phrase),
+// the injected gated boundary + audit seam, and the visible feedback —
+// the user is never left to infer that a click failed.
+export * from "./confirmation";
+
+// W141 — the RECOVERY RUNTIME FEEDS: the composition functions that
+// carry the runtime state contract into the screens' phase props
+// (cases list/detail + journeys, Find My Device, the gated destructive
+// actions with affordances + requests + the lost-flow context).
+export * from "./recovery-feed";
+
 // W090A — the local console design tokens + status vocabulary
 export * from "./ui/tokens";
 export * from "./ui/status";
