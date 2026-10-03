@@ -32,3 +32,12 @@ Worker ownership:
 - B: health/security/policy/action control plane
 - C: workload/commerce/service surfaces
 - TL: foundation, shared contracts, API composition, UI shell, integration wiring, CI and mergeops (TL, production readiness) -> contracts, audit, identity, integration-convergence, web-shell (test-scope bindings; src imports contracts only — the W071 pattern)
+
+
+Predictive Twin / world-model layer (ADR-0002):
+- predictive-representation -> devices, observations, health, security, workloads, maintenance, audit
+- predictive-representation MAY consume model-provider adapters only through a provider-neutral seam
+- predictive-representation MUST NOT become a source of authoritative business truth
+- policy/Guardian -> predictive-representation is advisory context only; authorization remains policy-owned
+- learning/Arena -> predictive-representation through evaluation/adoption contracts
+- UI surfaces consume predictive outputs as versioned interpretations with provenance/uncertainty; observed facts remain separately addressable
