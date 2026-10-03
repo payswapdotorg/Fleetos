@@ -82,3 +82,12 @@ W140 -> W144 (server-session composition-root wiring)
 W145 -> W144
 
 Wave 13 rule: W140/W141/W142 run concurrently on disjoint scopes (W140 owns apps/web/app/api + apps/web/src/server + apps/agent; W141 owns apps/web/device + apps/web/recovery; W142 owns apps/web/security + apps/web/actions). W143 + W145 dispatch as worker slots free (limit 3). W144 composes on the merged tree. The frozen packages gain no new dependencies; the Neon driver lives server-only in apps/web.
+
+
+Wave 14 - Predictive Twin / World Model Layer (after Wave 13 acceptance)
+W140,W144 -> W150 [A] predictive device-history feature/provenance feed
+W140,W144 -> W151 [B] Predictive Twin engine + model adapter seam
+W143,W144,W070 -> W152 [C] workload/project context + learning/evaluation bridge
+W150,W151,W152 -> W153 [TL] Predictive Twin runtime/UI convergence
+
+Wave 14 rule: W150/W151/W152 may run concurrently on disjoint scopes after Wave 13 is accepted. The Predictive Twin is additive and model-neutral; frozen authoritative Device Twin, observations/events, Guardian authorization, audit/evidence and tenant-isolation rules remain unchanged. W153 is the only cross-worker composition point.
