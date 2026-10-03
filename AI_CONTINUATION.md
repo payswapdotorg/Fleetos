@@ -30,3 +30,13 @@ Current state (WAVE 13 IN FLIGHT — adoption roadmap, 2026-10-02):
 - Vercel Hobby is staging/demo only; commercial production requires a commercial-capable plan
 - external integrations remain provider-neutral
 - the productization read-list (docs/tech-lead/PRODUCT-READINESS-AUDIT.md, spec/ui/ROLEFUL-UX-ARCHITECTURE.md, spec/install/INSTALL-AND-ENROLLMENT-CONTRACT.md, docs/tech-lead/UX-OPERATIONAL-SIMULATION.md, docs/tech-lead/PRODUCT-READINESS-HANDOFF.md) remains authoritative for understanding the delivered product; spec/PROJECT-STATE.md carries the full acceptance ledger
+
+
+## SIM-C mandatory operator gate (2026-10-03)
+- Operator directive is recorded as GitHub issue #2: https://github.com/payswapdotorg/Fleetos/issues/2
+- Do not close Wave 13 after implementation/tests alone.
+- Run the full industry adoption simulation against the LIVE deployed product before fixes, fix all in-scope blockers, deploy, then rerun the SAME journeys against the fixed deployment.
+- Minimum repeat set: 10 industries × 3 firm sizes × 30 real workspaces; 7 personas/workspace where applicable; >=100 repeatable project/operational journeys per firm where supported; mobile pass per industry; representative cross-role handoffs.
+- Adoption verdicts are SWITCH-ONLY / MAIN-INTERFACE / COMPLEMENT / RETAIN, based strictly on what a user can actually complete in the product. Do not credit roadmap, contracts, placeholders, or source code.
+- The final acceptance record must contain before/after counts, blockers, fixes, regression evidence, production browser evidence, and the post-fix adoption result.
+- The six SIM-B placeholder lanes, inert approval/destructive controls, client-side-only control-plane limitation, and mobile roster overflow are regression checks, not merely documentation references.
