@@ -43,3 +43,9 @@ Current state (WAVE 13 IN FLIGHT — adoption roadmap, 2026-10-02):
 
 - GitHub issue #2 is the operator's mandatory SIM-C gate: https://github.com/payswapdotorg/Fleetos/issues/2. Do not close W140-W145/W144 merely on unit tests or implementation claims; run the live multi-industry simulation, fix blockers, deploy, rerun identical journeys, and record before/after adoption counts.
 - Current repo evidence has no W140/W141/W142 delivery branches yet; treat Wave 13 as in-flight, not complete.
+
+## TL handover (2026-10-03 06:2xZ — operator-directed session)
+- The operator handed the FULL Wave-13 Tech-Lead mandate to this session (final handoff doc; issue #2 is the acceptance gate). The prior session dispatch claims (W140/W141/W142 "dispatched in parallel worktrees") are VOID — no work/w14x branches ever landed; treat them as dead lanes on a dead session account.
+- This session now owns the Wave-13 harvest cycle. Fresh dispatches issued from THIS session replay account (ali20) inside the §8 window: w140 / w141 / w142 (dependency-graph concurrency: disjoint scopes). W143 + W145 dispatch as worker slots free; W144 composes on the merged tree.
+- Sibling-session law: do NOT re-dispatch w140/w141/w142/w143/w145 while this handover stands; if you see work/w14x branches, this TL is already harvesting them — first-merged-wins, collisions resolved by gate re-run at the exact commit.
+- Baseline for all Wave-13 deliveries: integration/wave0 @ 84b64aa (docs-only delta from 0da0934 where 3339/0 was verified).
