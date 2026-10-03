@@ -49,3 +49,6 @@ Current state (WAVE 13 IN FLIGHT — adoption roadmap, 2026-10-02):
 - This session now owns the Wave-13 harvest cycle. Fresh dispatches issued from THIS session replay account (ali20) inside the §8 window: w140 / w141 / w142 (dependency-graph concurrency: disjoint scopes). W143 + W145 dispatch as worker slots free; W144 composes on the merged tree.
 - Sibling-session law: do NOT re-dispatch w140/w141/w142/w143/w145 while this handover stands; if you see work/w14x branches, this TL is already harvesting them — first-merged-wins, collisions resolved by gate re-run at the exact commit.
 - Baseline for all Wave-13 deliveries: integration/wave0 @ 84b64aa (docs-only delta from 0da0934 where 3339/0 was verified).
+
+- ADR-0002 is now ACCEPTED: Predictive Twin / World Model Layer. It is additive and model-neutral; the canonical Device Twin remains authoritative.
+- GitHub issue #3 records the post-Wave-13 Wave 14 implementation: W150/W151/W152 parallel lanes followed by W153 TL convergence. JEPA-family models are explicitly a swappable implementation class, not a core dependency.
