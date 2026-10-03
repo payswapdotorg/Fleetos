@@ -1,10 +1,18 @@
 # FleetOS Project State
 
-STATUS: ROADMAP COMPLETE — Waves 1-12 shipped; post-roadmap SIMULATION EXPERIMENT phase delivered (SIM-B report accepted + W130 sim-found-defect fix accepted); final main efc264b (integration/wave0 in sync); 3339/0 tests
+STATUS: WAVE 13 IN FLIGHT — SIM-C adoption validation + fix/rerun loop opened; Waves 1-12 + SIM-B + W130 shipped; current integration/wave0 contains the Wave 13 work orders/acceptance gate; latest implementation-certified baseline remains efc264b / 3339-0.
 
 Latest accepted post-roadmap verification (2026-10-02, the operator's industry-adoption simulation experiment — "2 run the simulations while 1 implements the fixes along the way"):
 - SIM-B industry adoption simulation REPORT (sim/sim-b 7f0369ae, merged --no-ff efc264b, docs/simulations/sim-b-report.md): 5 industries (transportation/delivery, hospitality, fashion/entertainment/media, legal, defense/security) x 3 firm sizes = 15 real workspaces created through the real sign-up flow, 105 named personas (7 roles x 15 firms), 150 executed project journeys, 7 mobile passes (390x844). HONEST VERDICT: SWITCH-ONLY 0 (0%) / MAIN-INTERFACE 0 (0%) / RETAIN 105 (100%) — the runtime is an identity/RBAC/evidence skeleton with excellent honest surfaces but six placeholder lanes (Device Doctor, Security Doctor walk, Recovery, Fleet Actions, Workloads, Commerce), inert Approve/Reject + gated-destructive controls, a client-side-only control plane (no real device can ever check in), and the join-code defects (fixed by W130 in the same wave). The report's 9 blockers + 7 ranked improvement asks are the adoption roadmap's ground truth.
 - W130 invite/join integrity + honest denials (work/w130 1dcb52e, merged --no-ff 0f60fa8): crypto-random tenant-unique join codes (Web Crypto base32 ~100-bit bodies injected at the composition root — the identity seam stays pure; the sequential joinw101 counter that gave every workspace the same first code is dead); tenant-scoped redemption (active session's tenant when signed in, workspace directory at the gate — the demo tenant is NEVER a scope; out-of-scope codes are machine-stable unknown_code — the cross-tenant principal misroute is dead); explicit redemption errors replace the silent empty alert; restricted-role enrollment-code creation renders the capability explanation. TL gates at the exact commit: check 4/4 (150-contract snapshot unchanged) / typecheck 0 / bun test 3339-0 (+16). LIVE production acceptance on the git-hook deploy of efc264b: (1) two sequential invites issued high-entropy codes joinwYXLZW4UXWE5SZG5RNFZI then joinwSZTPVB62KFFBRB6S3W3Z (different, 24h expiry, display-once held); (2) joining with the old collision-prone code joinw10100000001 renders the visible unknown_code refusal with human words + resolve guidance (never an empty alert); (3) the Vendor demo persona's "Create enrollment code" click renders the visible interaction_forbidden refusal with the escalation path (never a silent no-op)
+
+## Wave 13 execution state
+- Operator directive: GitHub issue #2, “SIM-C: industry adoption simulation → fix blockers → deploy → rerun”.
+- Scope: 10 industries × 3 firm sizes × 30 real workspaces; repeated project/operational journeys, mobile passes, and cross-role handoffs; benchmark relevant current incumbent product sets factually.
+- Acceptance: run against the live product, record blockers, fix all in-scope blockers, redeploy, rerun the same journeys, and publish before/after adoption results (SWITCH-ONLY / MAIN-INTERFACE / COMPLEMENT / RETAIN).
+- Regression checks inherited from SIM-B: six placeholder lanes, inert approval/destructive controls, client-side-only control-plane limitation, and narrow-screen device-roster overflow must not silently return.
+- Current code status: no W140/W141/W142 delivery branches are present in GitHub yet; therefore Wave 13 is OPEN/IN FLIGHT and not implementation-certified. Do not claim completion from planning commits alone.
+
 
 Latest accepted Wave 12 verification (2026-10-01, operator product directives — the W110-era "WAVE 11 COMPLETE" record immediately precedes this block and remains true as written):
 - W120 Stripe-adapted design system (work/w120 95c8a27, merged --no-ff 856347a): light cool foundation, #635BFF accent, Inter/system font stack, 6px/8px radii, grouped light sidebar with uppercase group labels; every css file lane-owned; TL gates check OK / typecheck 0 / 3266-0 (+1); CI 36883403131 SUCCESS
@@ -20,7 +28,7 @@ Latest accepted Wave 9 verification (2026-10-01, TL harvest after session-death 
 - w100a/w100b sessions died post-push without chat reports; acceptance decided on git truth + local gates (the established harvest law)
 
 Architecture: FROZEN v1.0
-Current source of truth after acceptance: integration/wave0 (= main at efc264b)
+Current source of truth: integration/wave0 (Wave 13 activation/specification is merged; implementation work is not yet certified)
 Preparation branch: integration/product-readiness — CONSUMED historical record (its W100-W103 extension shipped through the wave 9/10 lineage; its supersession notes landed on main)
 Accepted base: W090A + W090B + W090C + W091 + W092 + W100A + W100B + W100C + W101 + W102 + W103 + W110 + W120 + W121 + W122 + SIM-B + W130
 Current staging URL: https://fleetos-staging-flame.vercel.app (Vercel Hobby production deploys from main)
@@ -44,7 +52,7 @@ Productization reality (delivered through W103 + W110 + wave 12):
 - Apify integration: YES (optional; W100C provider-neutral enrichment adapter, proposal-only, fail-visible)
 - Resend integration: NOT YET (optional email channel; never scoped in a work item)
 
-Next implementation: NONE — the catalog is fully shipped (W001-W080 original roadmap; W090-W092 render wave; W100-W103 productization; W110 gap closure; W120-W122 operator product directives). The frontier is CLOSED; new work begins only with new operator directives recorded in spec/work-items/WORK-ITEM-CATALOG.md.
+Next implementation: WAVE 13 — W140/W141/W142 in parallel, then W143/W145 as slots free, W144 convergence/deployment. GitHub issue #2 is the mandatory SIM-C validation gate; no Wave 13 closure is valid without fix -> deploy -> rerun evidence.
 
 Product-ready target (achieved through W103 + W110 + wave 12):
 1. install and use end to end: YES
