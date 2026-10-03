@@ -23,7 +23,7 @@ Current state (WAVE 13 IN FLIGHT — adoption roadmap, 2026-10-02):
 - roadmap: original W001-W080 + render W090A/B/C + W091 + W092 + productization W100A/B/C + W101-W103 + W110 + W120-W122 + W130 ALL SHIPPED; post-roadmap SIM-B experiment delivered (report accepted, verdict 0/0/105 RETAIN — the honest ground truth)
 - WAVE 13 OPEN (the adoption roadmap — SIM-B asks 1/2/3/5/7; asks 4+6 closed by W130): catalog da2a3b8 records W140 (server-side control plane + agent check-in) / W141 (Device Doctor + Recovery bindings) / W142 (Security walk + Fleet Actions + approvals execution) / W143 (Workloads + Commerce bindings) / W145 (declared import + mobile roster) / W144 (TL runtime composition + deployment). W140/W141/W142 dispatched in parallel worktrees; W143/W145 follow as slots free; W144 composes on the merged tree
 - production: LIVE at https://fleetos-staging-flame.vercel.app (Vercel Hobby; post-deploy-check PASSED at efc264b; W130 live-verified)
-- current integration source of truth: integration/wave0 (= main 0da0934 at phase open); integration/product-readiness is a CONSUMED historical branch
+- current integration source of truth: integration/wave0; Wave 13 planning/acceptance commits are active on this branch; implementation remains uncertified until worker deliveries are merged and the SIM-C fix/rerun gate passes
 - Do NOT re-dispatch shipped items (W100A/B/C, W101, W102, W103, W110, W120-W122, W130); every one is accepted + merged
 - worker limit: 3
 - free-tier staging target: Vercel Hobby + Neon Free + Upstash Redis Free + Cloudflare R2 Free + optional Apify Free (delivered, W100C) + optional Resend Free (never scoped)
@@ -40,3 +40,6 @@ Current state (WAVE 13 IN FLIGHT — adoption roadmap, 2026-10-02):
 - Adoption verdicts are SWITCH-ONLY / MAIN-INTERFACE / COMPLEMENT / RETAIN, based strictly on what a user can actually complete in the product. Do not credit roadmap, contracts, placeholders, or source code.
 - The final acceptance record must contain before/after counts, blockers, fixes, regression evidence, production browser evidence, and the post-fix adoption result.
 - The six SIM-B placeholder lanes, inert approval/destructive controls, client-side-only control-plane limitation, and mobile roster overflow are regression checks, not merely documentation references.
+
+- GitHub issue #2 is the operator's mandatory SIM-C gate: https://github.com/payswapdotorg/Fleetos/issues/2. Do not close W140-W145/W144 merely on unit tests or implementation claims; run the live multi-industry simulation, fix blockers, deploy, rerun identical journeys, and record before/after adoption counts.
+- Current repo evidence has no W140/W141/W142 delivery branches yet; treat Wave 13 as in-flight, not complete.
