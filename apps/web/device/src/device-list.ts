@@ -20,7 +20,7 @@
  */
 
 import { DEVICE_LIFECYCLE_ORDER } from "@fleetos/contracts";
-import type { DeviceLifecycleState, DeviceId, TenantId } from "@fleetos/contracts";
+import type { DeviceLifecycleState, DeviceId, TenantId, UserId } from "@fleetos/contracts";
 import {
   SYNTHETIC_SYSTEM_TENANT,
   checkDeviceUiTenantScope,
@@ -30,6 +30,8 @@ import {
   parseIsoMs,
 } from "./internal";
 import type { DeviceUiTenantScope } from "./internal";
+import { DEVICE_RECORD_PROVENANCE_ORDER, declaredRecordBy, deviceRecordProvenance } from "./declared-import";
+import type { DeviceRecordProvenance } from "./declared-import";
 import type { DeviceTwinLike, DeviceTwinSource } from "./seams";
 
 // ---------------------------------------------------------------------------
@@ -52,6 +54,14 @@ export const STALENESS_BAND_ORDER: readonly StalenessBand[] = Object.freeze([
   "unknown",
   "stale",
 ]);
+
+/** The canonical display label of each staleness band (always rendered). */
+export const STALENESS_BAND_LABEL: Readonly<Record<StalenessBand, string>> = Object.freeze({
+  never_observed: "Never observed",
+  fresh: "Fresh",
+  unknown: "Indeterminate",
+  stale: "Stale",
+} as const);
 
 /** The injected staleness thresholds (band policy — never a clock read). */
 export interface StalenessBands {
@@ -102,6 +112,11 @@ export type DeviceListFilter =
       readonly text: string;
     }
   | { readonly kind: "observed"; readonly band: StalenessBand }
+  | {
+      /** W145: match records by their DECLARED/OBSERVED origin provenance. */
+      readonly kind: "provenance";
+      readonly provenance: DeviceRecordProvenance;
+    }
   | { readonly kind: "and"; readonly filters: readonly DeviceListFilter[] }
   | { readonly kind: "or"; readonly filters: readonly DeviceListFilter[] }
   | { readonly kind: "not"; readonly filter: DeviceListFilter };
@@ -132,6 +147,7 @@ export function validateDeviceListFilter(
     case "recoveryState":
     case "search":
     case "observed":
+    case "provenance":
       return;
     case "and":
     case "or": {
@@ -166,6 +182,9 @@ function searchHaystack(twin: DeviceTwinLike): string {
     twin.identity.enrollment.hardware.serialNumber ?? "",
     twin.identity.enrollment.hardware.assetTag ?? "",
     twin.identity.ownership.assignedTeam ?? "",
+    // W145: the record's origin provenance rides the haystack verbatim —
+    // searching "declared" finds the declared-import records.
+    deviceRecordProvenance(twin),
   ];
   return fields.join("\u0000").toLowerCase();
 }
@@ -200,6 +219,9 @@ function matchesFilter(
       return (
         classifyTelemetryBand(twin.telemetry.lastObservedAt, now, bands) === filter.band
       );
+    case "provenance":
+      // W145: the DECLARED/OBSERVED origin marking, never conflated.
+      return deviceRecordProvenance(twin) === filter.provenance;
     case "and":
       return filter.filters.every((sub) => matchesFilter(twin, sub, now, bands));
     case "or":
@@ -293,6 +315,15 @@ export interface DeviceRowViewModel {
   readonly recoveryState: string;
   readonly activeActionCount: number;
   readonly revision: number;
+  /**
+   * W145: how the record entered the fleet — DECLARED (manual import,
+   * provenance-flagged on every surface) vs OBSERVED (the agent
+   * enrollment path). NEVER conflated: the mark derives from the
+   * enrollment provenance's machine-stable reason.
+   */
+  readonly provenance: DeviceRecordProvenance;
+  /** The declaring principal, when the record is DECLARED by a user. */
+  readonly declaredBy?: UserId;
 }
 
 /** Facet counts over the MATCHED set (pre-pagination), guiding refinement. */
@@ -302,6 +333,8 @@ export interface DeviceListFacets {
   readonly byOwnership: readonly { readonly value: string; readonly count: number }[];
   readonly byRecovery: readonly { readonly value: string; readonly count: number }[];
   readonly byStaleness: readonly { readonly value: StalenessBand; readonly count: number }[];
+  /** W145: the DECLARED/OBSERVED origin marking, as a facet. */
+  readonly byProvenance: readonly { readonly value: DeviceRecordProvenance; readonly count: number }[];
 }
 
 /** The roster view-model (pure projection of the matched page + facets). */
@@ -336,6 +369,8 @@ export type DeviceListBuild =
 
 /** Project one twin to a roster row. PURE. */
 function rowOf(twin: DeviceTwinLike, now: string, bands: StalenessBands): DeviceRowViewModel {
+  const provenance = deviceRecordProvenance(twin);
+  const declaredBy = declaredRecordBy(twin);
   return frozen({
     tenantId: twin.tenantId,
     deviceId: twin.deviceId,
@@ -364,6 +399,8 @@ function rowOf(twin: DeviceTwinLike, now: string, bands: StalenessBands): Device
     recoveryState: twin.actions.recoveryState,
     activeActionCount: twin.actions.activeActionIds.length,
     revision: twin.revision,
+    provenance,
+    ...(declaredBy !== undefined ? { declaredBy } : {}),
   });
 }
 
@@ -382,6 +419,7 @@ function emptyDeviceListView(asOf: string, page: DeviceListPage): DeviceListView
       byOwnership: frozenArray([]),
       byRecovery: frozenArray([]),
       byStaleness: frozenArray([]),
+      byProvenance: frozenArray([]),
     }),
   });
 }
@@ -472,6 +510,7 @@ export function buildDeviceListViewModel(
   const ownershipCounts = new Map<string, number>();
   const recoveryCounts = new Map<string, number>();
   const stalenessCounts = new Map<StalenessBand, number>();
+  const provenanceCounts = new Map<DeviceRecordProvenance, number>();
   for (const twin of matched) {
     lifecycleCounts.set(
       twin.identity.lifecycleState,
@@ -491,6 +530,8 @@ export function buildDeviceListViewModel(
     );
     const band = classifyTelemetryBand(twin.telemetry.lastObservedAt, options.now, options);
     stalenessCounts.set(band, (stalenessCounts.get(band) ?? 0) + 1);
+    const provenance = deviceRecordProvenance(twin);
+    provenanceCounts.set(provenance, (provenanceCounts.get(provenance) ?? 0) + 1);
   }
 
   const byLifecycle = DEVICE_LIFECYCLE_ORDER.filter((state) => lifecycleCounts.has(state)).map(
@@ -508,6 +549,9 @@ export function buildDeviceListViewModel(
   const byStaleness = STALENESS_BAND_ORDER.filter((band) => stalenessCounts.has(band)).map(
     (band) => frozen({ value: band, count: stalenessCounts.get(band) as number }),
   );
+  const byProvenance = DEVICE_RECORD_PROVENANCE_ORDER.filter((value) => provenanceCounts.has(value)).map(
+    (value) => frozen({ value, count: provenanceCounts.get(value) as number }),
+  );
 
   const view: DeviceListViewModel = frozen({
     tenantId: guard.tenantId,
@@ -522,6 +566,7 @@ export function buildDeviceListViewModel(
       byOwnership: frozenArray(byOwnership),
       byRecovery: frozenArray(byRecovery),
       byStaleness: frozenArray(byStaleness),
+      byProvenance: frozenArray(byProvenance),
     }),
   });
   return { ok: true, view };

@@ -102,6 +102,23 @@ export * from "./screens/enrollment-screen";
 // controlled; the nine install-contract steps + uninstall/revoke plan)
 export * from "./screens/install-center-screen";
 
+// W145 — the DECLARED-IMPORT surface: the manual device-record entry path
+// (provenance-flagged DECLARED, never conflated with agent OBSERVED
+// records; honest duplicate handling; the same runtime state contract
+// surfaces carry the mark — roster, feeds, searches) + the record-origin
+// provenance vocabulary the whole lane marks with.
+export * from "./declared-import";
+
+// W145 — the rendered declared-import journey screen (enter -> review ->
+// confirm -> recorded, evidence-visible, fully controlled)
+export * from "./screens/declared-import-screen";
+
+// W145 — the MOBILE PRIORITY-CARD roster: the severity-first attention
+// bands + the card-list view-model over the SAME roster runtime state
+// (below 480px the wide table is replaced by the card list — no
+// horizontal page scroll at 390x844).
+export * from "./mobile-roster";
+
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).
 export const MODULE_NAME = "web-device" as const;

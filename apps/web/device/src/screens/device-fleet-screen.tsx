@@ -36,6 +36,9 @@ import type {
   DeviceSelection,
   StalenessBand,
 } from "../device-list";
+import { DEVICE_RECORD_PROVENANCE_LABEL } from "../declared-import";
+import { buildMobileDeviceCards } from "../mobile-roster";
+import type { MobileDeviceCards } from "../mobile-roster";
 import { ConsoleStyles } from "../ui/tokens";
 import {
   Badge,
@@ -77,6 +80,23 @@ export interface DeviceFleetScreenProps {
   readonly onOpenDevice: (deviceId: DeviceId) => void;
   /** The enrollment journey entry point (the UX journey gap's fix). */
   readonly onEnroll: () => void;
+  /**
+   * W145: the declared-import entry point — the SMALL-firm cold-start
+   * path (manual device records, provenance-flagged DECLARED, no agent
+   * rollout needed). OPTIONAL + additive: the console composition (W144)
+   * wires it; when absent the roster renders exactly as before.
+   */
+  readonly onDeclare?: () => void;
+  /**
+   * W145: the MOBILE priority-card composition signal — the shell sets it
+   * from its viewport knowledge (matchMedia("(max-width: 480px)") at the
+   * composition root). When true, the wide (993px) roster table is
+   * REPLACED by the priority card list over the SAME real runtime state
+   * (severity-first, width-bounded — no horizontal page scroll at
+   * 390x844). OPTIONAL + additive: when absent (the desktop composition)
+   * the roster renders the table exactly as before, byte-identical.
+   */
+  readonly mobileRoster?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,7 +105,7 @@ export interface DeviceFleetScreenProps {
 
 interface FacetGroupProps {
   readonly legend: string;
-  readonly facetKind: "lifecycle" | "posture" | "ownership" | "staleness";
+  readonly facetKind: "lifecycle" | "posture" | "ownership" | "staleness" | "provenance";
   readonly entries: readonly { readonly value: string; readonly count: number }[];
   readonly facet: DeviceListFilter;
   readonly onChange: (facet: DeviceListFilter) => void;
@@ -103,6 +123,9 @@ function ownershipFacetMatches(facet: DeviceListFilter, value: string): boolean 
 function stalenessFacetMatches(facet: DeviceListFilter, value: string): boolean {
   return facet.kind === "observed" && facet.band === (value as StalenessBand);
 }
+function provenanceFacetMatches(facet: DeviceListFilter, value: string): boolean {
+  return facet.kind === "provenance" && facet.provenance === (value as "DECLARED" | "OBSERVED");
+}
 
 const FACET_MATCHERS: Readonly<
   Record<FacetGroupProps["facetKind"], (facet: DeviceListFilter, value: string) => boolean>
@@ -111,6 +134,7 @@ const FACET_MATCHERS: Readonly<
   posture: postureFacetMatches,
   ownership: ownershipFacetMatches,
   staleness: stalenessFacetMatches,
+  provenance: provenanceFacetMatches,
 });
 
 const STALENESS_DISPLAY: Readonly<Record<StalenessBand, string>> = Object.freeze({
@@ -145,6 +169,8 @@ function FacetGroup({ legend, facetKind, entries, facet, onChange }: FacetGroupP
                   onChange({ kind: "posture", summary: entry.value });
                 } else if (facetKind === "ownership") {
                   onChange({ kind: "ownership", ownerType: entry.value });
+                } else if (facetKind === "provenance") {
+                  onChange({ kind: "provenance", provenance: entry.value as "DECLARED" | "OBSERVED" });
                 } else {
                   onChange({ kind: "observed", band: entry.value as StalenessBand });
                 }
@@ -152,7 +178,9 @@ function FacetGroup({ legend, facetKind, entries, facet, onChange }: FacetGroupP
             >
               {facetKind === "staleness"
                 ? STALENESS_DISPLAY[entry.value as StalenessBand]
-                : entry.value}{" "}
+                : facetKind === "provenance"
+                  ? DEVICE_RECORD_PROVENANCE_LABEL[entry.value as "DECLARED" | "OBSERVED"]
+                  : entry.value}{" "}
               ({entry.count})
             </button>
           );
@@ -246,6 +274,14 @@ function FleetTable({ view, selection, sort, onSortChange, onToggleDevice, onOpe
                   </button>
                   <br />
                   <span className="fos-mono fos-meta">{row.deviceId}</span>
+                  {" "}
+                  {row.provenance === "DECLARED" ? (
+                    <Badge status="informational" >
+                      <span data-testid="fos-provenance-declared">
+                        {DEVICE_RECORD_PROVENANCE_LABEL.DECLARED}
+                      </span>
+                    </Badge>
+                  ) : null}
                 </td>
                 <td>
                   <Badge>{row.lifecycleState}</Badge>
@@ -290,6 +326,98 @@ function FleetTable({ view, selection, sort, onSortChange, onToggleDevice, onOpe
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The mobile priority-card list (W145: below 480px this replaces the
+// wide table — same REAL runtime state, severity-first ordering)
+// ---------------------------------------------------------------------------
+
+interface FleetCardsProps {
+  readonly cards: MobileDeviceCards;
+  readonly onOpenDevice: (deviceId: DeviceId) => void;
+}
+
+function FleetCards({ cards, onOpenDevice }: FleetCardsProps): JSX.Element {
+  return (
+    <div className="fos-fleet-cards" data-testid="fos-fleet-cards">
+      <p className="fos-meta" role="status">
+        Priority order — the devices that need attention first. {cards.totalCards} of{" "}
+        {cards.totalMatches} matched devices.
+      </p>
+      <ul className="fos-card-list" aria-label="Device roster — priority cards">
+        {cards.cards.map((card) => (
+          <li
+            key={card.deviceId}
+            className="fos-card-list__item"
+            data-device-id={card.deviceId}
+            data-attention-band={card.priority.band}
+          >
+            <div className="fos-card-list__head">
+              <StatusIndicator
+                status={card.priority.status}
+                label={`${card.priority.label} — ${CONSOLE_STATUS_LABEL[card.priority.status]}`}
+              />
+              <Badge status={card.provenance === "DECLARED" ? "informational" : undefined}>
+                {card.provenanceLabel}
+              </Badge>
+            </div>
+            <div className="fos-card-list__title">
+              <button
+                type="button"
+                className="fos-linklike"
+                onClick={(): void => onOpenDevice(card.deviceId)}
+              >
+                {card.displayName}
+              </button>
+              <span className="fos-mono fos-meta">{card.deviceId}</span>
+            </div>
+            <dl className="fos-card-list__facts">
+              <div className="fos-card-list__fact">
+                <dt>Lifecycle</dt>
+                <dd>{card.lifecycleState}</dd>
+              </div>
+              <div className="fos-card-list__fact">
+                <dt>Posture</dt>
+                <dd>
+                  <StatusIndicator
+                    status={card.posture.status}
+                    label={`${card.posture.summary} — ${CONSOLE_STATUS_LABEL[card.posture.status]}`}
+                  />
+                </dd>
+              </div>
+              <div className="fos-card-list__fact">
+                <dt>Observation</dt>
+                <dd>
+                  {card.lastObservedAt === null ? (
+                    <StatusIndicator
+                      status={card.staleness.status}
+                      label={`${card.staleness.label} — ${CONSOLE_STATUS_LABEL[card.staleness.status]}`}
+                    />
+                  ) : (
+                    <span className="fos-mono">{card.lastObservedAt}</span>
+                  )}
+                </dd>
+              </div>
+              <div className="fos-card-list__fact">
+                <dt>Ownership</dt>
+                <dd>
+                  {card.ownership.ownerType}
+                  {card.ownership.assignedTeam !== undefined && card.ownership.assignedTeam.length > 0
+                    ? ` · ${card.ownership.assignedTeam}`
+                    : ""}
+                </dd>
+              </div>
+              <div className="fos-card-list__fact">
+                <dt>Findings</dt>
+                <dd>{card.findings}</dd>
+              </div>
+            </dl>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -348,11 +476,13 @@ function Pagination({ view, page, onPageChange }: PaginationProps): JSX.Element 
 function FleetEmptyState({
   view,
   onEnroll,
+  onDeclare,
   onFacetChange,
   onSearchChange,
 }: {
   readonly view: DeviceListViewModel;
   readonly onEnroll: () => void;
+  readonly onDeclare: (() => void) | undefined;
   readonly onFacetChange: (facet: DeviceListFilter) => void;
   readonly onSearchChange: (text: string) => void;
 }): JSX.Element {
@@ -360,9 +490,15 @@ function FleetEmptyState({
     return (
       <EmptyState
         title="No devices are enrolled yet"
-        hint="Enroll your existing fleet to bring devices under management. The enrollment journey verifies device identity, records the telemetry scope, and lands on the first observation."
+        hint="Enroll your existing fleet to bring devices under management, or declare device records manually to begin tracking before any agent is installed — declared records are clearly marked and never conflated with agent-observed ones."
         action={{ label: "Enroll devices", onClick: onEnroll }}
-      />
+      >
+        {onDeclare !== undefined && (
+          <Button variant="secondary" onClick={onDeclare}>
+            Declare a device without an agent
+          </Button>
+        )}
+      </EmptyState>
     );
   }
   return (
@@ -403,6 +539,7 @@ export function DeviceFleetScreen(props: DeviceFleetScreenProps): JSX.Element {
   } else {
     const view = phase.view;
     const facets: DeviceListFacets = view.facets;
+    const mobileCards = buildMobileDeviceCards(view);
     body = (
       <>
         {selectedIds.length > 0 && (
@@ -468,31 +605,56 @@ export function DeviceFleetScreen(props: DeviceFleetScreenProps): JSX.Element {
               facet={query.facet}
               onChange={props.onFacetChange}
             />
+            <FacetGroup
+              legend="Record origin"
+              facetKind="provenance"
+              entries={facets.byProvenance}
+              facet={query.facet}
+              onChange={props.onFacetChange}
+            />
           </div>
         </Card>
         {view.rows.length === 0 ? (
           <FleetEmptyState
             view={view}
             onEnroll={props.onEnroll}
+            onDeclare={props.onDeclare}
             onFacetChange={props.onFacetChange}
             onSearchChange={props.onSearchChange}
           />
         ) : (
           <Card
             title="Device roster"
-            subtitle={FLEET_COLUMNS_HINT}
+            subtitle={
+              props.mobileRoster === true
+                ? "Priority cards: attention band, device, provenance, lifecycle, posture, observation, ownership, findings."
+                : FLEET_COLUMNS_HINT
+            }
             actions={
-              <Button variant="primary" onClick={props.onEnroll}>Enroll devices</Button>
+              <div className="fos-row">
+                {props.onDeclare !== undefined && (
+                  <Button variant="secondary" onClick={props.onDeclare} ariaLabel="Declare a device record without an agent">
+                    Declare device
+                  </Button>
+                )}
+                <Button variant="primary" onClick={props.onEnroll}>Enroll devices</Button>
+              </div>
             }
           >
-            <FleetTable
-              view={view}
-              selection={selection}
-              sort={query.sort}
-              onSortChange={props.onSortChange}
-              onToggleDevice={props.onToggleDevice}
-              onOpenDevice={props.onOpenDevice}
-            />
+            <div className="fos-fleet-layout">
+              {props.mobileRoster === true ? (
+                <FleetCards cards={mobileCards} onOpenDevice={props.onOpenDevice} />
+              ) : (
+                <FleetTable
+                  view={view}
+                  selection={selection}
+                  sort={query.sort}
+                  onSortChange={props.onSortChange}
+                  onToggleDevice={props.onToggleDevice}
+                  onOpenDevice={props.onOpenDevice}
+                />
+              )}
+            </div>
             <div style={{ marginTop: "0.75rem" }}>
               <Pagination view={view} page={query.page} onPageChange={props.onPageChange} />
             </div>
@@ -516,7 +678,14 @@ export function DeviceFleetScreen(props: DeviceFleetScreenProps): JSX.Element {
           </p>
         </div>
         {phase.kind === "ready" && (
-          <Button variant="primary" onClick={props.onEnroll}>Enroll devices</Button>
+          <div className="fos-row">
+            {props.onDeclare !== undefined && (
+              <Button variant="secondary" onClick={props.onDeclare} ariaLabel="Declare a device record without an agent">
+                Declare device
+              </Button>
+            )}
+            <Button variant="primary" onClick={props.onEnroll}>Enroll devices</Button>
+          </div>
         )}
       </header>
       {body}

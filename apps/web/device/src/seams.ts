@@ -74,6 +74,19 @@ export interface DeviceTwinLike {
         readonly serialNumber?: string;
         readonly assetTag?: string;
       };
+      /**
+       * The enrollment record's stored provenance (the consumed subset).
+       * OPTIONAL in the seam: the REAL `@fleetos/device-model`
+       * `DeviceEnrollmentRecord` always carries its (richer)
+       * `StoredProvenance` and satisfies this shape structurally;
+       * twin-like fixtures may omit it. W145: the DECLARED/OBSERVED
+       * record-origin marking rides this provenance's machine-stable
+       * `reason` — see `deviceRecordProvenance` in `declared-import.ts`.
+       */
+      readonly provenance?: {
+        readonly actor: { readonly kind: string; readonly userId?: string };
+        readonly reason?: string;
+      };
     };
     readonly ownership: {
       readonly ownerType: string;
