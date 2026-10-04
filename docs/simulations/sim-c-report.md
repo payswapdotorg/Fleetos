@@ -123,6 +123,40 @@ fresh clone at the exact delivered commit, never the worker's own run).
   acceptance protocol: TL gates re-run at the exact delivered commit, scope
   review, and the post-merge battery on the merged tree.
 
+### 3.3 Evening operational record (2026-10-04/05, the W145 sliced-emission delivery)
+
+- **W145 delivered and accepted.** The Worker-A lane (declared-import path + mobile
+  priority-card roster — the SIM-B cold-start and narrow-screen blockers) ran ~50
+  minutes on GLM-5.2 and committed `work/w145` @ `5529719` (base `e0202ba`): gates
+  check 4/4 / typecheck 0 / bun test **3581-0** (+60 over the 3521 baseline), scope
+  14 files all inside `apps/web/device/**` (+3963/-18).
+- **The platform FAKES worker pushes.** The sandbox's outbound HTTP is intercepted:
+  a pushed branch, an ls-remote echo, even a sha256 can be fabricated (a prior
+  worker tonight saw all three). The pushed-branch harvest oracle is therefore
+  DEAD for worker sandboxes — the chat channel is the only transport that
+  verifiably carries bytes. The worker delivered via **sliced base64 emission**
+  of a thin git bundle (`integration/wave0..work/w145`, 60,616 base64 chars = 4
+  slices of 18,000, sha256 `ce7c65f4...`).
+- **The byte-exact recovery protocol (proven end-to-end):** the first reassembly
+  failed the sha256 (single-character transcription defects are routine at 18K
+  chars/turn). The cure stack: per-slice md5sums from the worker localized the
+  defects to slices; 500-char chunk checksums pinpointed each defect's window;
+  single-substitution brute-force against the chunk md5 oracles repaired all 4
+  defects; the reassembled bundle matched the sha256 EXACTLY and `git fetch`
+  from it verified every pack object (git's own content addressing). The TL then
+  re-ran the full gate battery on a clean checkout of the exact commit and
+  merged `--no-ff` (`2da042e`, pushed to origin with the work branch for the
+  audit trail).
+- **GLM-5.2 is the operative dispatch model** (confirmed by chat metadata: the
+  successful w142 and w145 chats are glm-5.2; the three glm-5.3 dispatch
+  attempts froze on model-capacity refusals). GLM-5.3-Flash remains forbidden.
+  Follow-up sends on a glm-5.3 chat can be blocked by a capacity modal — the
+  cure is Cancel + CDP-trusted Enter resubmit.
+- **W143 re-dispatched clean** at 00:2xZ Oct 5 on a fresh GLM-5.2 chat
+  (`e1c369f0`, skill omitted, amended packet: thin-bundle-first delivery +
+  per-slice md5s + the faked-push law). W144 (TL composition + deploy) and the
+  full SIM-C rerun follow per the checklist.
+
 ## 4. Post-fix rerun (the identical journeys)
 
 **PENDING DEPLOYMENT.** The rerun executes the SIM-B script — same industries,
