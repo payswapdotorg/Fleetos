@@ -89,6 +89,23 @@ export * from "./screens/policies-screen";
 export * from "./screens/role-lens-section";
 export * from "./screens/parked-explanation-section";
 
+// W142 — the honest lane phase vocabulary + the runtime state seams +
+// the Security Doctor journey + the runtime composition feed.
+export * from "./lane-phase";
+export * from "./seams";
+export * from "./security-journey";
+export * from "./security-feed";
+
+// W142 — the Approvals EXECUTION path (the report's central demand):
+// the Approve/Reject decision lifecycle machine — confirmation gates,
+// RBAC denials, audit seam, evidence trail, duplicate-safe handling.
+export * from "./approvals-execution";
+
+// W142 — the gated destructive controls (disable enrollment code,
+// revoke device trust) — confirmation flows with feedback + audit +
+// explicit denials (never a silent no-op).
+export * from "./destructive-controls";
+
 // The tagged error/result contract of every builder.
 export type { SurfaceError, SurfaceResult, SurfaceValidationFailure } from "./internal";
 
