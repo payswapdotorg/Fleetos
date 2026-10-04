@@ -53,15 +53,14 @@ cannot be done in the product.
 |---|---|---|---|
 | Client-side-only control plane | **W140** (TL scope) | **MERGED** @ integration/wave0 `0f08fd7` | Server-only request-scoped Neon DurableRecordStore behind DATABASE_URL; `/api/session` httpOnly-cookie sign-in (fails closed on every malformed/unknown/expired/revoked/tenant-mismatch); `/api/enrollment/{codes,redeem}` through the REAL createEnrollmentRequest boundary (W130-shape one-time codes, viewer frozen words); `/api/agent/check-in` + `/api/agent/observations` with durable idempotency, back-pressure shed, REAL twin mutation; driver isolation machine-proven; a real agent enrolls, checks in, and causes a real observation end-to-end. TL gates at `a039db8`: check 4/4 (150-contract snapshot unchanged), typecheck 0, bun test 3394/0 (+55). |
 | Device Doctor + Recovery placeholders (unbound lanes) | **W141** (Worker A) | **MERGED** @ integration/wave0 `c6bfe45` | `composeDeviceDoctorFeed` (nine-stage diagnosis journey, severity-first evidence-anchored symptom walk, remediation walk with Guardian decision); `composeRecoveryCasesFeed` (seven-stage per-case journeys), `composeFindMyDeviceFeed` (honest `no_location_evidence`), `composeDestructiveActionsFeed` (four gated actions); every un-routed stage honestly `not_yet_observed`/`not_decided`/`not_evaluated`; confirmation flow refuses without explicit `CONFIRM <ACTION> <deviceId>` and routes only through the REAL gated boundary, writing audit entries into the REAL hash-chained log. TL gates at `f7c18a9`: check 4/4, typecheck 0, bun test 3380/0 (+41); post-merge composition gates on the merged tree 3435/0 (3339+55+41, zero cross-lane interference). |
-| Security Doctor walk + Fleet Actions plans + **inert Approve/Reject** | **W142** (Worker B) | **PACKET RECOVERED LOCALLY — fresh dispatch armed on the capacity-gate playbook** (the 02:04Z Oct-4 sandbox reset wiped the local packet store; the packet was re-extracted from the parked chat's server-side history with the access token re-embedded. The parked chat itself proved UNROUTABLE — the SPA route guard refuses user-only chats — so it is superseded: window_watch fires a fresh packet send through the healthy `general_agent` path the moment the gate opens, with the completion oracle auto-armed) | Packet requires: Approve on a parked plan → confirmation dialog → authorization check → state change → decision record through the audit seam → evidence trail update → duplicate decision handled safely; Reject records reason/state, plan does NOT execute; never auto-promoted; restricted roles get frozen denial explanations; gated destructive controls gain confirmation flows with feedback + audit entries; unauthorized attempts get EXPLICIT denial. |
-| Workloads planning + Commerce procurement placeholders | **W143** (Worker C) | **PACKET PARKED SERVER-SIDE — awaiting the gate** (the full packet is the first message of a healthy `general_agent` chat, server-persisted; one begin-directive from running; autonomous re-fire armed) | Same binding pattern; planning walk fleet inventory → proposal → recommendation review → decision → plan → evidence; procurement case journeys need → case → vendor context → authorization → decision → order → evidence; honest empties. |
+| Security Doctor walk + Fleet Actions plans + **inert Approve/Reject** | **W142** (Worker B) | **MERGED** @ integration/wave0 `a1562b2` | `composeSecurityDoctorFeed` (the 9-stage finding → inspect → proposed remediation → Contract Guardian decision → approval → human confirmation → execution → evidence → verified-result journey); `composeFleetActionsFeed` + `composePrintDistributionFeed`; `approvals-execution.ts` makes the report's central demand real: Approve → confirmation dialog with the typed `CONFIRM <ACTION> <planId>` phrase gate (never one-click) → RBAC authorization gate (restricted roles get the machine-stable `authorization_required` refusal with escalation path, never a silent no-op) → the injected gated boundary owns the state change → BOTH audit entries (explicit-confirmation + dispatched) write through the structural `SecurityDecisionAuditSink` → duplicate-safe `already_decided` (original record stays authoritative) → cancelled confirmation writes nothing; Reject records reason/state, plan does NOT execute; gated destructive controls (`disable_enrollment_code`, `revoke_device_trust`) follow the W141-disclosed pattern with explicit confirmation + visible RBAC denial + dispatch audit entries. TL gates at `d538d56`: check 4/4 (150-contract snapshot unchanged), typecheck 0, bun test 3521/0 (+86 over the 3435 baseline); post-merge gates on the merged tree 3521/0; scope verified (19 files, `apps/web/security` + `apps/web/actions` only, 6360 insertions, no console-app edits). |
+| Workloads planning + Commerce procurement placeholders | **W143** (Worker C) | **RUNNING since 11:21Z Oct 4** (fresh GLM-5.2 dispatch on the unlocked agent pipeline — chat 62304588; the original parked chat f474b538 is superseded: it is GLM-5.3 model-gated and in-chat model is fixed per chat) | Same binding pattern; planning walk fleet inventory → proposal → recommendation review → decision → plan → evidence; procurement case journeys need → case → vendor context → authorization → decision → order → evidence; honest empties. |
 | SMALL-firm cold start (no import path) + mobile roster overflow | **W145** (Worker A) | **PACKET PREPPED** — dispatches when a slot frees | Declared-import surface provenance-flagged DECLARED (never conflated with OBSERVED — marking, not exclusion); mobile priority-card roster below ~480px (993px table → card list, no horizontal scroll, same REAL runtime state). |
 | Console runtime binding of all lanes + server-side composition root + deploy | **W144** (TL scope, TL-scope-grant worker + TL re-verification) | **QUEUED** — composes on the merged tree after W142/W143/W145 | Binds the six lanes' deep views into the console runtime over the compositions; wires the approvals inbox to the executed decision path; composition-root wiring so the deployed tier resolves sessions + enrollment server-side while development keeps the localStorage seam; end-to-end browser journeys per lane; Vercel deploy + post-deploy check + SIM-B-style re-verification of the six lanes and the Approve/Reject journey on production. |
 | Cross-tenant join-code defect | W130 (Wave 12) | **FIXED + ACCEPTED** (pre-Wave-13) | Live-verified on production during W130 acceptance; regression-checked in every Wave-13 gate run (check 4/4 includes the frozen contracts). |
 
-**Integration tree:** `integration/wave0 @ 76c92c3` (SIM-C skeleton; this evening record
-follows it) — 3435/0 tests (3339 base + 55
-W140 + 41 W141), check 4/4, typecheck 0. Every merge is `--no-ff` with the full
+**Integration tree:** `integration/wave0 @ a1562b2` — 3521/0 tests (3339 base + 55
+W140 + 41 W141 + 86 W142), check 4/4, typecheck 0. Every merge is `--no-ff` with the full
 TL acceptance record in the commit message; every gate re-run is independent (a
 fresh clone at the exact delivered commit, never the worker's own run).
 
@@ -91,6 +90,38 @@ fresh clone at the exact delivered commit, never the worker's own run).
   W145 → W144 → deploy → rerun) was not met — the outage consumed the working
   window. This ledger records exactly what landed; the autonomous machinery
   maximizes what lands overnight; the morning session completes the chain.
+
+### 3.2 Morning operational record (2026-10-04, the blocker root-caused and cleared)
+
+- **The 17-hour "GLM-5.3 capacity gate" was root-caused at ~10:15Z and it was
+  not a model quota.** The platform's account-level *sandbox concurrency
+  limit* ("Limit Sandbox Concurrency — current active sandboxes exceed the
+  limit, please release") had been saturated by stale sandboxes: the w143
+  chat's own sandbox had been held ~16h by the zombie probe turn (task never
+  started), plus two idle `ws-` sessions of unknown (possibly sibling-session)
+  provenance. With the pool full, agent-surface sends either dropped silently
+  (in-chat GLM-5.3 sends: composer clears, nothing lands server-side) or
+  queued forever (fresh sends: message lands, batch store stays empty). The
+  documented "reset window 05:38–09:36Z" doctrine is retired — a full cycle
+  passed with the gate never opening because it was never a timed quota.
+- **The unlock:** releasing the stale w143-chat sandbox (the platform's
+  release button needs a front-focused tab and real pointer events —
+  programmatic clicks are ignored) immediately restored generation. The chat
+  surface had generated fine throughout (different pool), which is what made
+  the model-quota diagnosis plausible for so long.
+- **Second discovery:** the GLM-5.3 *model* capacity message is real but
+  separate — an in-chat begin-directive on a GLM-5.3 chat was refused with
+  "intensifying the coordination of resources" even with free sandbox slots,
+  and the in-chat model is fixed per chat (cannot switch to GLM-5.2). The
+  operative dispatch path is therefore: **fresh chats on GLM-5.2** (allowed,
+  not the operator-forbidden GLM-5.3-Flash), one lane at a time, with the
+  completed lane's sandbox released explicitly before the next dispatch
+  (completed-task sandboxes linger and re-saturate the pool).
+- **W142 ran ~48 minutes on GLM-5.2 and delivered clean** (see the fix
+  ledger); W143 was fresh-dispatched on the same path at 11:21Z and is
+  running. The quality risk of the weaker model is bounded by the unchanged
+  acceptance protocol: TL gates re-run at the exact delivered commit, scope
+  review, and the post-merge battery on the merged tree.
 
 ## 4. Post-fix rerun (the identical journeys)
 
