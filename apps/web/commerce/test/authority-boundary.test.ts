@@ -409,6 +409,21 @@ const COMMERCE_VALUE_EXPORTS = new Set([
   // fail-visible provider-unavailable states; PURE builder)
   "VENDOR_DISCOVERY_VIEW_VERSION",
   "buildVendorDiscoveryView",
+  // W143 lane-phase.ts — the honest lane-phase vocabulary + ScreenPhase mapping
+  "COMMERCE_LANE_PHASE_KINDS",
+  "COMMERCE_LANE_REASONS",
+  "commerceLaneLoading",
+  "toCommerceScreenPhase",
+  "commerceLaneHasView",
+  // W143 procurement-journey.ts — the seven-stage case journey view-model
+  "PROCUREMENT_CASE_JOURNEY_STAGES",
+  "PROCUREMENT_CASE_JOURNEY_HEADLINES",
+  "buildProcurementVendorContextWalk",
+  "buildProcurementDecisionWalk",
+  "buildProcurementCaseJourney",
+  // W143 procurement-feed.ts — the runtime composition function + system tenant
+  "composeProcurementCasesFeed",
+  "COMMERCE_FEED_SYSTEM_TENANT",
   // index.ts — module markers
   "MODULE_NAME",
   "MODULE_VERSION",
@@ -489,6 +504,21 @@ const WORKLOADS_VALUE_EXPORTS = new Set([
   "WORKLOAD_ROLE_LENS_IDS",
   "WORKLOAD_ROLE_LENS_VIEW_VERSION",
   "applyWorkloadRoleLens",
+  // W143 lane-phase.ts — the honest lane-phase vocabulary + ScreenPhase mapping
+  "WORKLOAD_LANE_PHASE_KINDS",
+  "WORKLOAD_LANE_REASONS",
+  "workloadLaneLoading",
+  "toWorkloadScreenPhase",
+  "workloadLaneHasView",
+  // W143 planning-journey.ts — the six-stage planning journey view-model
+  "WORKLOAD_PLANNING_JOURNEY_STAGES",
+  "WORKLOAD_PLANNING_JOURNEY_HEADLINES",
+  "buildWorkloadPlanningRecommendationWalk",
+  "buildWorkloadPlanningDecisionWalk",
+  "buildWorkloadPlanningJourney",
+  // W143 planning-feed.ts — the runtime composition function + system tenant
+  "composeWorkloadPlanningFeed",
+  "WORKLOAD_FEED_SYSTEM_TENANT",
   // index.ts — module markers
   "MODULE_NAME",
   "MODULE_VERSION",
