@@ -49,13 +49,12 @@ import {
 import type { DurableRow } from "@fleetos/identity";
 import { enrollDevice, createTwin } from "@fleetos/device-model";
 import type { DeviceIdentity } from "@fleetos/device-model";
-import { createInstallEnrollmentCode } from "@fleetos/web-device";
-import { experienceRoleFromAssignment, enrollmentCodeCreationDenial } from "@fleetos/web-product";
-import { operatorRoleFor } from "@fleetos/web-product";
-import { canInteract } from "@fleetos/web-shell";
+import { createInstallEnrollmentCode } from "@fleetos/web-device/src/install-center-binding";
+import { experienceRoleFromAssignment, enrollmentCodeCreationDenial, operatorRoleFor } from "@fleetos/web-product/src/role-bridge";
+import { canInteract } from "@fleetos/web-shell/src/permissions";
 import { fnv1a32Hex } from "@fleetos/audit";
 import { parseJsonBody, jsonResponse, refusalBody, stringField, canonicalJson, frozen } from "./server-internal";
-import { sha256Hex } from "../runtime/product-session";
+import { sha256Hex } from "../runtime/sha256";
 import type { ServerHandlerDeps, ServerRequestContext } from "./server-context";
 import { openServerRequest, flushOrRefuse } from "./server-context";
 import { resolveOperatorSessionInContext, parseSessionCookie } from "./server-sessions";

@@ -19,7 +19,7 @@
  */
 
 import type { PasswordHasher } from "@fleetos/identity";
-import { sha256Hex } from "../runtime/product-session";
+import { sha256Hex } from "../runtime/sha256";
 import { frozen } from "./server-internal";
 
 /** The server-tier rounds: 10x the browser demo KDF (a real server-side work factor). */

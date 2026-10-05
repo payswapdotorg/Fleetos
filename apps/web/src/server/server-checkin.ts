@@ -60,7 +60,7 @@ import type { DurableRow, DurableRecordStore } from "@fleetos/identity";
 import { recordTwinObservations, reenterTwinObservationCycle } from "@fleetos/device-model";
 import type { DeviceTwin } from "@fleetos/device-model";
 import { parseJsonBody, jsonResponse, refusalBody, stringField, canonicalJson, frozen, looksLikeIso, parseIsoMs } from "./server-internal";
-import { sha256Hex } from "../runtime/product-session";
+import { sha256Hex } from "../runtime/sha256";
 import { fnv1a32Hex } from "@fleetos/audit";
 import type { ServerHandlerDeps, ServerRequestContext } from "./server-context";
 import { openServerRequest, flushOrRefuse } from "./server-context";
