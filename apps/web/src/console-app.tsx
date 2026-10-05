@@ -154,7 +154,12 @@ import type {
 } from "./runtime/approval-decision-runtime";
 
 // W144 — the composition root (the deployment-tier driver selection).
-import { sessionDriverKind, sessionDriverDescription } from "./runtime/composition-root";
+import {
+  sessionDriverKind,
+  sessionDriverDescription,
+  isDeployedTier,
+  SERVER_DEVICE_ROUTES,
+} from "./runtime/composition-root";
 
 // W144 — the lane screen-data builders (the feed-to-screen data
 // conversion for the lanes whose feed data types differ from their
@@ -353,12 +358,60 @@ export function ConsoleSessionApp({
     initialDeclaredImportJourney(asTenantId(session.tenantId)),
   );
   const [declaredVersion, setDeclaredVersion] = useState(0);
-  // Reset the store + journey when the active workspace changes.
+  /**
+   * The deployed tier's roster hydration: the tenant's DURABLE twins
+   * (GET /api/device/twins — the W140 server plane's records, including
+   * agent-enrolled and server-declared devices) seed the session store so
+   * the roster composes over the durable truth. Fail-soft: a refusal
+   * leaves the local store untouched (never fabricated data).
+   */
+  const hydrateSessionTwins = useCallback(async (): Promise<void> => {
+    if (!isDeployedTier() || isDemoTenant(sessionRef.current.tenantId)) return;
+    try {
+      const response = await fetch(SERVER_DEVICE_ROUTES.twins, {
+        method: "GET",
+        credentials: "include",
+        headers: { accept: "application/json" },
+      });
+      if (!response.ok) return;
+      const body = (await response.json().catch(() => null)) as
+        | { ok?: boolean; twins?: readonly unknown[] }
+        | null;
+      if (body?.ok !== true || !Array.isArray(body.twins)) return;
+      const store = sessionTwinStoreRef.current;
+      let admitted = 0;
+      for (const twin of body.twins) {
+        if (twin === null || typeof twin !== "object") continue;
+        try {
+          store.put(twin as never);
+          admitted += 1;
+        } catch {
+          // A malformed row never reaches the roster (fail-soft).
+        }
+      }
+      if (admitted > 0) {
+        setDeclaredVersion((v) => v + 1);
+      }
+    } catch {
+      // Fail-soft: the durable hydration is best-effort over the local tier.
+    }
+  }, []);
+
+  // Reset the store + journey when the active workspace changes — and on
+  // the deployed tier, hydrate the tenant's DURABLE twins into the fresh
+  // session store (the roster composes over the server plane's records).
   useEffect(() => {
     setSessionTwinStore(isDemoTenant(session.tenantId) ? demoTwinStore() : createSessionTwinStore());
     setDeclareJourney(initialDeclaredImportJourney(asTenantId(session.tenantId)));
     setDeclaredVersion((v) => v + 1);
-  }, [session.tenantId]);
+    if (isDeployedTier() && !isDemoTenant(session.tenantId)) {
+      // The store resets above; hydrate AFTER the state settles (the refs
+      // see the fresh store on the next commit).
+      window.setTimeout(() => {
+        void hydrateSessionTwins();
+      }, 0);
+    }
+  }, [session.tenantId, hydrateSessionTwins]);
 
   // W145 — the mobile priority-card composition signal (the shell sets it
   // from its viewport knowledge at the composition root): below 480px the
@@ -392,6 +445,8 @@ export function ConsoleSessionApp({
   sessionTwinStoreRef.current = sessionTwinStore;
   const sessionRef = useRef(session);
   sessionRef.current = session;
+  const declareJourneyRef = useRef(declareJourney);
+  declareJourneyRef.current = declareJourney;
 
   const onDeclareDraftChange = useCallback((patch: DeclaredDeviceDraftPatch): void => {
     setDeclareJourney((state) => updateDeclaredDeviceDraft(state, patch));
@@ -405,33 +460,84 @@ export function ConsoleSessionApp({
   const onDeclareBack = useCallback((): void => {
     setDeclareJourney((state) => backDeclaredImportJourney(state));
   }, []);
-  // Submit: derive the command INTENT, execute it through the REAL domain
-  // boundary into the session store, then apply the domain outcome
+
+  // Submit — the DEPLOYED tier executes through the REAL server boundary
+  // (POST /api/device/declared-import: the durable, audited W145 path; the
+  // client mirrors the durable record via hydration). The development/demo
+  // tier executes the same command through the local binding into the
+  // session store. Both paths apply the domain outcome
   // (recorded / refused — the machine-stable reason surfaces verbatim).
   const onDeclareSubmit = useCallback((): void => {
-    setDeclareJourney((state) => {
-      if (state.stage !== "confirm") return state;
-      const command = declaredImportCommand(
-        declareScopeRef.current,
-        sessionTwinStoreRef.current,
-        state,
-        {
-          now: new Date().toISOString(),
-          correlationId: newDeclaredImportCorrelationId(),
-          declaredBy: asUserId(sessionRef.current.principalId),
-        },
-      );
-      if (command === undefined) {
-        return declaredImportOutcome(state, { ok: false, reason: "command_not_derivable" });
-      }
-      const executed = executeDeclaredImportCommand(command, sessionTwinStoreRef.current);
-      if (!executed.ok) {
-        return declaredImportOutcome(state, { ok: false, reason: executed.reason });
-      }
-      setDeclaredVersion((v) => v + 1);
-      return declaredImportOutcome(state, { ok: true });
-    });
-  }, []);
+    const state = declareJourneyRef.current;
+    if (state.stage !== "confirm") return;
+    if (isDeployedTier() && !isDemoTenant(sessionRef.current.tenantId)) {
+      const draft = state.draft;
+      void (async (): Promise<void> => {
+        let outcome: { ok: true } | { ok: false; reason: string };
+        try {
+          const response = await fetch(SERVER_DEVICE_ROUTES.declaredImport, {
+            method: "POST",
+            credentials: "include",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              deviceId: draft.deviceId.trim(),
+              manufacturer: draft.hardware.manufacturer.trim(),
+              model: draft.hardware.model.trim(),
+              ...(draft.hardware.serialNumber !== undefined && draft.hardware.serialNumber.trim().length > 0
+                ? { serialNumber: draft.hardware.serialNumber.trim() }
+                : {}),
+              ...(draft.hardware.assetTag !== undefined && draft.hardware.assetTag.trim().length > 0
+                ? { assetTag: draft.hardware.assetTag.trim() }
+                : {}),
+              ownerType: draft.ownership.ownerType.trim(),
+              ...(draft.ownership.assignedTeam !== undefined && draft.ownership.assignedTeam.trim().length > 0
+                ? { assignedTeam: draft.ownership.assignedTeam.trim() }
+                : {}),
+              provenanceAcknowledged: true,
+              ...(draft.duplicateSerialAcknowledged === true
+                ? { duplicateSerialAcknowledged: true }
+                : {}),
+            }),
+          });
+          const body: unknown = await response.json().catch(() => null);
+          if (response.ok && (body as { ok?: boolean } | null)?.ok === true) {
+            outcome = { ok: true };
+            // Mirror the durable record into the session store (the roster
+            // + the verification view re-compose over the hydrated twins).
+            await hydrateSessionTwins();
+          } else {
+            const reason = (body as { reason?: string } | null)?.reason ?? `http_${response.status}`;
+            outcome = { ok: false, reason };
+          }
+        } catch {
+          outcome = { ok: false, reason: "server_unreachable" };
+        }
+        setDeclareJourney(declaredImportOutcome(declareJourneyRef.current, outcome));
+      })();
+      return;
+    }
+    const command = declaredImportCommand(
+      declareScopeRef.current,
+      sessionTwinStoreRef.current,
+      state,
+      {
+        now: new Date().toISOString(),
+        correlationId: newDeclaredImportCorrelationId(),
+        declaredBy: asUserId(sessionRef.current.principalId),
+      },
+    );
+    if (command === undefined) {
+      setDeclareJourney(declaredImportOutcome(state, { ok: false, reason: "command_not_derivable" }));
+      return;
+    }
+    const executed = executeDeclaredImportCommand(command, sessionTwinStoreRef.current);
+    if (!executed.ok) {
+      setDeclareJourney(declaredImportOutcome(state, { ok: false, reason: executed.reason }));
+      return;
+    }
+    setDeclaredVersion((v) => v + 1);
+    setDeclareJourney(declaredImportOutcome(state, { ok: true }));
+  }, [hydrateSessionTwins]);
   const [severityFilter, setSeverityFilter] = useState<FindingsSeverityFilter>("all");
   const [openFindingId, setOpenFindingId] = useState<string | null>(null);
   const [learningPanel, setLearningPanel] = useState<LearningPanel>("feed");

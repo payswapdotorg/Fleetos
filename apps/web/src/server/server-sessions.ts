@@ -121,7 +121,7 @@ function refuse(reason: ServerSessionRefusal, message: string): Response {
 }
 
 /** Serialize the session cookie (httpOnly — the token's ONLY carrier). */
-function sessionCookie(value: string, maxAgeSeconds: number): string {
+export function sessionCookie(value: string, maxAgeSeconds: number): string {
   const secure = process.env.FLEETOS_ENV === "production" ? "; Secure" : "";
   return `${SERVER_SESSION_COOKIE_NAME}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${String(maxAgeSeconds)}${secure}`;
 }

@@ -199,7 +199,14 @@ function normalizeRow(table: string, raw: Record<string, unknown>): DurableRow {
   const jsonb = jsonbColumnsOf(table);
   const out: Record<string, DurableValue> = {};
   for (const [column, value] of Object.entries(raw)) {
-    if (jsonb.has(column) && value !== null && typeof value === "object") {
+    if (value instanceof Date) {
+      // timestamptz columns arrive as JS Date objects over the Neon HTTP
+      // driver — the frozen seam's ISO-8601 TEXT contract requires the
+      // instant string (canonicalJson of a Date would be "{}" — the
+      // expiry-blindness bug this branch fixes; found by the W144 local
+      // production dress rehearsal).
+      out[column] = value.toISOString();
+    } else if (jsonb.has(column) && value !== null && typeof value === "object") {
       out[column] = canonicalJson(value);
     } else if (
       value === null ||

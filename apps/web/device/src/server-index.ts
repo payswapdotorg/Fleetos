@@ -16,3 +16,4 @@
  * never an internal deep path.
  */
 export * from "./install-center-binding";
+export * from "./declared-import";

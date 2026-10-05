@@ -99,6 +99,20 @@ export const SERVER_ENROLLMENT_ROUTES = Object.freeze({
   redeem: "/api/enrollment/redeem" as const,
 } as const);
 
+/** The frozen server-tier workspace-creation route (the deployed driver, W144). */
+export const SERVER_WORKSPACE_ROUTES = Object.freeze({
+  /** POST: create a workspace + founder session (the REAL identity boundary). */
+  create: "/api/workspace" as const,
+} as const);
+
+/** The frozen server-tier device route paths (the deployed driver, W145). */
+export const SERVER_DEVICE_ROUTES = Object.freeze({
+  /** POST: declare a manual device record (the durable W145 path). */
+  declaredImport: "/api/device/declared-import" as const,
+  /** GET: the tenant's durable twin list (the roster hydration source). */
+  twins: "/api/device/twins" as const,
+} as const);
+
 /** The server session cookie's name (the httpOnly carrier; names only). */
 export const SERVER_SESSION_COOKIE_NAME = "fleetos_session" as const;
 
@@ -174,6 +188,104 @@ export async function resolveServerSession(
       reason: "server_unreachable",
       message: "The server session endpoint could not be reached.",
     };
+  }
+}
+
+/** The server-tier sign-in input (the deployed driver's POST body). */
+export interface ServerSignInInput {
+  readonly tenantId: string;
+  readonly email: string;
+  readonly password: string;
+}
+
+/** POST /api/session — sign in over the httpOnly-cookie plane (fail-closed). */
+export async function serverSignIn(
+  fetchImpl: typeof fetch,
+  input: ServerSignInInput,
+): Promise<ServerSessionResolveResult> {
+  try {
+    const response = await fetchImpl(SERVER_SESSION_ROUTES.signIn, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const body: unknown = await response.json().catch(() => null);
+    if (response.ok && (body as { ok?: boolean } | null)?.ok === true) {
+      const projection = body as ServerSessionProjection;
+      if (typeof projection.tenantId === "string") {
+        return projection;
+      }
+    }
+    const refusal = body as { reason?: string; message?: string } | null;
+    return {
+      ok: false,
+      reason: typeof refusal?.reason === "string" ? refusal.reason : "unknown_refusal",
+      message: typeof refusal?.message === "string" ? refusal.message : "The server sign-in refused.",
+    };
+  } catch {
+    return {
+      ok: false,
+      reason: "server_unreachable",
+      message: "The server session endpoint could not be reached.",
+    };
+  }
+}
+
+/** The server-tier workspace-creation input (the deployed driver's POST body). */
+export interface ServerCreateWorkspaceInput {
+  readonly workspaceName: string;
+  readonly founderDisplayName: string;
+  readonly founderEmail: string;
+  readonly password: string;
+}
+
+/** POST /api/workspace — create a workspace + founder session (fail-closed). */
+export async function serverCreateWorkspace(
+  fetchImpl: typeof fetch,
+  input: ServerCreateWorkspaceInput,
+): Promise<ServerSessionResolveResult> {
+  try {
+    const response = await fetchImpl(SERVER_WORKSPACE_ROUTES.create, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const body: unknown = await response.json().catch(() => null);
+    if (response.ok && (body as { ok?: boolean } | null)?.ok === true) {
+      const projection = body as ServerSessionProjection;
+      if (typeof projection.tenantId === "string") {
+        return projection;
+      }
+    }
+    const refusal = body as { reason?: string; message?: string } | null;
+    return {
+      ok: false,
+      reason: typeof refusal?.reason === "string" ? refusal.reason : "unknown_refusal",
+      message: typeof refusal?.message === "string" ? refusal.message : "The workspace creation refused.",
+    };
+  } catch {
+    return {
+      ok: false,
+      reason: "server_unreachable",
+      message: "The workspace endpoint could not be reached.",
+    };
+  }
+}
+
+/** DELETE /api/session — revoke the cookie session (fail-closed, idempotent). */
+export async function serverSignOut(
+  fetchImpl: typeof fetch,
+): Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }> {
+  try {
+    await fetchImpl(SERVER_SESSION_ROUTES.revoke, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "server_unreachable" };
   }
 }
 
