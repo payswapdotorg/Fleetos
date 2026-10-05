@@ -704,6 +704,16 @@ export function isDemoTenant(tenantId: string): boolean {
   return tenantId === TENANT_ID;
 }
 
+/**
+ * The DEMO tenant's twin store (W145 deploy convergence): the demo
+ * workspace's declared-import submissions land HERE — the same store
+ * the demo roster view reads, so a declared record is visible in the
+ * roster immediately (in-memory, per browser page load).
+ */
+export function demoTwinStore(): TwinStore {
+  return DEMO.store;
+}
+
 // ---------------------------------------------------------------------------
 // The lane view-models bound over the composed demo fleet
 // ---------------------------------------------------------------------------
@@ -968,6 +978,7 @@ export type ConsoleAreasResult =
 export function composeConsoleAreas(
   tenantId: string,
   role: ShellOperatorRole,
+  ownStore?: TwinStore,
 ): ConsoleAreasResult {
   if (typeof tenantId !== "string" || !isValidTenantId(asTenantId(tenantId))) {
     return {
@@ -1034,7 +1045,10 @@ export function composeConsoleAreas(
       message: "composeConsoleAreas: the empty evidence index refused",
     };
   }
-  const ownStore = createInMemoryTwinStore();
+  // W144/W145 deploy convergence: the session-scoped store (where the
+  // workspace's DECLARED records live) — injected by the console runtime;
+  // a bare composition call (tests) still gets a fresh empty store.
+  const sessionStore = ownStore ?? createInMemoryTwinStore();
   return {
     ok: true,
     view: {
@@ -1046,7 +1060,7 @@ export function composeConsoleAreas(
       searchRecords: [],
       fleetView: buildDeviceListViewModel(
         scope,
-        ownStore,
+        sessionStore,
         { filter: { kind: "all" }, sort: { field: "deviceId", direction: "asc" }, page: "all" },
         { now: NOW, freshWithinMs: 86_400_000, staleAfterMs: 604_800_000 },
       ),

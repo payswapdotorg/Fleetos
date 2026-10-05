@@ -238,6 +238,16 @@ export const CONSOLE_CSS: string = `/* FleetOS console — shared design tokens 
 @media (max-width: 900px) {
   .fos-app { flex-direction: column; }
   .fos-sidebar { display: none; }
+  /* W145 deploy convergence: NO horizontal page scroll at 390x844 — the
+     topbar wraps (title + search on one row, the chrome below), the ident
+     hides (its workspace/role facts stay visible in the memberchip + role
+     switcher), and the memberchip caps so the session chrome can never
+     force the page wider than the viewport. */
+  .fos-topbar { flex-wrap: wrap; row-gap: 0.4rem; }
+  .fos-topbar__ident { display: none; }
+  .fos-memberchip { max-width: calc(100vw - 2.5rem); }
+  .fos-memberchip .fos-btn { max-width: 100%; }
+  .fos-memberchip .fos-badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
   .fos-mobilebar { display: flex; align-items: center; gap: 0.6rem; padding: 0.6rem 1rem; border-bottom: 1px solid var(--hairline); background: var(--surface-raised); position: sticky; top: 0; z-index: 20; }
   .fos-mobilebar__brand { font-size: 0.9375rem; font-weight: 700; }
   .fos-mobilebar__menu { font: inherit; font-size: 0.875rem; padding: 0.4rem 0.7rem; min-height: 2.25rem; background: none; border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); cursor: pointer; }
