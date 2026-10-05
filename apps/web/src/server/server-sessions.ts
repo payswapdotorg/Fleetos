@@ -42,7 +42,7 @@ import {
   makeTenantContext,
 } from "@fleetos/identity";
 import type { TenantContext } from "@fleetos/identity";
-import { experienceRoleFromAssignment } from "@fleetos/web-product";
+import { experienceRoleFromAssignment } from "@fleetos/web-product/src/role-bridge";
 import { parseJsonBody, jsonResponse, refusalBody, stringField, frozen } from "./server-internal";
 import { createServerPasswordHasher } from "./server-password-hasher";
 import type { ServerHandlerDeps, ServerRequestContext } from "./server-context";
