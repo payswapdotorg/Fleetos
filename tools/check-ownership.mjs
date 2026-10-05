@@ -199,6 +199,37 @@ for (const { rel } of packageDirs) {
  * @param {string} filePath
  * @returns {string | null}
  */
+/**
+ * W144 deploy convergence [TL] — DECLARED SUBPATH EXPORTS are public API
+ * points: a spec like "@fleetos/web-device/server" is sanctioned for the
+ * runtime binding site IFF the target package's package.json "exports"
+ * map declares that subpath (e.g. "./server"). A deep internal path
+ * ("@fleetos/web-device/src/...") is NOT declared and stays a violation
+ * — the runtime consumes public APIs, never internals.
+ */
+const subpathExportCache = new Map();
+function isDeclaredSubpathExport(pkgRel, spec, importedPkgName) {
+  if (!pkgRel || !importedPkgName) return false;
+  const subpath = spec.slice(importedPkgName.length); // e.g. "/server"
+  if (!subpath.startsWith("/")) return false;
+  const key = `${pkgRel}|${subpath}`;
+  if (subpathExportCache.has(key)) return subpathExportCache.get(key);
+  let declared = false;
+  try {
+    const pkgJson = JSON.parse(
+      fs.readFileSync(path.join(REPO_ROOT, pkgRel, "package.json"), "utf8"),
+    );
+    const exportsMap = pkgJson.exports;
+    if (exportsMap && typeof exportsMap === "object" && !Array.isArray(exportsMap)) {
+      declared = Object.prototype.hasOwnProperty.call(exportsMap, "./" + subpath.slice(1));
+    }
+  } catch {
+    declared = false;
+  }
+  subpathExportCache.set(key, declared);
+  return declared;
+}
+
 function fileLane(filePath) {
   const claimants = findClaimants(filePath);
   return claimants.length === 1 ? claimants[0] : (claimants[0] ?? null);
@@ -468,7 +499,7 @@ for (const file of tsFiles) {
       file.startsWith("apps/web/src/") &&
       importedPkgName !== null &&
       !spec.startsWith("@fleetos/contracts/") &&
-      spec === importedPkgName
+      (spec === importedPkgName || isDeclaredSubpathExport(importedPkgRel, spec, importedPkgName))
     ) {
       if (/^@fleetos\/(device-adapters|integrations)/.test(importedPkgName)) {
         violations.push(

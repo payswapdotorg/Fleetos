@@ -49,7 +49,7 @@ import {
 import type { DurableRow } from "@fleetos/identity";
 import { enrollDevice, createTwin } from "@fleetos/device-model";
 import type { DeviceIdentity } from "@fleetos/device-model";
-import { createInstallEnrollmentCode } from "@fleetos/web-device/src/install-center-binding";
+import { createInstallEnrollmentCode } from "@fleetos/web-device/server";
 import { experienceRoleFromAssignment, enrollmentCodeCreationDenial, operatorRoleFor } from "@fleetos/web-product/src/role-bridge";
 import { canInteract } from "@fleetos/web-shell/src/permissions";
 import { fnv1a32Hex } from "@fleetos/audit";

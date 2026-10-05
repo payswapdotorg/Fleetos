@@ -15,8 +15,12 @@
  * unknown-route state with search + home links — never a crash.
  */
 import type { JSX } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { asTenantId, asUserId, asDeviceId } from "@fleetos/contracts";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  asDeviceId,
+  asTenantId,
+  asUserId,
+} from "@fleetos/contracts";
 import type { DeviceId } from "@fleetos/contracts";
 import {
   AppShell,
@@ -37,7 +41,21 @@ import type {
   ShellRoute,
   ShellSearchResult,
 } from "@fleetos/web-shell";
-import { DeviceFleetScreen } from "@fleetos/web-device";
+import { DeviceFleetScreen, DeclaredImportScreen } from "@fleetos/web-device";
+import {
+  initialDeclaredImportJourney,
+  updateDeclaredDeviceDraft,
+  advanceDeclaredImportJourney,
+  backDeclaredImportJourney,
+  declaredImportOutcome,
+  declaredImportReview,
+  declaredImportCommand,
+  verifyDeclaredImport,
+} from "@fleetos/web-device";
+import type {
+  DeclaredDeviceDraftPatch,
+  DeclaredImportJourneyState,
+} from "@fleetos/web-device";
 import type {
   DeviceFleetQueryState,
   DeviceListViewModel,
@@ -94,8 +112,16 @@ import type {
 } from "@fleetos/web-learning";
 import {
   composeConsoleAreas,
+  demoTwinStore,
+  isDemoTenant,
 } from "./runtime/demo-fleet";
 import type { ConsoleAreaComposition } from "./runtime/demo-fleet";
+import {
+  createSessionTwinStore,
+  executeDeclaredImportCommand,
+  DECLARE_OWNERSHIP_TYPE_OPTIONS,
+  newDeclaredImportCorrelationId,
+} from "./runtime/declared-import-binding";
 import { environmentLabel } from "./runtime/env";
 
 // W144 — the lane composition feeds (the six lanes' deep views bound
@@ -257,6 +283,25 @@ function demoReleaseManifest(): ReleaseManifestLike {
   return built.manifest;
 }
 
+/**
+ * W145 — the mobile priority-card composition signal: matchMedia at the
+ * composition root (below 480px the roster renders the severity-first
+ * card list over the SAME real runtime state). SSR-safe: starts false
+ * (the desktop table), syncs on mount.
+ */
+function useMobileRoster(): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia("(max-width: 480px)");
+    const onChange = (): void => setNarrow(mq.matches);
+    onChange();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return narrow;
+}
+
 export function ConsoleSessionApp({
   initialRoute,
   session,
@@ -295,6 +340,98 @@ export function ConsoleSessionApp({
     page: { offset: 0, limit: 25 },
   });
   const [fleetSelection, setFleetSelection] = useState<DeviceSelection>({ kind: "none" });
+
+  // W145 deploy convergence (TL scope) — the declared-import journey:
+  // a session-scoped twin store (demo tenants share the DEMO store the
+  // demo roster reads; every other workspace gets its own store where
+  // its DECLARED records live), the controlled journey state, and a
+  // re-composition version bumped after each successful submission.
+  const [sessionTwinStore, setSessionTwinStore] = useState(() =>
+    isDemoTenant(session.tenantId) ? demoTwinStore() : createSessionTwinStore(),
+  );
+  const [declareJourney, setDeclareJourney] = useState<DeclaredImportJourneyState>(() =>
+    initialDeclaredImportJourney(asTenantId(session.tenantId)),
+  );
+  const [declaredVersion, setDeclaredVersion] = useState(0);
+  // Reset the store + journey when the active workspace changes.
+  useEffect(() => {
+    setSessionTwinStore(isDemoTenant(session.tenantId) ? demoTwinStore() : createSessionTwinStore());
+    setDeclareJourney(initialDeclaredImportJourney(asTenantId(session.tenantId)));
+    setDeclaredVersion((v) => v + 1);
+  }, [session.tenantId]);
+
+  // W145 — the mobile priority-card composition signal (the shell sets it
+  // from its viewport knowledge at the composition root): below 480px the
+  // roster table is REPLACED by the severity-first card list over the same
+  // REAL runtime state.
+  const mobileRoster = useMobileRoster();
+
+  // The declared-import projections (PURE derivations over the session
+  // store — the same store the roster composes from, so a recorded
+  // declaration is visible the moment the journey lands).
+  const declareScope = useMemo(() => ({ tenantId: asTenantId(session.tenantId) }), [session.tenantId]);
+  const declareReview = useMemo(
+    () =>
+      declareJourney.stage === "review" || declareJourney.stage === "confirm"
+        ? declaredImportReview(declareScope, sessionTwinStore, declareJourney)
+        : undefined,
+    [declareScope, sessionTwinStore, declareJourney],
+  );
+  const declareVerification = useMemo(
+    () =>
+      declareJourney.stage === "confirm" || declareJourney.stage === "recorded"
+        ? verifyDeclaredImport(declareScope, sessionTwinStore, asDeviceId(declareJourney.draft.deviceId.trim()))
+        : undefined,
+    [declareScope, sessionTwinStore, declareJourney],
+  );
+
+  // Latest-value refs for the stable declared-import callbacks below.
+  const declareScopeRef = useRef(declareScope);
+  declareScopeRef.current = declareScope;
+  const sessionTwinStoreRef = useRef(sessionTwinStore);
+  sessionTwinStoreRef.current = sessionTwinStore;
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+
+  const onDeclareDraftChange = useCallback((patch: DeclaredDeviceDraftPatch): void => {
+    setDeclareJourney((state) => updateDeclaredDeviceDraft(state, patch));
+  }, []);
+  const onDeclareAdvance = useCallback((): void => {
+    setDeclareJourney((state) => {
+      const advanced = advanceDeclaredImportJourney(declareScopeRef.current, sessionTwinStoreRef.current, state);
+      return advanced.ok ? advanced.state : state;
+    });
+  }, []);
+  const onDeclareBack = useCallback((): void => {
+    setDeclareJourney((state) => backDeclaredImportJourney(state));
+  }, []);
+  // Submit: derive the command INTENT, execute it through the REAL domain
+  // boundary into the session store, then apply the domain outcome
+  // (recorded / refused — the machine-stable reason surfaces verbatim).
+  const onDeclareSubmit = useCallback((): void => {
+    setDeclareJourney((state) => {
+      if (state.stage !== "confirm") return state;
+      const command = declaredImportCommand(
+        declareScopeRef.current,
+        sessionTwinStoreRef.current,
+        state,
+        {
+          now: new Date().toISOString(),
+          correlationId: newDeclaredImportCorrelationId(),
+          declaredBy: asUserId(sessionRef.current.principalId),
+        },
+      );
+      if (command === undefined) {
+        return declaredImportOutcome(state, { ok: false, reason: "command_not_derivable" });
+      }
+      const executed = executeDeclaredImportCommand(command, sessionTwinStoreRef.current);
+      if (!executed.ok) {
+        return declaredImportOutcome(state, { ok: false, reason: executed.reason });
+      }
+      setDeclaredVersion((v) => v + 1);
+      return declaredImportOutcome(state, { ok: true });
+    });
+  }, []);
   const [severityFilter, setSeverityFilter] = useState<FindingsSeverityFilter>("all");
   const [openFindingId, setOpenFindingId] = useState<string | null>(null);
   const [learningPanel, setLearningPanel] = useState<LearningPanel>("feed");
@@ -343,8 +480,13 @@ export function ConsoleSessionApp({
   // its own records — honest empty states for fresh workspaces, never
   // a silent fallback to demo data (the composition fails closed).
   const areasResult = useMemo(
-    () => composeConsoleAreas(session.tenantId, operatorRoleFor(session.activeRole ?? "employee")),
-    [session.tenantId, session.activeRole],
+    () =>
+      composeConsoleAreas(
+        session.tenantId,
+        operatorRoleFor(session.activeRole ?? "employee"),
+        sessionTwinStore,
+      ),
+    [session.tenantId, session.activeRole, sessionTwinStore, declaredVersion],
   );
   const areas: ConsoleAreaComposition | null = areasResult.ok ? areasResult.view : null;
 
@@ -498,6 +640,16 @@ export function ConsoleSessionApp({
         setSelectedFindingId,
         setSelectedPlanId,
         sessionAssignedRoles: session.assignedRoles,
+        // W145 deploy convergence — the declared-import journey + the
+        // mobile roster composition signal.
+        declareJourney,
+        declareReview,
+        declareVerification,
+        onDeclareDraftChange,
+        onDeclareAdvance,
+        onDeclareBack,
+        onDeclareSubmit,
+        mobileRoster,
       })
     );
 
@@ -640,6 +792,16 @@ interface RenderInput {
   readonly setSelectedFindingId: (id: string | null) => void;
   readonly setSelectedPlanId: (id: string | null) => void;
   readonly sessionAssignedRoles: readonly string[];
+  // W145 deploy convergence (TL scope) — the declared-import journey.
+  readonly declareJourney: DeclaredImportJourneyState;
+  readonly declareReview: ReturnType<typeof declaredImportReview> | undefined;
+  readonly declareVerification: ReturnType<typeof verifyDeclaredImport> | undefined;
+  readonly onDeclareDraftChange: (patch: DeclaredDeviceDraftPatch) => void;
+  readonly onDeclareAdvance: () => void;
+  readonly onDeclareBack: () => void;
+  readonly onDeclareSubmit: () => void;
+  // W145 — the mobile priority-card composition signal.
+  readonly mobileRoster: boolean;
 }
 
 function renderRoute(input: RenderInput): JSX.Element {
@@ -682,6 +844,28 @@ function renderRoute(input: RenderInput): JSX.Element {
           onClearSelection={() => input.setFleetSelection({ kind: "none" })}
           onOpenDevice={() => navigate({ area: "device", view: "doctor" })}
           onEnroll={() => navigate({ area: "device", view: "enrollment" })}
+          onDeclare={() => navigate({ area: "device", view: "declare" })}
+          mobileRoster={input.mobileRoster}
+        />
+      );
+    case "device.declare":
+      // W145 — the declared-import journey screen (the SMALL-firm
+      // cold-start path: manual device records, provenance-flagged
+      // DECLARED, executed through the REAL domain boundary into the
+      // session's twin store — never conflated with agent-observed
+      // records).
+      return (
+        <DeclaredImportScreen
+          journey={input.declareJourney}
+          review={input.declareReview}
+          verification={input.declareVerification}
+          ownershipTypes={DECLARE_OWNERSHIP_TYPE_OPTIONS}
+          onDraftChange={input.onDeclareDraftChange}
+          onAdvance={input.onDeclareAdvance}
+          onBack={input.onDeclareBack}
+          onSubmit={input.onDeclareSubmit}
+          onOpenRoster={() => navigate({ area: "device", view: "list" })}
+          onCancel={() => navigate({ area: "device", view: "list" })}
         />
       );
     case "device.enrollment": {

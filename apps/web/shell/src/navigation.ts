@@ -36,7 +36,7 @@ export const SHELL_AREA_ORDER: readonly ShellSurfaceArea[] = frozenArray([
 /** The frozen per-area view vocabulary (route targets per surface). */
 export const SHELL_AREA_VIEWS: Readonly<Record<ShellSurfaceArea, readonly string[]>> = frozen({
   overview: frozenArray(["home", "activity"]),
-  device: frozenArray(["list", "doctor", "lifecycle", "enrollment"]),
+  device: frozenArray(["list", "doctor", "lifecycle", "enrollment", "declare"]),
   recovery: frozenArray(["cases", "find-my", "destructive"]),
   security: frozenArray(["findings", "decisions", "approvals", "doctor"]),
   policies: frozenArray(["list"]),
