@@ -223,6 +223,20 @@ import {
   CommunicationScreen,
 } from "@fleetos/web-commerce";
 import type { ProcurementScreenData } from "@fleetos/web-commerce";
+// W149 — the procurement verification view-model's honest empty-state
+// builder (the P0 crash fix: compose the real `OrderVerificationView`,
+// never the blind cast the W148 binding shipped).
+import { buildOrderVerificationView } from "@fleetos/web-commerce";
+import type { OrderVerificationView } from "@fleetos/web-commerce";
+// W149 — the executed-decision state derivation (the propagation's
+// pure projection over the approval runtime's audit log).
+import {
+  deriveExecutedDecisionState,
+} from "./runtime/executed-decision-state";
+import type {
+  ExecutedDecisionState,
+  ExecutedDecisionRecord,
+} from "./runtime/executed-decision-state";
 
 // ---------------------------------------------------------------------------
 // Route <-> path mapping (the final route vocabulary's URL form)
@@ -656,14 +670,25 @@ export function ConsoleSessionApp({
   // tenant sees the rich demo fleet; every non-demo workspace sees ONLY
   // its own records — honest empty states for fresh workspaces, never
   // a silent fallback to demo data (the composition fails closed).
+  //
+  // W149 — the executed decision state propagates into the Evidence &
+  // Audit area: when an operator has approved/rejected a parked plan,
+  // the decision's 2-entry audit trail surfaces as a NEW evidence trail
+  // (the O6 expectation met live). PURE — the derivation walks the
+  // approval runtime's own audit log; nothing is fabricated.
+  const executedDecisions: ExecutedDecisionState = useMemo(
+    () => deriveExecutedDecisionState(approvalRuntime),
+    [approvalRuntime],
+  );
   const areasResult = useMemo(
     () =>
       composeConsoleAreas(
         session.tenantId,
         operatorRoleFor(session.activeRole ?? "employee"),
         sessionTwinStore,
+        executedDecisions,
       ),
-    [session.tenantId, session.activeRole, sessionTwinStore, declaredVersion],
+    [session.tenantId, session.activeRole, sessionTwinStore, declaredVersion, executedDecisions],
   );
   const areas: ConsoleAreaComposition | null = areasResult.ok ? areasResult.view : null;
 
@@ -684,8 +709,15 @@ export function ConsoleSessionApp({
       // composes over the session's cases; the destructive gate's
       // precondition becomes satisfiable when a case exists.
       recoveryCaseSource: sessionRecoveryCaseSource(sessionRecoveryStore),
+      // W149 — the executed-decision state (the propagation overlay).
+      // The demo's Security Doctor composes over the executed decision:
+      // the plan's `planState` reflects APPROVED/REJECTED for decided
+      // planIds (the `approval` field becomes null — the plan is no
+      // longer parked). PURE — the derivation walks the runtime's own
+      // audit log; nothing is fabricated.
+      executedDecisions,
     }),
-    [selectedRecoveryCaseId, selectedFindingId, selectedPlanId, sessionRecoveryStore, recoveryCaseVersion],
+    [selectedRecoveryCaseId, selectedFindingId, selectedPlanId, sessionRecoveryStore, recoveryCaseVersion, executedDecisions],
   );
   const laneFeedsResult = useMemo(
     () => composeLaneFeeds(session.tenantId, laneFeedOptions),
@@ -835,9 +867,16 @@ export function ConsoleSessionApp({
         setRecoveryCaseVersion,
         doctorPanel,
         setDoctorPanel,
+        // W149 — the real selected recovery case id (the P2 fix) + the
+        // executed-decision state (the propagation overlay). The
+        // recovery case detail opens; the Security Doctor + the
+        // Approvals queue card + the Evidence & Audit index compose
+        // over the executed decision state — REAL runtime state.
+        selectedRecoveryCaseId,
         setSelectedRecoveryCaseId,
         setSelectedFindingId,
         setSelectedPlanId,
+        executedDecisions,
         sessionAssignedRoles: session.assignedRoles,
         // W145 deploy convergence — the declared-import journey + the
         // mobile roster composition signal.
@@ -1010,9 +1049,19 @@ interface RenderInput {
   // W144 — the lane interaction state (UI state only).
   readonly doctorPanel: DoctorPanelState;
   readonly setDoctorPanel: (panel: DoctorPanelState) => void;
+  // W149 — the real selected recovery case id (the P2 fix: the
+  // per-case detail's seven-stage journey opens when a case is
+  // selected; the W148 binding shipped `isDemo ? undefined : undefined`
+  // — a stub that left the detail never opening).
+  readonly selectedRecoveryCaseId: string | undefined;
   readonly setSelectedRecoveryCaseId: (id: string | undefined) => void;
   readonly setSelectedFindingId: (id: string | null) => void;
   readonly setSelectedPlanId: (id: string | null) => void;
+  // W149 — the executed decision state (the propagation overlay). The
+  // demo's Security Doctor + the Approvals queue card + the Evidence &
+  // Audit index compose over this state — REAL runtime state, never
+  // fabricated data.
+  readonly executedDecisions: ExecutedDecisionState;
   readonly sessionAssignedRoles: readonly string[];
   // W145 deploy convergence (TL scope) — the declared-import journey.
   readonly declareJourney: DeclaredImportJourneyState;
@@ -1338,6 +1387,16 @@ function renderRoute(input: RenderInput): JSX.Element {
           phase={input.approvalsPhase}
           actingApprover={{ userId: input.actingApproverId } satisfies ActingApprover}
           decisionDialog={decisionDialog}
+          // W149 — the executed-decision state propagated into the
+          // approvals queue card. When an operator has approved or
+          // rejected a parked plan, the queue card reflects the decided
+          // state: the decided badge replaces the live REQUIRE_APPROVAL
+          // badge, the Approve/Reject buttons are dead (the plan is no
+          // longer parked), and the honest `already_decided` copy
+          // explains the duplicate-safe guard. PURE — the propagation
+          // is a function of the runtime's own audit log.
+          decidedPlanIds={input.executedDecisions.decidedPlanIds}
+          decidedRecordsByPlan={input.executedDecisions.recordsByPlan}
           onRequestDecision={(planId, action) => {
             // W148 — open the decision review for the parked plan. The
             // authority gate may refuse (authorization_required) — the
@@ -1571,7 +1630,14 @@ function renderRoute(input: RenderInput): JSX.Element {
       return (
         <RecoveryCasesScreen
           phase={feed.phase}
-          selectedCaseId={input.laneFeeds.isDemo ? undefined : undefined}
+          // W149 — the P2 fix: bind the REAL selected recovery case id
+          // (the W148 binding shipped `isDemo ? undefined : undefined`
+          // — a stub that left the per-case detail never opening). The
+          // session's `selectedRecoveryCaseId` state is the binding's
+          // source of truth; the seven-stage per-case journey renders
+          // when a case is selected (Find My Device's open-case flow
+          // or the cases list's on-select).
+          selectedCaseId={input.selectedRecoveryCaseId}
           selectedCase={feed.selectedCase}
           onSelectCase={(caseId) => input.setSelectedRecoveryCaseId(caseId)}
           onCloseCase={() => input.setSelectedRecoveryCaseId(undefined)}
@@ -1725,15 +1791,60 @@ function renderRoute(input: RenderInput): JSX.Element {
       if (input.laneFeeds === null) {
         return <EmptyState title="The lane feeds refused to compose." hint="The composition root failed; refresh the session." action={<Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>Back to Control Tower</Button>} />;
       }
-      // W148 — the Procurement screen binds to the feed's view-model
-      // (the W143 `composeProcurementCasesFeed` over the demo tenant's
-      // REAL procurement demand — the Loading resolves to ready; the
-      // seven-stage procurement journey runs over REAL runtime state
-      // with honest not_decided/not_requested stages where undecided).
+      // W149 — the P0 crash fix: the W148 binding shipped a blind cast
+      // (`feed.phase.view as unknown as ProcurementScreenData`). The
+      // W143 `composeProcurementCasesFeed` view-model has the shape
+      // `{tenantId, demands, selected, vendors, orders}` — NO
+      // `verification` field. The ProcurementScreen's `VerificationCard`
+      // calls `Object.entries(verification.chainStatusCounts)` — when
+      // `verification` is `undefined` (the blind cast's runtime truth),
+      // the card throws `TypeError: Cannot read properties of
+      // undefined (reading 'chainStatusCounts')` and the deployed app
+      // crashes ("Application error: a client-side exception has
+      // occurred").
+      //
+      // The fix: compose the REAL `ProcurementScreenData` from the W143
+      // view-model — pass through the demand list, the selected detail,
+      // the LOCK 14 aggregated orders, AND the honest empty
+      // `OrderVerificationView` (the commercial-reconciliation state —
+      // no delivered chains, no discrepancies, the honest
+      // not-yet-verified state). The VerificationCard renders its honest
+      // empty state; the procurement surface LOADS and the seven-stage
+      // case journey runs (need -> case -> vendor context ->
+      // authorization -> decision -> order -> evidence).
       const feed = input.laneFeeds.procurementCases;
+      // The honest empty `OrderVerificationView` — composed from the
+      // acting tenant's id + the absence of any reconciliation report
+      // (no delivered chains; zero discrepancies; the honest summary:
+      // "No reconciliation report verifies the orders yet.").
+      const verificationResult = feed.phase.kind === "ready"
+        ? buildOrderVerificationView(feed.phase.view.tenantId, null)
+        : null;
+      const verification: OrderVerificationView | null =
+        verificationResult !== null && verificationResult.ok ? verificationResult.view : null;
       const screenPhase =
-        feed.phase.kind === "ready"
-          ? { kind: "ready" as const, view: feed.phase.view as unknown as ProcurementScreenData }
+        feed.phase.kind === "ready" && verification !== null
+          ? {
+              kind: "ready" as const,
+              view: {
+                demands: feed.phase.view.demands,
+                selected: feed.phase.view.selected === null
+                  ? null
+                  : {
+                      demand: feed.phase.view.selected.demand,
+                      matching: feed.phase.view.selected.matching,
+                      quoteRows: feed.phase.view.selected.quoteRows,
+                      // The W143 view-model does not carry per-quote
+                      // decision-support evaluations (the matching
+                      // engine's HEADROOM ranks are in `matching`).
+                      // The screen's `evaluations` field is the
+                      // honest empty list (no fabricated evaluations).
+                      evaluations: Object.freeze([]) as readonly never[],
+                    },
+                orders: feed.phase.view.orders,
+                verification,
+              } satisfies ProcurementScreenData,
+            }
           : feed.phase.kind === "error"
             ? { kind: "error" as const, message: feed.phase.message }
             : feed.phase.kind === "loading"

@@ -165,6 +165,10 @@ import type {
   VendorSource,
 } from "@fleetos/web-commerce";
 
+// W149 — the executed-decision state derivation (the propagation's pure
+// projection over the approval runtime's audit log).
+import type { ExecutedDecisionState } from "./executed-decision-state";
+
 // The demo composition (the W091 fleet + the demo tenant id).
 import {
   TENANT_ID,
@@ -254,6 +258,19 @@ export interface LaneFeedOptions {
    * state (the fresh-tenant / no-cases state — never fabricated data).
    */
   readonly recoveryCaseSource?: RecoveryCaseSource;
+  /**
+   * W149 — the EXECUTED decision state derived from the approval
+   * runtime (the propagation overlay). When supplied, the demo's
+   * Security Doctor composes over the executed decision: the plan's
+   * `planState` reflects APPROVED/REJECTED for decided planIds (the
+   * `approval` field becomes null — the plan is no longer parked);
+   * the audit entries surface in the Evidence & Audit index (the
+   * 2-entry trail per decision — the O6 expectation met live). When
+   * absent, the lanes compose over the seeded demo state (the W148
+   * baseline). PURE — the overlay is a function of the runtime's own
+   * audit log; nothing is fabricated.
+   */
+  readonly executedDecisions?: ExecutedDecisionState;
 }
 
 /**
@@ -886,6 +903,73 @@ function buildDemoFleetActionsState(): FleetActionsRuntimeState {
 const DEMO_FLEET_ACTIONS: FleetActionsRuntimeState = buildDemoFleetActionsState();
 
 // ---------------------------------------------------------------------------
+// W149 — the executed-decision overlay (the propagation's pure projection)
+// ---------------------------------------------------------------------------
+
+/**
+ * W149 — wrap a `SecurityDoctorRuntimeState` so the executed decision
+ * state propagates into the Security Doctor's composed view-model.
+ *
+ * The overlay is the propagation fix: when an operator has approved or
+ * rejected a parked plan, the plan's `planState` MUST reflect the
+ * executed status (APPROVED/REJECTED — never the seeded PARKED), and
+ * the `approval` field MUST become null (the plan is no longer parked).
+ *
+ * The overlay wraps the runtime state's `plans.stateFor` and
+ * `approvals.parkedByPlan` seams so the composed feed renders the
+ * executed status + the approving principal + the transitioned-at
+ * instant — REAL runtime state, never fabricated data.
+ *
+ * PURE: returns a NEW runtime state wrapper (the demo singleton is
+ * untouched). The overlay reads the executed-decision state's own
+ * derivation (the runtime's audit log); nothing is invented.
+ */
+function overlayExecutedDecisionsOnSecurityDoctor(
+  base: SecurityDoctorRuntimeState,
+  executed: ExecutedDecisionState,
+): SecurityDoctorRuntimeState {
+  if (executed.decidedPlanIds.length === 0) return base;
+  const recordsByPlan = executed.recordsByPlan;
+  const plans: SecurityDecisionPlanSource = {
+    stateFor: (tenantId: TenantId, planId: string): DecisionPlanState | undefined => {
+      const record = recordsByPlan[planId];
+      if (record === undefined) return base.plans.stateFor(tenantId, planId);
+      // The decided plan is in the acting tenant's partition (the
+      // boundary's own tenantId guard held when the decision was
+      // dispatched — the audit record carries the tenantId verbatim).
+      if (record.tenantId !== tenantId) return base.plans.stateFor(tenantId, planId);
+      const baseState = base.plans.stateFor(tenantId, planId);
+      // The base state carries the capability / targetCount / content
+      // digest (the seeded plan's static fields — never fabricated).
+      if (baseState === undefined) return baseState;
+      return Object.freeze({
+        ...baseState,
+        status: record.status,
+        ...(record.approverId !== undefined ? { approverId: record.approverId as UserId } : {}),
+        ...(record.rejectionReason !== undefined ? { rejectionReason: record.rejectionReason } : {}),
+        transitionedAt: record.transitionedAt,
+        executionHandoff: record.status === "APPROVED" ? "downstream_dispatch" as const : null,
+        evidenceCount: baseState.evidenceCount,
+      });
+    },
+  };
+  const approvals: SecurityApprovalSource = {
+    parked: (tenantId: TenantId): readonly ParkedApprovalItemInput[] => {
+      const baseItems = base.approvals.parked(tenantId);
+      // A decided plan is no longer parked — drop it from the queue.
+      return baseItems.filter((item) => recordsByPlan[item.plan.planId] === undefined);
+    },
+    parkedByPlan: (tenantId: TenantId, planId: string): ParkedApprovalItemInput | undefined => {
+      // A decided plan is no longer parked — the doctor's `approval`
+      // field becomes null (the screen renders the executed status).
+      if (recordsByPlan[planId] !== undefined) return undefined;
+      return base.approvals.parkedByPlan(tenantId, planId);
+    },
+  };
+  return { ...base, plans, approvals };
+}
+
+// ---------------------------------------------------------------------------
 // The composition (the entry point the console runtime calls)
 // ---------------------------------------------------------------------------
 
@@ -970,6 +1054,14 @@ export function composeLaneFeeds(
     ? sessionRecoveryState(options.recoveryCaseSource)
     : emptyRecoveryState();
 
+  // W149 — the executed-decision state (the propagation overlay). When
+  // supplied, the demo's Security Doctor composes over the executed
+  // decision: the plan's `planState` reflects APPROVED/REJECTED for
+  // decided planIds (the `approval` field becomes null — the plan is
+  // no longer parked). When absent, the seeded demo state (the W148
+  // baseline).
+  const executedDecisions = options.executedDecisions;
+
   if (isDemoTenant(tenantId)) {
     // The demo tenant: the rich Security Doctor + Fleet Actions feeds;
     // W148 — the Device Doctor binds to the demo fleet's REAL TwinStore
@@ -1005,9 +1097,17 @@ export function composeLaneFeeds(
       selectedDeviceId,
       { now, freshWithinMs, staleAfterMs },
     );
+    // W149 — propagate the executed decision state into the Security
+    // Doctor: the demo's seeded PARKED plan transitions to APPROVED/
+    // REJECTED for decided planIds (the `approval` field becomes null —
+    // the plan is no longer parked). PURE overlay; the demo singleton
+    // is untouched.
+    const securityDoctorState = executedDecisions !== undefined
+      ? overlayExecutedDecisionsOnSecurityDoctor(DEMO_SECURITY_DOCTOR, executedDecisions)
+      : DEMO_SECURITY_DOCTOR;
     const securityDoctor = composeSecurityDoctorFeed(
       scope,
-      DEMO_SECURITY_DOCTOR,
+      securityDoctorState,
       selectedFindingId,
       { now },
     );

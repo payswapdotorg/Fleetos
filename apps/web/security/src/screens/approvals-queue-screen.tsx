@@ -57,6 +57,25 @@ import {
 } from "../approvals-execution";
 import type { ApprovalRefusal } from "../approvals-execution";
 
+// W149 — the executed-decision record (the propagation's per-plan
+// overlay). The queue card renders the decided state from this record:
+// the post-decision status (APPROVED/REJECTED), the approving principal,
+// the transitioned-at instant — REAL runtime state, never fabricated.
+export interface ApprovalsQueueDecidedRecord {
+  /** The plan identity. */
+  readonly planId: string;
+  /** The post-decision status (APPROVED or REJECTED — never PARKED). */
+  readonly status: "APPROVED" | "REJECTED";
+  /** The boundary action that transitioned the plan (approve / reject). */
+  readonly action: "approve" | "reject";
+  /** The approving principal (recorded by the boundary on APPROVED). */
+  readonly approverId: string | undefined;
+  /** The rejection reason (recorded by the boundary on REJECTED). */
+  readonly rejectionReason: string | undefined;
+  /** The transition's instant. */
+  readonly transitionedAt: string;
+}
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -159,6 +178,25 @@ export interface ApprovalsQueueScreenProps {
    * (from `buildParkedExplanationView`), keyed by planId. Optional.
    */
   readonly explanations?: Readonly<Record<string, ParkedExplanationView>> | null;
+  /**
+   * W149 — the executed-decision state propagated into the queue card.
+   * When a plan id is in `decidedPlanIds`, the queue card renders the
+   * DECIDED state: the live Approve/Reject buttons are dead (the plan
+   * is no longer parked), the decided badge replaces the live
+   * REQUIRE_APPROVAL badge, and the honest `already_decided` copy
+   * explains the duplicate-safe guard. PURE — the propagation is a
+   * function of the runtime's own audit log; nothing is fabricated.
+   * Optional (the W148 baseline ships without it — the queue renders
+   * the live PARKED state).
+   */
+  readonly decidedPlanIds?: readonly string[];
+  /**
+   * W149 — the per-plan executed-decision record (keyed by plan id).
+   * The queue card renders the decided badge + the approving principal
+   * + the transitioned-at instant from this record. Optional (paired
+   * with `decidedPlanIds`).
+   */
+  readonly decidedRecordsByPlan?: Readonly<Record<string, ApprovalsQueueDecidedRecord>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -170,9 +208,18 @@ function QueueItemCard(props: {
   readonly canDecide: boolean;
   readonly dialog: ApprovalDecisionDialogState | null;
   readonly onRequestDecision: (planId: string, action: "approve" | "reject") => void;
+  // W149 — the executed-decision overlay (the propagation). When the
+  // plan is in the decided set, the queue card renders the DECIDED
+  // state (decided badge, dead buttons, honest already_decided copy).
+  readonly decidedRecord: ApprovalsQueueDecidedRecord | undefined;
 }): JSX.Element {
   const { item } = props;
   const decision = item.parkedByDecision;
+  // W149 — the executed-decision overlay: when the plan has been
+  // decided, the card renders the decided state instead of the live
+  // PARKED state.
+  const decided = props.decidedRecord;
+  const isDecided = decided !== undefined;
   return (
     <Card
       title={item.name}
@@ -195,6 +242,31 @@ function QueueItemCard(props: {
               </span>
             ),
           },
+          // W149 — the executed-decision overlay: when the plan is
+          // decided, the card shows the post-decision status + the
+          // approving principal + the transitioned-at instant. The
+          // honest `already_decided` copy explains the duplicate-safe
+          // guard (a second decision on the SAME plan refuses — the
+          // boundary's own guard).
+          ...(isDecided && decided !== undefined ? [{
+            term: "Executed decision",
+            value: (
+              <span className="fos-row">
+                <StatusIndicator
+                  status={decided.status === "APPROVED" ? "succeeded" : "failed"}
+                />
+                <Badge>{decided.status}</Badge>
+                {decided.approverId !== undefined && (
+                  <span className="fos-meta">
+                    {" "}by <span className="fos-mono">{decided.approverId}</span>
+                  </span>
+                )}
+                <span className="fos-meta">
+                  {" "}at <span className="fos-mono">{decided.transitionedAt}</span>
+                </span>
+              </span>
+            ),
+          }] : []),
         ]}
       />
       {decision.reasons.length > 0 && (
@@ -221,25 +293,54 @@ function QueueItemCard(props: {
         Evidence: {decision.evidence.length} opaque artifact(s) · no direct-execution path exists on
         this surface.
       </p>
-      <div className="fos-row" style={{ marginTop: "0.75rem" }}>
-        {item.availableTransitions.map((transition) => (
-          <Button
-            key={transition.action}
-            variant={transition.action === "approve" ? "primary" : "danger"}
-            disabled={!props.canDecide}
-            onClick={(): void => props.onRequestDecision(item.planId, transition.action)}
-            ariaLabel={`${transition.action === "approve" ? "Approve" : "Reject"} the parked plan ${item.name} (gated on human_decision, confirmation required)`}
-            testId={`queue-${transition.action}-${item.planId}`}
-          >
-            {transition.action === "approve" ? "Approve" : "Reject"}
-          </Button>
-        ))}
-      </div>
-      <p className="fos-meta" style={{ margin: "0.5rem 0 0" }}>
-        {props.canDecide
-          ? "Both transitions are gated on a human decision and require confirmation — they are never one-click."
-          : "Approvals are owner-only: this session may review the decision context but not decide."}
-      </p>
+      {isDecided ? (
+        // W149 — the executed-decision overlay: the live Approve/Reject
+        // buttons are DEAD (the plan is no longer parked). The honest
+        // `already_decided` copy explains the duplicate-safe guard
+        // (the boundary refuses a second decision on the SAME plan).
+        <>
+          <div className="fos-row" style={{ marginTop: "0.75rem" }}>
+            {item.availableTransitions.map((transition) => (
+              <Button
+                key={transition.action}
+                variant={transition.action === "approve" ? "primary" : "danger"}
+                disabled={true}
+                onClick={(): void => undefined}
+                ariaLabel={`${transition.action === "approve" ? "Approve" : "Reject"} the parked plan ${item.name} — disabled: this plan was already decided (${decided!.status})`}
+                testId={`queue-${transition.action}-${item.planId}-decided`}
+              >
+                {transition.action === "approve" ? "Approve" : "Reject"}
+              </Button>
+            ))}
+          </div>
+          <p className="fos-meta" style={{ margin: "0.5rem 0 0", fontWeight: 600 }}>
+            Already decided ({decided!.status}) — the boundary refuses a duplicate decision on this
+            plan. The original decision record remains the authoritative state.
+          </p>
+        </>
+      ) : (
+        <>
+          <div className="fos-row" style={{ marginTop: "0.75rem" }}>
+            {item.availableTransitions.map((transition) => (
+              <Button
+                key={transition.action}
+                variant={transition.action === "approve" ? "primary" : "danger"}
+                disabled={!props.canDecide}
+                onClick={(): void => props.onRequestDecision(item.planId, transition.action)}
+                ariaLabel={`${transition.action === "approve" ? "Approve" : "Reject"} the parked plan ${item.name} (gated on human_decision, confirmation required)`}
+                testId={`queue-${transition.action}-${item.planId}`}
+              >
+                {transition.action === "approve" ? "Approve" : "Reject"}
+              </Button>
+            ))}
+          </div>
+          <p className="fos-meta" style={{ margin: "0.5rem 0 0" }}>
+            {props.canDecide
+              ? "Both transitions are gated on a human decision and require confirmation — they are never one-click."
+              : "Approvals are owner-only: this session may review the decision context but not decide."}
+          </p>
+        </>
+      )}
       {props.dialog !== null && props.dialog.pending.planId === item.planId && (
         <p className="fos-meta" style={{ margin: "0.5rem 0 0", fontWeight: 600 }}>
           A {props.dialog.pending.action} confirmation is open for this plan.
@@ -460,6 +561,16 @@ export function ApprovalsQueueScreen(props: ApprovalsQueueScreenProps): JSX.Elem
                   canDecide={props.actingApprover !== null}
                   dialog={props.decisionDialog}
                   onRequestDecision={props.onRequestDecision}
+                  // W149 — the executed-decision overlay: pass the
+                  // per-plan decided record (when present) so the
+                  // queue card renders the DECIDED state.
+                  decidedRecord={
+                    props.decidedPlanIds !== undefined &&
+                    props.decidedRecordsByPlan !== undefined &&
+                    props.decidedPlanIds.includes(item.planId)
+                      ? props.decidedRecordsByPlan[item.planId]
+                      : undefined
+                  }
                 />
                 {props.explanations !== null &&
                   props.explanations !== undefined &&

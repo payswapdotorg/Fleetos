@@ -151,6 +151,13 @@ export interface ProcurementCasesViewModel {
   } | null;
   /** The vendor catalog (the vendor-context enrichment), tenant-wide. */
   readonly vendors: readonly VendorFacets[];
+  /**
+   * The LOCK 14 aggregated orders (tenant-wide). Present in EVERY phase
+   * (the W143 composition always builds this from the tenant's REAL
+   * order source + quote ledger — even when no demand is selected). The
+   * procurement screen's `orders` prop is bound to this field.
+   */
+  readonly orders: AggregationDisplayView;
 }
 
 // ---------------------------------------------------------------------------

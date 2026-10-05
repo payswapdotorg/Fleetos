@@ -94,6 +94,13 @@ import type {
 } from "@fleetos/web-shell";
 import type { ProductExperienceRole } from "@fleetos/web-product";
 
+// W149 — the executed-decision state derivation (the propagation's pure
+// projection over the approval runtime's audit log).
+import type { ExecutedDecisionState } from "./executed-decision-state";
+import type { ExecutedDecisionRecord } from "./executed-decision-state";
+import type { SecurityDecisionAuditRecord } from "@fleetos/web-security";
+import { APPROVAL_AUDIT_ACTIONS } from "@fleetos/web-security";
+
 // ---------------------------------------------------------------------------
 // The deterministic seed constants (no clock, no entropy)
 // ---------------------------------------------------------------------------
@@ -965,6 +972,182 @@ export type ConsoleAreasResult =
       readonly message: string;
     };
 
+// ---------------------------------------------------------------------------
+// W149 — the executed-decision evidence-trail propagation
+// ---------------------------------------------------------------------------
+
+/**
+ * The machine-stable stage labels for the executed-decision audit
+ * entries (the evidence trail's per-step stage vocabulary).
+ */
+const EXECUTED_DECISION_STAGE_LABELS = Object.freeze({
+  explicitConfirmation: "explicit_confirmation",
+  dispatched: "decision_dispatched",
+} as const);
+
+/**
+ * Project a `SecurityDecisionAuditRecord` into the shell's audit-record
+ * shape (with the stage label the evidence trail expects). PURE — the
+ * projection derives the actor + outcome from the entry's own details;
+ * nothing is fabricated. The record id is deterministic (a stable
+ * function of the entry's action + subject + occurredAt + a per-entry
+ * counter — the same audit log always produces the same trail).
+ */
+function projectExecutedDecisionAuditRecord(
+  entry: SecurityDecisionAuditRecord,
+  index: number,
+): ShellAuditRecordLike & { readonly stage: string } {
+  const details = entry.details ?? {};
+  const byRaw = details["by"];
+  const by = typeof byRaw === "string" ? byRaw : "operator";
+  const actor = `operator:${by}`;
+  // The outcome label — the boundary's own status on dispatched entries
+  // (APPROVED / REJECTED); "ok" on the explicit-confirmation entry
+  // (the human gate's outcome — never a fabricated status).
+  const statusRaw = details["status"];
+  const outcome = typeof statusRaw === "string" ? statusRaw : "ok";
+  // The deterministic record id (machine-stable across re-dispatches).
+  const recordId = `audit_w149_${entry.subject ?? "decision"}_${index}`;
+  const stage =
+    entry.action === APPROVAL_AUDIT_ACTIONS.dispatched
+      ? EXECUTED_DECISION_STAGE_LABELS.dispatched
+      : entry.action === APPROVAL_AUDIT_ACTIONS.explicitConfirmation
+        ? EXECUTED_DECISION_STAGE_LABELS.explicitConfirmation
+        : entry.action;
+  return Object.freeze({
+    recordId,
+    tenantId: entry.tenantId,
+    actor,
+    action: entry.action,
+    at: entry.occurredAt,
+    outcome,
+    correlationId: entry.correlationId,
+    evidenceRefs: Object.freeze([]) as readonly string[],
+    stage,
+  });
+}
+
+/**
+ * The human title for an executed-decision evidence trail (the
+ * propagation's per-plan trail subject). PURE.
+ */
+function executedDecisionTrailTitle(record: ExecutedDecisionRecord): string {
+  const action = record.action === "approve" ? "Approved" : "Rejected";
+  return `Executed decision — ${action} ${record.planId}`;
+}
+
+/**
+ * W149 — append the executed decision's audit entries as a NEW evidence
+ * trail per decided planId. The seeded `baseTrails` stay; the executed
+ * decision's trail appends — the O6 expectation met live. PURE — the
+ * propagation is a function of the runtime's own audit log; nothing is
+ * fabricated.
+ *
+ * The evidence index is rebuilt over the combined trails (the seeded
+ * trails + the new executed-decision trails) so the index rows reflect
+ * the executed decision's trail summary. The build is fail-closed: a
+ * malformed audit entry refuses the whole trail (never partial data);
+ * the seeded trails always survive.
+ */
+function appendExecutedDecisionEvidenceTrails(
+  baseTrails: readonly ShellEvidenceTrail[],
+  executedDecisions: ExecutedDecisionState | undefined,
+): {
+  readonly evidenceTrails: readonly ShellEvidenceTrail[];
+  readonly evidenceIndex: readonly EvidenceIndexRow[];
+} {
+  if (executedDecisions === undefined || executedDecisions.decidedPlanIds.length === 0) {
+    // No executed decisions: the seeded trails + the seeded index (the
+    // W148 baseline — the honest unchanged state).
+    return { evidenceTrails: baseTrails, evidenceIndex: rebuildEvidenceIndex(baseTrails) };
+  }
+
+  // Group the audit entries by planId (the trail subject). The audit
+  // log is chronological; the per-plan grouping preserves the order.
+  const entriesByPlan = new Map<string, SecurityDecisionAuditRecord[]>();
+  for (const entry of executedDecisions.auditEntries) {
+    if (entry === null || typeof entry !== "object") continue;
+    const planId = typeof entry.subject === "string" ? entry.subject : null;
+    if (planId === null) continue;
+    const prior = entriesByPlan.get(planId);
+    if (prior === undefined) {
+      entriesByPlan.set(planId, [entry]);
+    } else {
+      prior.push(entry);
+    }
+  }
+
+  // Build a NEW evidence trail per decided planId (the 2-entry trail
+  // per decision: the explicit confirmation + the routed dispatch).
+  const newTrails: ShellEvidenceTrail[] = [];
+  for (const planId of executedDecisions.decidedPlanIds) {
+    const record = executedDecisions.recordsByPlan[planId];
+    if (record === undefined) continue;
+    const entries = entriesByPlan.get(planId) ?? [];
+    if (entries.length === 0) continue;
+    const records = entries.map((entry, index) =>
+      projectExecutedDecisionAuditRecord(entry, index),
+    );
+    const trailResult = buildEvidenceTrail({
+      scope: SCOPE,
+      subjectId: planId,
+      subjectTitle: executedDecisionTrailTitle(record),
+      subjectArea: "actions",
+      records,
+      chainState: "verified",
+    });
+    if (trailResult.ok) {
+      newTrails.push(trailResult.trail);
+    }
+    // A malformed trail refuses machine-stably — the seeded trails
+    // always survive (never partial data).
+  }
+
+  // The combined trails: the seeded trails + the new executed-decision
+  // trails. Deterministic order: the seeded trails first (their
+  // machine-stable order), then the executed-decision trails in the
+  // decided-plan-ids order (the audit log's chronological order).
+  const combinedTrails: readonly ShellEvidenceTrail[] = Object.freeze([
+    ...baseTrails,
+    ...newTrails,
+  ]) as readonly ShellEvidenceTrail[];
+
+  return {
+    evidenceTrails: combinedTrails,
+    evidenceIndex: rebuildEvidenceIndex(combinedTrails),
+  };
+}
+
+/**
+ * Rebuild the Evidence & Audit index over a list of complete trails.
+ * Used by the W149 propagation to include the executed-decision trails
+ * in the index. PURE — the index is a function of the trails' step
+ * summaries; nothing is fabricated. A malformed trail's row is dropped
+ * (never partial data — the seeded trails always survive).
+ */
+function rebuildEvidenceIndex(
+  trails: readonly ShellEvidenceTrail[],
+): readonly EvidenceIndexRow[] {
+  const rows: EvidenceIndexRow[] = [];
+  for (const trail of trails) {
+    if (trail.steps.length === 0) continue;
+    rows.push({
+      subjectId: trail.subjectId,
+      subjectTitle: trail.subjectTitle,
+      area: trail.area,
+      stepCount: trail.steps.length,
+      firstAt: trail.steps[0]!.at,
+      lastAt: trail.steps[trail.steps.length - 1]!.at,
+      chainState: trail.chainState,
+    });
+  }
+  rows.sort((a, b) => {
+    if (a.area !== b.area) return a.area < b.area ? -1 : 1;
+    return a.subjectId < b.subjectId ? -1 : a.subjectId > b.subjectId ? 1 : 0;
+  });
+  return Object.freeze(rows) as readonly EvidenceIndexRow[];
+}
+
 /**
  * Compose the console areas for the ACTIVE session's tenant.
  *
@@ -974,11 +1157,20 @@ export type ConsoleAreasResult =
  * with empty record sets — the honest fresh-workspace state, never demo
  * data. An unknown/invalid tenant grammar is a machine-stable refusal
  * (fail-closed; never a fallback to the demo tenant).
+ *
+ * W149 — when `executedDecisions` is supplied, the demo tenant's
+ * Evidence & Audit area APPENDS the executed decision's audit entries
+ * as a new evidence trail per decided planId (the 2-entry trail per
+ * decision: the explicit confirmation + the routed dispatch). The
+ * seeded 3 trails stay; the executed decision's trail appears as a 4th
+ * (or Nth) trail — the O6 expectation met live. PURE — the propagation
+ * is a function of the runtime's own audit log; nothing is fabricated.
  */
 export function composeConsoleAreas(
   tenantId: string,
   role: ShellOperatorRole,
   ownStore?: TwinStore,
+  executedDecisions?: ExecutedDecisionState,
 ): ConsoleAreasResult {
   if (typeof tenantId !== "string" || !isValidTenantId(asTenantId(tenantId))) {
     return {
@@ -1003,14 +1195,23 @@ export function composeConsoleAreas(
         message: `composeConsoleAreas: the demo tower view refused (${tower.reason})`,
       };
     }
+    // W149 — propagate the executed decision's audit entries into the
+    // Evidence & Audit area. Each decided planId gets a NEW evidence
+    // trail (the 2-entry trail per decision: the explicit confirmation
+    // + the routed dispatch). The seeded 3 trails stay; the executed
+    // decision's trail appends — the O6 expectation met live.
+    const propagated = appendExecutedDecisionEvidenceTrails(
+      DEMO.evidenceTrails,
+      executedDecisions,
+    );
     return {
       ok: true,
       view: {
         isDemo: true,
         tenantId,
         towerView: tower.view,
-        evidenceIndex: DEMO.evidenceIndex,
-        evidenceTrails: DEMO.evidenceTrails,
+        evidenceIndex: propagated.evidenceIndex,
+        evidenceTrails: propagated.evidenceTrails,
         searchRecords: DEMO.searchRecords,
         fleetView: deviceFleetView(),
         findingsView: securityFindingsView(),
