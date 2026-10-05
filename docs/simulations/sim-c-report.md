@@ -701,9 +701,9 @@ The 5 movers are the SMALL-firm Fleet Administrator founders (Hannah Cole TRN-SM
 
 Final closure: TL record appended below.
 
-> **TL-CLOSURE PLACEHOLDER** — the Tech Lead fills this block after review of the W150 amendment (§4.9 + §4.10 + the §1 verdict-line amendment + the §5 acceptance-statement amendment). The placeholder is left as a quoted line; do not invent the closure verdict.
+> **TL-CLOSURE (2026-10-05, Tech Lead — filled after review):**
 >
-> - TL closure verdict: _<to be filled by the Tech Lead after review of the W150 amendment>_
-> - TL acceptance of the recount v2 (5 COMPLEMENT / 100 RETAIN): _<to be filled by the Tech Lead>_
-> - TL disposition of the honest open items (the b6101d0 production deploy spot-check; the R3 residuals; blocker 10 by-design): _<to be filled by the Tech Lead>_
-> - TL signature + timestamp: _<to be filled by the Tech Lead>_
+> - TL closure verdict: **W150 ACCEPTED.** Scope verified (docs/simulations/sim-c-report.md only — the granted file; +162/-11 across the two worker commits; e406f49 = the 2348e45 delivery + the TL-review scoping fix); gates re-run by the TL on a clean worktree at the exact commit (check 4/4, typecheck 0, bun test 3677 total — 3674 pass / 3 fail, the 3 W147 staging-tier live-deployment failures verified IDENTICAL at baseline 63a6ff2: pre-existing environmental, not regressions); delivery verified (work/w150 e406f49 on origin by TL ls-remote, exact); honesty verified (every §4.9/§4.10 claim traces to the ten evidence files; verdict moves only on first-hand verified evidence). Merged --no-ff e39d24b into main and pushed.
+> - TL acceptance of the recount v2 (5 COMPLEMENT / 100 RETAIN): **ACCEPTED.** The 5 moves (the SMALL-firm Fleet Administrator founders — Hannah Cole TRN-SM, Ivy Chen HOS-SM, Priya Nair FEM-SM, Nora Ellis LEG-SM, Grant Whitmore DEF-SM) trace to verified anchors (W147/R1 J2+J3 across both real workspaces; W148/R2c + W149/R3 O3/O6 executed decisions + audit trails); no verdict inflated beyond COMPLEMENT; each of the 100 RETAINs carries its specific uncovered-core-job reason. One review defect (the §1 first-recount delta fragment scoping) was found in TL review and fixed by the worker in a follow-up turn on the same lane.
+> - TL disposition of the honest open items: the b6101d0 production deploy + the live spot-check (re-walk R3's checks 1/2/2b/2c/3/4a-4d against the Vercel production URL) execute at the 2026-10-06 19:08Z quota reset — the follow-up obligation recorded in §4.9.4; the R3 residuals stay on the ledger (R1 the per-demand procurement stub — the last onSurfaceEvent () => undefined — is the next minimal fix; R2 cosmetic search-label drift; R3 the typed-CONFIRM gate unexercisable for hardware-capability reasons; R4 demo-tier by-design; R5 the O2 side defects); blocker 10's by-design label is accepted as the honest disclosure.
+> - TL signature + timestamp: FleetOS Tech Lead (replay orchestration) — 2026-10-05T21:55Z.
