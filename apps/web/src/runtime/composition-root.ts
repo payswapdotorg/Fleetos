@@ -95,14 +95,26 @@ export const SERVER_SESSION_ROUTES = Object.freeze({
 export const SERVER_ENROLLMENT_ROUTES = Object.freeze({
   /** POST: issue an enrollment code (the REAL boundary). */
   issue: "/api/enrollment/codes" as const,
-  /** POST: redeem an enrollment code (the REAL boundary). */
+  /** POST: redeem an enrollment code OR a join code (the REAL boundary). */
   redeem: "/api/enrollment/redeem" as const,
+  /** DELETE: revoke an enrollment code (W147 — the "Disable this code…" path). */
+  revoke: "/api/enrollment/codes" as const,
 } as const);
 
 /** The frozen server-tier workspace-creation route (the deployed driver, W144). */
 export const SERVER_WORKSPACE_ROUTES = Object.freeze({
   /** POST: create a workspace + founder session (the REAL identity boundary). */
   create: "/api/workspace" as const,
+} as const);
+
+/**
+ * W147 — the frozen server-tier workspace-invitation route (the deployed
+ * driver). POST issues a one-time join code (verifier-only persistence;
+ * the code is returned exactly once for display).
+ */
+export const SERVER_INVITATION_ROUTES = Object.freeze({
+  /** POST: issue a workspace-join code (the REAL identity boundary). */
+  issue: "/api/workspace/invitations" as const,
 } as const);
 
 /** The frozen server-tier device route paths (the deployed driver, W145). */
@@ -393,4 +405,113 @@ export function sessionDriverDescription(): string {
     return `Server driver (${deploymentTier()}): sessions resolve through ${SERVER_SESSION_ROUTES.resolve} (httpOnly cookie); enrollment through ${SERVER_ENROLLMENT_ROUTES.issue} + ${SERVER_ENROLLMENT_ROUTES.redeem}.`;
   }
   return `Local driver (${deploymentTier()}): sessions resolve through the localStorage seam (the W101/W121 browser tier); enrollment through the install-center's local boundary.`;
+}
+
+// ---------------------------------------------------------------------------
+// W147 — the server-tier invitation + join fetch helpers (the deployed path)
+// ---------------------------------------------------------------------------
+
+/** The server-tier invitation-issuance success body (the display-once code). */
+export interface ServerInvitationIssuance {
+  readonly ok: true;
+  readonly invitationId: string;
+  readonly code: string;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly workspaceName: string;
+}
+
+/** The server-tier invitation-issuance result (success | refusal). */
+export type ServerInvitationResult = ServerInvitationIssuance | ServerSessionRefusal;
+
+/**
+ * W147 — POST /api/workspace/invitations — issue a workspace-join code
+ * over the httpOnly-cookie plane (the inviter's operator session). The
+ * raw code is returned exactly once for display. FAIL-CLOSED.
+ */
+export async function serverIssueInvitation(
+  fetchImpl: typeof fetch,
+): Promise<ServerInvitationResult> {
+  try {
+    const response = await fetchImpl(SERVER_INVITATION_ROUTES.issue, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json", "accept": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const body: unknown = await response.json().catch(() => null);
+    if (response.ok && (body as { ok?: boolean } | null)?.ok === true) {
+      const issued = body as ServerInvitationIssuance;
+      if (typeof issued.code === "string" && typeof issued.invitationId === "string") {
+        return issued;
+      }
+    }
+    const refusal = body as { reason?: string; message?: string; explanation?: string } | null;
+    return {
+      ok: false,
+      reason: typeof refusal?.reason === "string" ? refusal.reason : "unknown_refusal",
+      message: typeof refusal?.message === "string"
+        ? refusal.message
+        : typeof refusal?.explanation === "string"
+          ? refusal.explanation
+          : "The invitation refused.",
+    };
+  } catch {
+    return {
+      ok: false,
+      reason: "server_unreachable",
+      message: "The invitation endpoint could not be reached.",
+    };
+  }
+}
+
+/** The server-tier join input (the deployed driver's POST body for /api/enrollment/redeem). */
+export interface ServerJoinInput {
+  readonly code: string;
+  readonly displayName: string;
+  readonly email: string;
+  readonly role: string;
+}
+
+/**
+ * W147 — POST /api/enrollment/redeem (with a join code) — the joining
+ * member redeems a workspace-join code. On success the server opens a
+ * session for the joiner in the INVITING tenant (httpOnly cookie — the
+ * joiner lands signed-in with the assigned role). FAIL-CLOSED.
+ */
+export async function serverJoinWorkspace(
+  fetchImpl: typeof fetch,
+  input: ServerJoinInput,
+): Promise<ServerSessionResolveResult> {
+  try {
+    const response = await fetchImpl(SERVER_ENROLLMENT_ROUTES.redeem, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json", "accept": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const body: unknown = await response.json().catch(() => null);
+    if (response.ok && (body as { ok?: boolean } | null)?.ok === true) {
+      const projection = body as ServerSessionProjection;
+      if (typeof projection.tenantId === "string") {
+        return projection;
+      }
+    }
+    const refusal = body as { reason?: string; message?: string; explanation?: string } | null;
+    return {
+      ok: false,
+      reason: typeof refusal?.reason === "string" ? refusal.reason : "unknown_refusal",
+      message: typeof refusal?.message === "string"
+        ? refusal.message
+        : typeof refusal?.explanation === "string"
+          ? refusal.explanation
+          : "The join refused.",
+    };
+  } catch {
+    return {
+      ok: false,
+      reason: "server_unreachable",
+      message: "The redemption endpoint could not be reached.",
+    };
+  }
 }

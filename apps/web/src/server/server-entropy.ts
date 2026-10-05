@@ -35,6 +35,22 @@ export const ENROLLMENT_CODE_BODY_LENGTH = 20 as const;
 /** The frozen enrollment-code grammar, as a regex. */
 export const ENROLLMENT_CODE_PATTERN = `${ENROLLMENT_CODE_PREFIX}[A-Z2-7]{${ENROLLMENT_CODE_BODY_LENGTH}}` as const;
 
+/**
+ * W147 — the workspace-join-code grammar (the member-invitation redemption
+ * credential). Structural twin of the enrollment-code grammar: the `joinw`
+ * prefix carries a 20-char base32 body (~100 bits). The grammar is the
+ * dispatch key for the redeem route (join codes route to the workspace
+ * lifecycle's joinWorkspace; enroll codes continue the device-enrollment
+ * path unchanged).
+ */
+export const JOIN_CODE_PREFIX = "joinw" as const;
+
+/** The join-code body length: 20 base32 chars = 100 bits (the W130 shape). */
+export const JOIN_CODE_BODY_LENGTH = 20 as const;
+
+/** The frozen join-code grammar, as a regex. */
+export const JOIN_CODE_PATTERN = `${JOIN_CODE_PREFIX}[A-Z2-7]{${JOIN_CODE_BODY_LENGTH}}` as const;
+
 /** The agent trust-token grammar prefix (opaque to the agent; a lookup key, never parsed). */
 export const TRUST_TOKEN_PREFIX = "fagt_" as const;
 
@@ -92,6 +108,11 @@ function hexOf(source: EntropySource, length: number): string {
 export interface ServerEntropy {
   /** A fresh enrollment code (W130 shape: `enrollw` + 20 base32 chars). */
   enrollmentCode(): string;
+  /**
+   * W147 — a fresh workspace-join code (the member-invitation credential;
+   * `joinw` + 20 base32 chars; structural twin of the enrollment code).
+   */
+  joinCode(): string;
   /** A fresh agent trust token (`fagt_` + 32 hex chars). */
   trustToken(): string;
   /** A fresh server correlation id (`cor_w140s` + 16 hex chars). */
@@ -110,6 +131,9 @@ export function createServerEntropy(source: EntropySource = CRYPTO_ENTROPY): Ser
     enrollmentCode(): string {
       return `${ENROLLMENT_CODE_PREFIX}${base32Of(source, ENROLLMENT_CODE_BODY_LENGTH)}`;
     },
+    joinCode(): string {
+      return `${JOIN_CODE_PREFIX}${base32Of(source, JOIN_CODE_BODY_LENGTH)}`;
+    },
     trustToken(): string {
       return `${TRUST_TOKEN_PREFIX}${hexOf(source, TRUST_TOKEN_BODY_LENGTH)}`;
     },
@@ -125,4 +149,12 @@ export function createServerEntropy(source: EntropySource = CRYPTO_ENTROPY): Ser
 /** Does the value match the frozen enrollment-code grammar? */
 export function isEnrollmentCodeShape(value: string): boolean {
   return typeof value === "string" && new RegExp(`^${ENROLLMENT_CODE_PATTERN}$`).test(value);
+}
+
+/**
+ * W147 — does the value match the frozen join-code grammar? (The dispatch
+ * key for the redeem route's member-join path.)
+ */
+export function isJoinCodeShape(value: string): boolean {
+  return typeof value === "string" && new RegExp(`^${JOIN_CODE_PATTERN}$`).test(value);
 }

@@ -87,6 +87,14 @@ function redeemRequest(tenantId: string, requestId: string, code: string, device
   });
 }
 
+/** Issue an enrollment code through the REAL boundary and return the request id + code. */
+async function issuedCode(driver: FakeDurableDriver, overrides: Readonly<Record<string, unknown>> = {}): Promise<{ readonly requestId: string; readonly code: string }> {
+  const cookie = await operatorCookie(driver);
+  const response = await issueCode(driver, cookie, overrides);
+  const body = JSON.parse(await response.text()) as Record<string, unknown>;
+  return { requestId: body["requestId"] as string, code: body["code"] as string };
+}
+
 describe("W140 enrollment issuance", () => {
   test("an operator issues a crypto-random W130-shape code, persisted verifier-only, displayed exactly once", async () => {
     const driver = await seededDriver();
@@ -183,13 +191,6 @@ describe("W140 enrollment issuance", () => {
 });
 
 describe("W140 enrollment redemption", () => {
-  async function issuedCode(driver: FakeDurableDriver, overrides: Readonly<Record<string, unknown>> = {}): Promise<{ readonly requestId: string; readonly code: string }> {
-    const cookie = await operatorCookie(driver);
-    const response = await issueCode(driver, cookie, overrides);
-    const body = JSON.parse(await response.text()) as Record<string, unknown>;
-    return { requestId: body["requestId"] as string, code: body["code"] as string };
-  }
-
   test("a valid redemption creates the REAL device record + membership + trust record", async () => {
     const driver = await seededDriver();
     const { requestId, code } = await issuedCode(driver);
@@ -330,5 +331,167 @@ describe("W140 enrollment redemption", () => {
       body: JSON.stringify({ tenantId: TENANT, requestId: "enr_x", code: "enrollwAAAAAAAAAAAAAAAAAA1", deviceId: "dev_x", adapterFamily: "windows", hardware: { manufacturer: "" } }),
     }), { ...deps, driver, entropy: createServerEntropy() });
     expect(JSON.parse(await badHardware.text()).reason).toBe("invalid_input");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// W147 — the JOIN-CODE redemption path (the member-join plane)
+// ---------------------------------------------------------------------------
+
+describe("W147 join-code redemption", () => {
+  /** Issue a join code through the invitations boundary and return it. */
+  async function issuedJoinCode(driver: FakeDurableDriver): Promise<string> {
+    const { handleIssueInvitation } = await import("../src/server/server-invitations");
+    const cookie = await operatorCookie(driver);
+    const response = await handleIssueInvitation(new Request("http://localhost/api/workspace/invitations", {
+      method: "POST",
+      headers: { cookie },
+    }), { ...deps, driver, entropy: createServerEntropy() });
+    const body = JSON.parse(await response.text()) as Record<string, unknown>;
+    return body["code"] as string;
+  }
+
+  function joinRequest(code: string, displayName: string, email: string, role: string): Request {
+    return new Request("http://localhost/api/enrollment/redeem", {
+      method: "POST",
+      body: JSON.stringify({ code, displayName, email, role }),
+    });
+  }
+
+  test("a valid join code redeems: the member lands in the INVITING tenant with the assigned role + a session cookie", async () => {
+    const driver = await seededDriver();
+    const code = await issuedJoinCode(driver);
+    const response = await handleRedeemEnrollmentCode(
+      joinRequest(code, "Grace Hopper", "grace@example.com", "service.desk"),
+      { ...deps, driver, entropy: createServerEntropy() },
+    );
+    expect(response.status).toBe(201);
+    const body = JSON.parse(await response.text()) as Record<string, unknown>;
+    expect(body["ok"]).toBe(true);
+    // The joining member lands in the INVITING tenant (TENANT — where the
+    // invitation was issued), never a caller-supplied tenant.
+    expect(body["tenantId"]).toBe(TENANT);
+    expect(body["workspaceName"]).toBe("Enroll Fleet");
+    expect(body["memberRef"]).toBe("grace@example.com");
+    expect(body["activeRole"]).toBe("service.desk");
+    expect(body["assignedRoles"]).toEqual(["service.desk"]);
+    // The session cookie is set (httpOnly — the joiner lands signed-in).
+    const setCookie = response.headers.get("set-cookie");
+    expect(setCookie).not.toBeNull();
+    expect(setCookie).toContain("fleetos_session=");
+    expect(setCookie).toContain("HttpOnly");
+
+    // The membership is durable: the joining principal exists in TENANT.
+    const scoped = await createRequestScopedRecordStore({ driver, tenants: [TENANT] });
+    const { createDurablePrincipalRepository } = await import("@fleetos/identity");
+    const principals = createDurablePrincipalRepository(scoped.store);
+    const { makeTenantContext } = await import("@fleetos/identity");
+    const membership = principals
+      .listPrincipals(makeTenantContext(asTenantId(TENANT), asCorrelationId("cor_w147join01")))
+      .find((p) => p.kind === "user" && p.memberRef === "grace@example.com");
+    expect(membership).toBeDefined();
+    expect(membership?.displayName).toBe("Grace Hopper");
+
+    // The invitation is marked USED (single-use).
+    const invRows = driver.allRows("fleetos_workspace_invitations");
+    expect(invRows).toHaveLength(1);
+    expect(invRows[0]?.["used_at"]).not.toBeNull();
+    expect(invRows[0]?.["used_by"]).not.toBeNull();
+  });
+
+  test("an unknown join code is the explicit unknown_code (never a silent empty alert)", async () => {
+    const driver = await seededDriver();
+    // A code that MATCHES the join grammar (joinw + 20 base32 chars) but
+    // doesn't resolve to any invitation — the explicit unknown_code.
+    const response = await handleRedeemEnrollmentCode(
+      joinRequest("joinwBBBBBBBBBBBBBBBBBBBB", "Eve", "eve@example.com", "employee"),
+      { ...deps, driver, entropy: createServerEntropy() },
+    );
+    expect(response.status).toBe(403);
+    const body = JSON.parse(await response.text()) as Record<string, unknown>;
+    expect(body["reason"]).toBe("unknown_code");
+    expect(body["explanation"]).toContain("does not match any workspace");
+    // No membership was created by the refusal.
+    expect(driver.allRows("fleetos_workspace_invitations")).toHaveLength(0);
+  });
+
+  test("the device-enrollment path is unchanged: an enroll code continues to the device handler (the dispatch is grammar-keyed)", async () => {
+    const driver = await seededDriver();
+    const { requestId, code } = await issuedCode(driver);
+    // An enroll-code redemption (with deviceId/adapterFamily/hardware) still
+    // works byte-identically — the join-code dispatch does NOT shift the
+    // device-enrollment path.
+    const response = await handleRedeemEnrollmentCode(redeemRequest(TENANT, requestId, code, "dev_w147device050"), { ...deps, driver, entropy: createServerEntropy() });
+    expect(response.status).toBe(201);
+    const body = JSON.parse(await response.text()) as Record<string, unknown>;
+    expect(body["deviceId"]).toBe("dev_w147device050");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// W147 — the ENROLLMENT-CODE revocation path (DELETE /api/enrollment/codes)
+// ---------------------------------------------------------------------------
+
+describe("W147 enrollment-code revocation", () => {
+  async function revokeCode(driver: FakeDurableDriver, cookie: string, requestId: string): Promise<Response> {
+    const { handleRevokeEnrollmentCode } = await import("../src/server/server-enrollment");
+    return handleRevokeEnrollmentCode(new Request("http://localhost/api/enrollment/codes", {
+      method: "DELETE",
+      headers: { cookie },
+      body: JSON.stringify({ requestId }),
+    }), { ...deps, driver, entropy: createServerEntropy() });
+  }
+
+  test("an operator revokes a pending enrollment code (the 'Disable this code…' path)", async () => {
+    const driver = await seededDriver();
+    const cookie = await operatorCookie(driver);
+    const { requestId, code } = await issuedCode(driver);
+    const response = await revokeCode(driver, cookie, requestId);
+    expect(response.status).toBe(200);
+    const body = JSON.parse(await response.text()) as Record<string, unknown>;
+    expect(body["ok"]).toBe(true);
+    expect(body["status"]).toBe("revoked");
+    expect(body["revokedAt"]).toBe(NOW);
+
+    // The durable record reflects the revoked status.
+    const row = driver.findRow("fleetos_enrollment_requests", { tenant_id: TENANT, request_id: requestId });
+    expect(row?.["status"]).toBe("revoked");
+    expect(row?.["revoked_at"]).toBe(NOW);
+
+    // A subsequent redemption of the revoked code (with the SAME code that
+    // was issued) is code_revoked — the revocation is durable.
+    const redeemAgain = await handleRedeemEnrollmentCode(redeemRequest(TENANT, requestId, code, "dev_w147device051"), { ...deps, driver, entropy: createServerEntropy() });
+    expect(JSON.parse(await redeemAgain.text()).reason).toBe("code_revoked");
+  });
+
+  test("the revocation refusal matrix (fail-closed)", async () => {
+    const driver = await seededDriver();
+    const adminCookie = await operatorCookie(driver);
+    const viewerCookie = await operatorCookie(driver, TENANT, "viewer@example.com", "viewer-pass-12345");
+
+    // No session cookie.
+    const { handleRevokeEnrollmentCode } = await import("../src/server/server-enrollment");
+    const none = await handleRevokeEnrollmentCode(new Request("http://localhost/api/enrollment/codes", {
+      method: "DELETE",
+      body: JSON.stringify({ requestId: "enr_x" }),
+    }), { ...deps, driver, entropy: createServerEntropy() });
+    expect(JSON.parse(await none.text()).reason).toBe("unauthenticated");
+
+    // A viewer role cannot revoke.
+    const { requestId } = await issuedCode(driver);
+    const viewer = await revokeCode(driver, viewerCookie, requestId);
+    expect(viewer.status).toBe(403);
+    expect(JSON.parse(await viewer.text()).reason).toBe("interaction_forbidden");
+
+    // An unknown requestId is code_not_found.
+    const unknown = await revokeCode(driver, adminCookie, "enr_unknown0001");
+    expect(JSON.parse(await unknown.text()).reason).toBe("code_not_found");
+
+    // A fulfilled code cannot be revoked (it's already redeemed).
+    const { requestId: fulfilledId, code: fulfilledCode } = await issuedCode(driver);
+    const redeemed = await handleRedeemEnrollmentCode(redeemRequest(TENANT, fulfilledId, fulfilledCode, "dev_w147device060"), { ...deps, driver, entropy: createServerEntropy() });
+    expect(redeemed.status).toBe(201);
+    const fulfilledRevoke = await revokeCode(driver, adminCookie, fulfilledId);
+    expect(JSON.parse(await fulfilledRevoke.text()).reason).toBe("code_already_used");
   });
 });

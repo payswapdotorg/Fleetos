@@ -40,9 +40,16 @@
  */
 
 import type { TenantId } from "@fleetos/contracts";
-import { asDeviceId, asTenantId } from "@fleetos/contracts";
+import { asDeviceId, asTenantId, asUserId, asCorrelationId } from "@fleetos/contracts";
 import {
   createDurablePrincipalRepository,
+  createDurableTenantRepository,
+  createDurableRoleAssignmentRepository,
+  createDurableInvitationRepository,
+  createDurableSessionRepository,
+  createWorkspaceLifecycleService,
+  createSessionService,
+  joinCodeHash,
   makeAgentPrincipal,
   makeTenantContext,
 } from "@fleetos/identity";
@@ -57,8 +64,10 @@ import { parseJsonBody, jsonResponse, refusalBody, stringField, canonicalJson, f
 import { sha256Hex } from "../runtime/sha256";
 import type { ServerHandlerDeps, ServerRequestContext } from "./server-context";
 import { openServerRequest, flushOrRefuse } from "./server-context";
-import { resolveOperatorSessionInContext, parseSessionCookie } from "./server-sessions";
+import { resolveOperatorSessionInContext, parseSessionCookie, sessionCookie, SERVER_SESSION_TTL_SECONDS } from "./server-sessions";
 import { SERVER_ENROLLMENT_AUDIT_ACTIONS } from "./server-audit";
+import { isJoinCodeShape } from "./server-entropy";
+import type { ServerSessionProjection } from "../runtime/composition-root";
 
 // ---------------------------------------------------------------------------
 // The frozen vocabulary (structural twins — proven equal by test)
@@ -108,6 +117,18 @@ export const SERVER_ENROLLMENT_REFUSAL_EXPLANATIONS: Readonly<Record<string, str
     "Enrollment codes cannot be redeemed in this workspace scope. Use the workspace the code was issued for.",
   invalid_input:
     "The enrollment request is malformed. Check the workspace, code, device identity and hardware claims, then try again.",
+  // W147 — the join-code redemption explanations (the member-join path;
+  // the frozen words mirror the LOCAL runtime's ProductAuthRefusal
+  // explanations so the client renders them verbatim — never a silent
+  // empty alert).
+  unknown_code:
+    "That join code does not match any workspace you can join from here. Check the code for typos, then ask the inviting workspace's administrator for a fresh invitation.",
+  expired_code:
+    "That join code has expired. Ask an administrator for a fresh invitation.",
+  already_used:
+    "That join code has already been redeemed — each code joins exactly one member. Ask an administrator for a fresh invitation.",
+  membership_already_exists:
+    "You are already a member of this workspace. Sign in with your credentials instead of joining again.",
 });
 
 /**
@@ -164,7 +185,14 @@ export type ServerEnrollmentRefusal =
   | "enrollment_refused_by_policy"
   | "server_store_unavailable"
   | "server_store_write_failed"
-  | "server_entropy_unavailable";
+  | "server_entropy_unavailable"
+  // W147 — the join-code redemption refusals (the member-join path; the
+  // reason vocabulary mirrors the LOCAL runtime's ProductAuthRefusal so
+  // the client renders the frozen explanations verbatim).
+  | "unknown_code"
+  | "expired_code"
+  | "already_used"
+  | "membership_already_exists";
 
 /** The refusal body: machine reason + frozen human explanation. */
 interface EnrollmentRefusalBody {
@@ -486,9 +514,20 @@ export async function handleRedeemEnrollmentCode(
   const body = await parseJsonBody(request);
   if (!body.ok) return body.response;
   const source = body.body as Record<string, unknown>;
+
+  // W147 — the JOIN-CODE dispatch: a code matching the `joinw…` grammar
+  // routes to the member-join path (the workspace lifecycle's
+  // joinWorkspace). The existing device-enrollment path (enroll codes)
+  // continues unchanged below — the code's grammar is the sole dispatch
+  // key, so no existing device-redemption behavior shifts by one byte.
+  const codePeek = stringField(source, "code");
+  if (codePeek !== undefined && isJoinCodeShape(codePeek)) {
+    return handleRedeemJoinCode(source, deps);
+  }
+
   const tenantId = stringField(source, "tenantId");
   const requestId = stringField(source, "requestId");
-  const code = stringField(source, "code");
+  const code = codePeek;
   const deviceId = stringField(source, "deviceId");
   const adapterFamily = stringField(source, "adapterFamily");
   const presenterRole = stringField(source, "presenterRole");
@@ -748,6 +787,277 @@ export async function handleRedeemEnrollmentCode(
     return jsonResponse(redemption, 201);
   } catch {
     return refuseEnrollment("server_store_unavailable", 503, "the redemption could not be completed; nothing was recorded");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// W147 — the JOIN-CODE redemption path (the member-join plane)
+// ---------------------------------------------------------------------------
+
+/**
+ * The join-code redemption path (W147): a joining member presents a
+ * workspace-join code (the `joinw…` grammar) plus their display name,
+ * email and chosen role. The workspace lifecycle's `joinWorkspace`
+ * resolves the TARGET tenant from the invitation (never caller-supplied),
+ * creates the membership + role assignments in the target tenant, and
+ * marks the invitation used. On success a session opens for the joiner
+ * (httpOnly cookie — exactly the sign-in response's shape, so the client
+ * lands signed-in in the inviting tenant).
+ *
+ * Fail-closed on every refusal path; the reason vocabulary mirrors the
+ * LOCAL runtime's `ProductAuthRefusal` so the client renders the frozen
+ * explanations verbatim — never a silent empty alert.
+ *
+ * INVITATION RESOLUTION SCOPE: the request-scoped store ALWAYS preloads
+ * the `fleetos_workspace_invitations` table across ALL tenants (the
+ * frozen seam's system-level invitation index), so the cross-tenant
+ * `findInvitationByCodeHash` resolves regardless of the opener's scoped
+ * tenant list. The joiner's principal + role assignments write to the
+ * TARGET tenant's partition (created on-demand by the store — the same
+ * pattern `handleCreateWorkspace` uses for the founder's first writes).
+ */
+async function handleRedeemJoinCode(
+  source: Record<string, unknown>,
+  deps: ServerHandlerDeps,
+): Promise<Response> {
+  const code = stringField(source, "code");
+  const displayName = stringField(source, "displayName");
+  const email = stringField(source, "email");
+  const role = stringField(source, "role");
+  if (code === undefined || displayName === undefined || email === undefined || role === undefined) {
+    return refuseEnrollment("invalid_input", 400, "code, displayName, email and role are required for join redemption");
+  }
+
+  // Phase 1 — resolve the invitation's target tenant through a scratch
+  // request (the invitation table is ALWAYS preloaded across ALL tenants,
+  // so the code-hash lookup resolves regardless of the opener's scoped
+  // tenant list). Read-only: no flush, no writes.
+  const scratchOpened = await openServerRequest(["tnt_scratch_join"], deps);
+  if (!scratchOpened.ok) return scratchOpened.response;
+  const scratchContext = scratchOpened.context;
+  const scratchInvitations = createDurableInvitationRepository(scratchContext.store.store);
+  const targetHash = joinCodeHash(code);
+  const invitation = scratchInvitations.findInvitationByCodeHash(targetHash);
+  if (invitation === undefined) {
+    return refuseEnrollment("unknown_code", 403);
+  }
+  // Fail-closed on expiry (mirroring joinWorkspace's own check).
+  const expiryMs = Date.parse(invitation.expiresAt);
+  if (!Number.isNaN(expiryMs) && Date.parse(scratchContext.deps.now) >= expiryMs) {
+    return refuseEnrollment("expired_code", 403);
+  }
+  if (invitation.usedAt !== null) {
+    return refuseEnrollment("already_used", 403);
+  }
+  const targetTenant = invitation.tenantId as string;
+
+  // Phase 2 — open a request scoped to the TARGET tenant (its
+  // fleetos_tenants + fleetos_principals + fleetos_role_assignments
+  // partitions are preloaded, so joinWorkspace's getWorkspace resolves
+  // and the membership idempotency check reads the real partition).
+  const opened = await openServerRequest([targetTenant], deps);
+  if (!opened.ok) return opened.response;
+  const context = opened.context;
+
+  try {
+    const store = context.store.store;
+    const workspaceService = createWorkspaceLifecycleService({
+      tenants: createDurableTenantRepository(store),
+      principals: createDurablePrincipalRepository(store),
+      assignments: createDurableRoleAssignmentRepository(store),
+      invitations: createDurableInvitationRepository(store),
+      auditSink: context.audit.identitySink,
+    });
+
+    const joined = workspaceService.joinWorkspace({
+      now: context.deps.now,
+      code,
+      userId: asUserId(email),
+      displayName,
+      roles: [role],
+      correlationId: context.deps.correlationId,
+    });
+    if (!joined.ok) {
+      const reason: ServerEnrollmentRefusal =
+        joined.reason === "invitation_unknown"
+          ? "unknown_code"
+          : joined.reason === "invitation_expired"
+            ? "expired_code"
+            : joined.reason === "invitation_already_used"
+              ? "already_used"
+              : joined.reason === "membership_already_exists"
+                ? "membership_already_exists"
+                : "invalid_input";
+      const flushed = await flushOrRefuse(context);
+      if (!flushed.ok) return flushed.response;
+      return refuseEnrollment(reason, reason === "invalid_input" ? 400 : 403);
+    }
+
+    // Open a session for the joiner in the TARGET tenant (httpOnly cookie —
+    // the joiner lands signed-in, exactly like the founder after workspace
+    // creation). The join code IS the credential (no password on join —
+    // the LOCAL runtime matches this behavior; password-setting is a
+    // separate flow, out of W147's scope).
+    const sessionService = createSessionService({
+      sessions: createDurableSessionRepository(store),
+      auditSink: context.audit.identitySink,
+      generators: {
+        token: () => `fst_w147j${context.deps.entropy.hex(19)}`,
+        sessionId: () => `ses_w147j${context.deps.entropy.hex(16)}`,
+      },
+    });
+    const principal = {
+      kind: "user" as const,
+      tenantId: joined.tenantId,
+      userId: asUserId(email),
+      principalId: joined.principalId,
+    };
+    const open = sessionService.openSession({
+      now: context.deps.now,
+      ttlSeconds: SERVER_SESSION_TTL_SECONDS,
+      principal,
+      initialActiveRole: role,
+      issuer: "web.server-control-plane",
+      correlationId: context.deps.correlationId,
+    });
+    if (!open.ok) {
+      return refuseEnrollment("server_store_unavailable", 503, "the joiner's session could not be opened");
+    }
+
+    const flushed = await flushOrRefuse(context);
+    if (!flushed.ok) return flushed.response;
+
+    const projection: ServerSessionProjection = frozen({
+      ok: true as const,
+      tenantId: joined.tenantId as string,
+      workspaceName: joined.workspace.name,
+      principalId: joined.principalId,
+      memberRef: email,
+      sessionId: open.session.sessionId,
+      expiresAt: open.session.expiresAt,
+      assignedRoles: joined.assignments.map((a) => a.roleName),
+      activeRole: role,
+    });
+    return jsonResponse(projection, 201, {
+      "set-cookie": sessionCookie(
+        `${joined.tenantId as string}::${open.session.token}`,
+        SERVER_SESSION_TTL_SECONDS,
+      ),
+    });
+  } catch {
+    return refuseEnrollment("server_store_unavailable", 503, "the join redemption could not be completed; nothing was recorded");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// W147 — the ENROLLMENT-CODE revocation path (DELETE /api/enrollment/codes)
+// ---------------------------------------------------------------------------
+
+/** The revocation success body. */
+interface EnrollmentRevocationBody {
+  readonly ok: true;
+  readonly requestId: string;
+  readonly status: string;
+  readonly revokedAt: string;
+}
+
+/**
+ * DELETE /api/enrollment/codes — revoke a pending enrollment code
+ * (operator session + operator-and-above role required). Sets the
+ * request's status to `revoked`, records the revocation instant + reason,
+ * and audits the transition. The display-once law is unaffected (the code
+ * was already shown or hidden by the issuer; revocation is the operator's
+ * destructive disable).
+ *
+ * This closes the J2 "Disable this code… INERT" half of the residual
+ * blocker (sim-c-report §4.8 #1): the disable control now routes through
+ * the REAL boundary with explicit feedback.
+ */
+export async function handleRevokeEnrollmentCode(
+  request: Request,
+  deps: ServerHandlerDeps = {},
+): Promise<Response> {
+  const body = await parseJsonBody(request);
+  if (!body.ok) return body.response;
+  const source = body.body as Record<string, unknown>;
+  const requestId = stringField(source, "requestId");
+  if (requestId === undefined) {
+    return refuseEnrollment("invalid_input", 400, "requestId is required");
+  }
+
+  const cookieTenant = parseSessionCookie(request)?.tenantId;
+  if (cookieTenant === undefined) {
+    return refuseEnrollment("unauthenticated", 401, "no server session cookie is present");
+  }
+  const opened = await openServerRequest([cookieTenant], deps);
+  if (!opened.ok) return opened.response;
+  const context = opened.context;
+
+  try {
+    const operator = resolveOperatorSessionInContext(context, request);
+    if (!operator.ok) {
+      return refuseEnrollment("unauthenticated", 401, operator.reason);
+    }
+    // The W130 permission law (mirrored from issuance): operator-and-above
+    // roles may revoke; viewer roles receive the frozen denial.
+    const mayRevoke = operator.session.assignedRoles.some((role) => {
+      const experience = experienceRoleFromAssignment(role);
+      return experience !== null && canInteract(operatorRoleFor(experience), "propose").ok;
+    });
+    if (!mayRevoke) {
+      return jsonResponse(
+        refusalBody("interaction_forbidden", "Your active role cannot disable enrollment codes. Ask a workspace operator to disable it for you."),
+        403,
+      );
+    }
+
+    const ctx = makeTenantContext(asTenantId(operator.session.tenantId), context.deps.correlationId);
+    const store = context.store.store;
+    const storedRow = store.get(ctx, "fleetos_enrollment_requests", requestId);
+    if (storedRow === undefined) {
+      return refuseEnrollment("code_not_found", 404);
+    }
+    const record = recordFromRow(storedRow.row);
+    if (record === undefined) {
+      return refuseEnrollment("code_not_found", 404);
+    }
+    // A fulfilled or already-revoked code refuses machine-stably (no
+    // double-transition; the operator sees the honest current state).
+    if (record.status === "fulfilled") {
+      return refuseEnrollment("code_already_used", 409, "this enrollment code was already redeemed and cannot be disabled");
+    }
+    if (record.status === "revoked") {
+      return refuseEnrollment("code_revoked", 410, "this enrollment code is already revoked");
+    }
+
+    store.put(ctx, "fleetos_enrollment_requests", requestId, frozen({
+      ...storedRow.row,
+      status: "revoked",
+      revoked_at: context.deps.now,
+      revoked_reason: "operator revocation",
+    }));
+    context.audit.appendServerRecord({
+      tenantId: asTenantId(operator.session.tenantId),
+      action: SERVER_ENROLLMENT_AUDIT_ACTIONS.revoked,
+      subject: requestId,
+      occurredAt: context.deps.now,
+      correlationId: context.deps.correlationId,
+      actorPrincipalId: operator.session.principalId,
+      details: { requestId, previousStatus: record.status },
+    });
+
+    const flushed = await flushOrRefuse(context);
+    if (!flushed.ok) return flushed.response;
+
+    const revocation: EnrollmentRevocationBody = frozen({
+      ok: true as const,
+      requestId,
+      status: "revoked",
+      revokedAt: context.deps.now,
+    });
+    return jsonResponse(revocation, 200);
+  } catch {
+    return refuseEnrollment("server_store_unavailable", 503, "the revocation could not be completed; nothing was recorded");
   }
 }
 

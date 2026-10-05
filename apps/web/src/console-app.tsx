@@ -1013,6 +1013,71 @@ function renderRoute(input: RenderInput): JSX.Element {
           );
           return;
         }
+
+        // W147 — the DEPLOYED tier routes through the REAL server boundary
+        // (POST /api/enrollment/codes). The server issues a crypto-random
+        // W130-shape code, persists verifier-only, and returns the code +
+        // request id + created/expires instants for display-once. The
+        // demo/development tier keeps the LOCAL fixture path (unchanged).
+        if (isDeployedTier() && !isDemoTenant(input.sessionTenantId)) {
+          void (async (): Promise<void> => {
+            try {
+              const response = await fetch("/api/enrollment/codes", {
+                method: "POST",
+                credentials: "include",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({
+                  ownershipKind: input.installState.ownershipKind,
+                }),
+              });
+              const body: unknown = await response.json().catch(() => null);
+              if (response.ok && (body as { ok?: boolean } | null)?.ok === true) {
+                const issued = body as {
+                  readonly requestId: string;
+                  readonly code: string;
+                  readonly ownershipKind: string;
+                  readonly ownershipClass: string;
+                  readonly allowedRoles: readonly string[];
+                  readonly createdAt: string;
+                  readonly expiresAt: string;
+                };
+                const record: EnrollmentRequestLike = {
+                  requestId: issued.requestId,
+                  tenantId: asTenantId(input.sessionTenantId),
+                  ownershipKind: issued.ownershipKind,
+                  ownershipClass: issued.ownershipClass,
+                  allowedRoles: issued.allowedRoles,
+                  createdAt: issued.createdAt,
+                  expiresAt: issued.expiresAt,
+                  status: "pending",
+                };
+                input.setInstallState(
+                  recordEnrollmentRequest(input.installState, record, issued.code),
+                );
+              } else {
+                const reason = (body as { reason?: string } | null)?.reason ?? `http_${response.status}`;
+                const explanation = (body as { explanation?: string; message?: string } | null)?.explanation ??
+                  (body as { message?: string } | null)?.message ??
+                  "The enrollment boundary refused this request.";
+                input.setInstallState(
+                  recordInstallRefusal(input.installState, {
+                    reason: reason as never,
+                    explanation,
+                  }),
+                );
+              }
+            } catch {
+              input.setInstallState(
+                recordInstallRefusal(input.installState, {
+                  reason: "enrollment_refused",
+                  explanation: "The server enrollment endpoint could not be reached.",
+                }),
+              );
+            }
+          })();
+          return;
+        }
+
         const created = createInstallEnrollmentCode({
           tenantId: asTenantId(input.sessionTenantId),
           requestId: `enr_w101_${nextEnrollmentRequestId()}`,
@@ -1039,7 +1104,7 @@ function renderRoute(input: RenderInput): JSX.Element {
           state={input.installState}
           release={input.release}
           journey={undefined}
-          now="2026-10-01T00:00:00Z"
+          now={isDeployedTier() && !isDemoTenant(input.sessionTenantId) ? new Date().toISOString() : "2026-10-01T00:00:00Z"}
           expiringWithinMs={3_600_000}
           deviceId={undefined}
           onPlatformChange={(platform, arch) =>
@@ -1049,7 +1114,58 @@ function renderRoute(input: RenderInput): JSX.Element {
           onCreateEnrollmentCode={onCreateCode}
           onDismissCode={() => input.setInstallState(dismissEnrollmentCode(input.installState))}
           onCopyCommand={(command) => input.onCopyCommand(command)}
-          onRevokeIntent={() => undefined}
+          onRevokeIntent={() => {
+            // W147 — "Disable this code…" routes through the REAL server
+            // boundary on the deployed tier (DELETE /api/enrollment/codes).
+            // The demo/development tier keeps the inert no-op (the LOCAL
+            // fixture has no server-side record to revoke).
+            if (!isDeployedTier() || isDemoTenant(input.sessionTenantId)) return;
+            const requestId = input.installState.request?.record.requestId;
+            if (requestId === undefined) return;
+            void (async (): Promise<void> => {
+              try {
+                const response = await fetch("/api/enrollment/codes", {
+                  method: "DELETE",
+                  credentials: "include",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ requestId }),
+                });
+                const body: unknown = await response.json().catch(() => null);
+                if (response.ok && (body as { ok?: boolean } | null)?.ok === true) {
+                  // The server revoked the code; reflect the state change
+                  // explicitly (dismiss the one-time display + show the
+                  // honest "disabled" feedback — never a silent no-op).
+                  input.setInstallState(
+                    recordInstallRefusal(
+                      dismissEnrollmentCode(input.installState),
+                      {
+                        reason: "code_revoked",
+                        explanation: "The enrollment code was disabled by the operator. Create a new enrollment request if this device should enroll.",
+                      },
+                    ),
+                  );
+                } else {
+                  const explanation = (body as { explanation?: string; message?: string } | null)?.explanation ??
+                    (body as { message?: string } | null)?.message ??
+                    "The enrollment code could not be disabled.";
+                  const reason = (body as { reason?: string } | null)?.reason ?? "enrollment_refused";
+                  input.setInstallState(
+                    recordInstallRefusal(input.installState, {
+                      reason: reason as never,
+                      explanation,
+                    }),
+                  );
+                }
+              } catch {
+                input.setInstallState(
+                  recordInstallRefusal(input.installState, {
+                    reason: "enrollment_refused",
+                    explanation: "The server enrollment endpoint could not be reached.",
+                  }),
+                );
+              }
+            })();
+          }}
           onDismissRefusal={() => input.setInstallState(dismissInstallRefusal(input.installState))}
           onOpenDoctor={() => navigate({ area: "device", view: "doctor" })}
         />
