@@ -99,7 +99,7 @@ import type {
 } from "../src/index";
 
 // Re-exported for the binding tests (test-scope cross-lane use).
-export { createInMemoryRecoveryCaseStore, createInMemoryDestructiveRequestStore } from "@fleetos/recovery";
+export { createInMemoryRecoveryCaseStore, createInMemoryDestructiveRequestStore, transitionRecoveryCase } from "@fleetos/recovery";
 export { createInMemoryActionStore } from "@fleetos/actions";
 
 /** A fixed, well-known anchor for all test timestamps. */

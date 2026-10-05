@@ -191,6 +191,28 @@ export const CONSOLE_CSS: string = `/* FleetOS console — local design tokens (
 .fos-timeline__label { font-size: 0.875rem; font-weight: 500; }
 .fos-timeline__detail { font-size: 0.8125rem; color: var(--text-secondary); }
 
+/* W145 — the mobile priority-card roster. When the shell composes the
+   roster narrow (mobileRoster — the viewport signal it owns), the wide
+   (993px) table is REPLACED by this priority card list over the same
+   real runtime state; the cards are width-bounded (min-width: 0 +
+   max-width: 100% + overflow-wrap: anywhere) so NO horizontal page
+   scroll can occur at 390x844. The desktop table composition is
+   unchanged (the screen renders exactly one layout per composition). */
+.fos-fleet-layout { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+.fos-card-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+.fos-card-list__item { background: var(--surface-raised); border: 1px solid var(--hairline); border-radius: var(--radius); box-shadow: var(--shadow); padding: 0.9rem 1rem; min-width: 0; max-width: 100%; display: flex; flex-direction: column; gap: 0.45rem; overflow-wrap: anywhere; }
+.fos-card-list__head { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.fos-card-list__title { display: flex; flex-direction: column; gap: 0.15rem; align-items: flex-start; min-width: 0; }
+.fos-card-list__facts { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; font-size: 0.8125rem; color: var(--text-secondary); }
+.fos-card-list__fact { display: flex; gap: 0.45rem; min-width: 0; }
+.fos-card-list__fact dt { color: var(--text-muted); flex: none; }
+.fos-card-list__fact dd { margin: 0; overflow-wrap: anywhere; min-width: 0; }
+/* The mobile field layout: at narrow viewports the screen itself
+   compacts (padding + gaps tighten). */
+@media (max-width: 480px) {
+  .fos-fleet-layout .fos-card-list { gap: 0.6rem; }
+}
+
 /* Form fields */
 .fos-field { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
 .fos-field > label { font-size: 0.8125rem; font-weight: 500; color: var(--text-primary); }

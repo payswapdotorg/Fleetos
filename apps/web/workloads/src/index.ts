@@ -86,6 +86,22 @@ export * from "./ui/primitives";
 // fully controlled)
 export * from "./screens/workload-planning-screen";
 
+// W143 — the honest lane-phase vocabulary (loading/empty/ready/blocked/
+// approval-required/error/unsupported) + the ScreenPhase mapping
+export * from "./lane-phase";
+
+// W143 — the WORKLOAD PLANNING JOURNEY view-model: the six-stage walk
+// (fleet inventory -> workload proposal -> recommendation review ->
+// decision -> plan -> evidence), every stage derived from real
+// runtime state.
+export * from "./planning-journey";
+
+// W143 — the WORKLOAD PLANNING RUNTIME FEED: the composition function
+// that carries the runtime state contract into the planning screen's
+// phase props (the listing + the selected detail + the recommendation
+// display + the LOCK 12 resource linkage + the six-stage journey).
+export * from "./planning-feed";
+
 // Module markers (the workspace convention).
 export const MODULE_NAME = "web-workloads" as const;
 export const MODULE_VERSION = "0.1.0" as const;

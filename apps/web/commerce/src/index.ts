@@ -120,6 +120,22 @@ export * from "./screens/maintenance-screen";
 export * from "./screens/connectivity-screen";
 export * from "./screens/communication-screen";
 
+// W143 — the honest lane-phase vocabulary (loading/empty/ready/blocked/
+// approval-required/error/unsupported) + the ScreenPhase mapping
+export * from "./lane-phase";
+
+// W143 — the PROCUREMENT CASE JOURNEY view-model: the seven-stage walk
+// (need -> case -> vendor context -> authorization -> decision ->
+// order -> evidence), every stage derived from real runtime state.
+export * from "./procurement-journey";
+
+// W143 — the PROCUREMENT CASE RUNTIME FEED: the composition function
+// that carries the runtime state contract into the procurement screen's
+// phase props (the demand list + the selected detail + the vendor
+// matching + the quote-ledger display + the LOCK 14 aggregated orders
+// + the seven-stage journey).
+export * from "./procurement-feed";
+
 // Module markers (the workspace convention).
 export const MODULE_NAME = "web-commerce" as const;
 export const MODULE_VERSION = "0.1.0" as const;

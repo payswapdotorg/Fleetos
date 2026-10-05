@@ -56,6 +56,22 @@ export * from "./lifecycle";
 // D3 — the Device Doctor detail view-model + the panel state machine
 export * from "./doctor";
 
+// W141 — the honest lane-phase vocabulary (loading/empty/ready/blocked/
+// approval-required/error/unsupported) + the ScreenPhase mapping
+export * from "./lane-phase";
+
+// W141 — the Device Doctor JOURNEY view-model: the full nine-stage walk
+// (device -> observations -> symptoms -> diagnosis -> remediation ->
+// authorization -> action -> result -> evidence) with the symptom walk
+// and the remediation walk, every stage derived from real runtime state
+// (honest not-yet-observed states; never fabricated observations).
+export * from "./doctor-journey";
+
+// W141 — the Device Doctor RUNTIME FEED: the composition function that
+// carries the runtime state contract into the screen's phase props
+// (phase + lanePhase + journey + gating + dispositions).
+export * from "./doctor-feed";
+
 // D5 (W090A) — the existing-fleet enrollment journey view-model
 // (initiate -> review -> confirm -> verified, with evidence)
 export * from "./enrollment";
@@ -85,6 +101,23 @@ export * from "./screens/enrollment-screen";
 // W100A — the rendered install center screen (presentational, fully
 // controlled; the nine install-contract steps + uninstall/revoke plan)
 export * from "./screens/install-center-screen";
+
+// W145 — the DECLARED-IMPORT surface: the manual device-record entry path
+// (provenance-flagged DECLARED, never conflated with agent OBSERVED
+// records; honest duplicate handling; the same runtime state contract
+// surfaces carry the mark — roster, feeds, searches) + the record-origin
+// provenance vocabulary the whole lane marks with.
+export * from "./declared-import";
+
+// W145 — the rendered declared-import journey screen (enter -> review ->
+// confirm -> recorded, evidence-visible, fully controlled)
+export * from "./screens/declared-import-screen";
+
+// W145 — the MOBILE PRIORITY-CARD roster: the severity-first attention
+// bands + the card-list view-model over the SAME roster runtime state
+// (below 480px the wide table is replaced by the card list — no
+// horizontal page scroll at 390x844).
+export * from "./mobile-roster";
 
 // W001 placeholder markers (kept for the baseline tests; required by
 // tools/verify-skeleton.mjs and tools/check-contracts.mjs).

@@ -37,7 +37,16 @@ import type {
   DestructiveRequestViewModel,
 } from "../destructive-actions";
 import type { CaseStateMachineView, RecoveryCaseViewModel } from "../recovery-case";
+import type { RecoveryCaseJourney } from "../recovery-journey";
 import { DESTRUCTIVE_GATE_STEP_IDS } from "../destructive-actions";
+import {
+  confirmationFeedback,
+  requiredConfirmationPhrase,
+} from "../confirmation";
+import type {
+  ConfirmationRefusal,
+  DestructiveConfirmationState,
+} from "../confirmation";
 import { ConsoleStyles } from "../ui/tokens";
 import {
   AlertError,
@@ -45,8 +54,11 @@ import {
   Breadcrumb,
   Button,
   Card,
+  CheckField,
   DefinitionList,
+  Dialog,
   EmptyState,
+  Field,
   PhasePresentation,
   Skeleton,
   StatusIndicator,
@@ -103,6 +115,43 @@ export interface DestructiveActionScreenProps {
   readonly onApproveRequest: (requestId: string) => void;
   readonly onOpenCases: () => void;
   readonly onOpenFindMy: (deviceId: DeviceId) => void;
+  /**
+   * W141: the destructive-action CONFIRMATION flow (optional; the
+   * runtime composes it). The explicit-confirmation machine's state +
+   * the dispatch refusal (visible, never inferred) + the controlled
+   * dialog callbacks. When present, `onRequestAction` OPENS the
+   * confirmation review; the dispatch happens ONLY through the
+   * machine's explicit gate.
+   */
+  readonly confirmation?: DestructiveConfirmationPresentation;
+  /**
+   * W141: the case's seven-stage recovery journey (optional; the
+   * runtime feed supplies it) — signal -> case -> locate/secure
+   * decision -> authorization -> action -> evidence -> closure.
+   */
+  readonly journey?: RecoveryCaseJourney;
+}
+
+/**
+ * The confirmation flow's presentation bundle (fully controlled): the
+ * machine's state, the latest dispatch refusal, and the dialog's
+ * callbacks. Presentational only — the machine lives in the runtime.
+ */
+export interface DestructiveConfirmationPresentation {
+  /** The confirmation machine's current state. */
+  readonly state: DestructiveConfirmationState;
+  /** The latest dispatch refusal (kept visible until the next action). */
+  readonly refusal: ConfirmationRefusal | undefined;
+  /** Acknowledge the consequences (explicit step 1). */
+  readonly onAcknowledge: () => void;
+  /** Type the confirmation phrase (explicit step 2). */
+  readonly onPhraseChange: (phrase: string) => void;
+  /** Mark the explicit confirmation satisfied (the gate's transition). */
+  readonly onConfirm: () => void;
+  /** Dispatch the confirmed intent through the gated boundary. */
+  readonly onDispatch: () => void;
+  /** Cancel the open confirmation. */
+  readonly onCancel: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -474,6 +523,166 @@ function DestructiveActionCard({
 }
 
 // ---------------------------------------------------------------------------
+// W141 — the confirmation dialog + the visible feedback (never inferred)
+// ---------------------------------------------------------------------------
+
+/** The explicit-confirmation review dialog (fully controlled). */
+function ConfirmationDialog({
+  props,
+  confirmation,
+}: {
+  readonly props: DestructiveActionScreenProps;
+  readonly confirmation: DestructiveConfirmationPresentation;
+}): JSX.Element | null {
+  const state = confirmation.state;
+  if (state.kind !== "reviewing" && state.kind !== "ready_to_dispatch") return null;
+  const entry = props.actions.find((candidate) => candidate.action === state.context.action);
+  const required = requiredConfirmationPhrase(state.context);
+  const acknowledged = state.kind === "ready_to_dispatch" || (state.kind === "reviewing" && state.acknowledged);
+  const typed = state.kind === "reviewing" ? state.phrase : required;
+  return (
+    <Dialog
+      open={true}
+      title={`Confirm ${entry?.label ?? state.context.action} — explicit confirmation required`}
+      onClose={confirmation.onCancel}
+    >
+      <div className="fos-stack" style={{ gap: "0.75rem" }}>
+        <p style={{ margin: 0, fontSize: "0.875rem" }}>
+          This destructive action routes through the gated boundary: tenant scope, the active recovery case,
+          the adapter capability, the Contract Guardian evaluation, human approval where required, and
+          execution dispatch with evidence. Nothing executes from this dialog — the boundary decides.
+        </p>
+        <DefinitionList
+          entries={[
+            { term: "Action", value: <span className="fos-mono">{state.context.action}</span> },
+            { term: "Device", value: <span className="fos-mono">{state.context.deviceId as string}</span> },
+            { term: "Recovery case", value: <span className="fos-mono">{state.context.caseId}</span> },
+            {
+              term: "Expected effect",
+              value: entry?.expectedEffect ?? "—",
+            },
+            {
+              term: "Evidence required",
+              value: entry?.evidenceRequirement ?? "—",
+            },
+          ]}
+        />
+        <CheckField
+          label="I understand the expected effect and the evidence requirement"
+          description="Acknowledging the consequences is the first explicit step; the dispatch stays locked until both steps are complete."
+          checked={acknowledged}
+          onChange={confirmation.onAcknowledge}
+        />
+        <Field
+          label="Type the confirmation phrase"
+          hint={`Type exactly: ${required}`}
+          error={
+            state.kind === "reviewing" && state.acknowledged && state.phrase.length > 0 && state.phrase !== required
+              ? "The phrase does not match yet."
+              : undefined
+          }
+        >
+          {(id) => (
+            <input
+              id={id}
+              className="fos-input"
+              type="text"
+              value={typed}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event): void => confirmation.onPhraseChange(event.target.value)}
+            />
+          )}
+        </Field>
+        <div className="fos-row">
+          {state.kind === "ready_to_dispatch" ? (
+            <Button variant="danger" onClick={confirmation.onDispatch}>
+              Confirm and dispatch {entry?.label.toLowerCase() ?? state.context.action}
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={confirmation.onConfirm}>
+              Confirm the phrase
+            </Button>
+          )}
+          <Button variant="ghost" onClick={confirmation.onCancel}>
+            Cancel
+          </Button>
+        </div>
+        {confirmation.refusal !== undefined && (
+          <AlertError
+            title="The dispatch refused to proceed"
+            message={`${confirmation.refusal.reason} — ${confirmation.refusal.explanation}`}
+          />
+        )}
+      </div>
+    </Dialog>
+  );
+}
+
+/** The confirmation flow's visible feedback (a click is never inferred). */
+function ConfirmationFeedback({
+  confirmation,
+}: {
+  readonly confirmation: DestructiveConfirmationPresentation;
+}): JSX.Element | null {
+  const state = confirmation.state;
+  if (state.kind === "reviewing" || state.kind === "ready_to_dispatch") return null;
+  if (state.kind === "idle") return null;
+  const feedback = confirmationFeedback(state);
+  const semantic =
+    state.kind === "dispatched"
+      ? "succeeded"
+      : state.kind === "refused"
+        ? "failed"
+        : state.kind === "cancelled"
+          ? "unknown"
+          : "unknown";
+  return (
+    <Card title="Confirmation outcome" subtitle="The last destructive-confirmation attempt — visible, never inferred.">
+      <p style={{ margin: 0 }}>
+        <StatusIndicator status={semantic as "succeeded" | "failed" | "unknown"} label={`${feedback.status} — ${feedback.message}`} />
+      </p>
+    </Card>
+  );
+}
+
+/** The case's seven-stage recovery journey (from real runtime state). */
+function CaseJourneyTimeline({ journey }: { readonly journey: RecoveryCaseJourney }): JSX.Element {
+  const stateOf = (stageState: string): TimelineItem["state"] =>
+    stageState === "ready"
+      ? "done"
+      : stageState === "approval_required"
+        ? "current"
+        : stageState === "blocked"
+          ? "blocked"
+          : "pending";
+  const items: TimelineItem[] = journey.stages.map((stage) => ({
+    id: stage.id,
+    label: stage.headline,
+    detail: stage.rows.map((row) => `${row.label}: ${row.value}`).join(" · "),
+    state: stateOf(stage.state),
+    stateLabel:
+      stage.state === "ready"
+        ? undefined
+        : stage.state === "not_yet_observed"
+          ? "Not yet observed"
+          : stage.state === "empty"
+            ? "Nothing to show — honest empty"
+            : stage.state === "approval_required"
+              ? "Approval required"
+              : "Blocked",
+  }));
+  return (
+    <Card
+      title="Recovery journey"
+      subtitle="Signal, case, locate/secure decision, authorization, action, evidence, closure/escalation — every stage from real runtime state."
+    >
+      <Timeline items={items} ariaLabel="Recovery case journey" />
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // The screen
 // ---------------------------------------------------------------------------
 
@@ -536,6 +745,7 @@ export function DestructiveActionScreen(props: DestructiveActionScreenProps): JS
             controls.
           </p>
         </Card>
+        {props.journey !== undefined && <CaseJourneyTimeline journey={props.journey} />}
         <Card title="Destructive actions" subtitle="Every action below is the gated path ONLY: tenant scope, active case, adapter capability, Guardian evaluation, human approval, execution dispatch.">
           <div className="fos-stack">
             {props.actions.map((entry) => (
@@ -580,6 +790,11 @@ export function DestructiveActionScreen(props: DestructiveActionScreenProps): JS
         </div>
       </header>
       {body}
+      {/* W141: the visible confirmation feedback — a click is never inferred. */}
+      {props.confirmation !== undefined && <ConfirmationFeedback confirmation={props.confirmation} />}
+      {props.confirmation !== undefined && (
+        <ConfirmationDialog props={props} confirmation={props.confirmation} />
+      )}
     </section>
   );
 }

@@ -23,6 +23,7 @@ import type {
   RecoveryCaseListViewModel,
   RecoveryCaseViewModel,
 } from "../recovery-case";
+import type { RecoveryCaseJourney } from "../recovery-journey";
 import { ConsoleStyles } from "../ui/tokens";
 import {
   Badge,
@@ -35,8 +36,9 @@ import {
   Sheet,
   Skeleton,
   StatusIndicator,
+  Timeline,
 } from "../ui/primitives";
-import type { ScreenPhase } from "../ui/primitives";
+import type { ScreenPhase, TimelineItem } from "../ui/primitives";
 import { CONSOLE_STATUS_LABEL, caseConsoleStatus } from "../ui/status";
 
 // ---------------------------------------------------------------------------
@@ -53,6 +55,14 @@ export interface RecoveryCasesScreenProps {
   readonly onCloseCase: () => void;
   readonly onOpenDestructive: (deviceId: DeviceId) => void;
   readonly onOpenFindMy: (deviceId: DeviceId) => void;
+  /**
+   * W141: the per-case journeys (optional; the runtime feed supplies
+   * them, keyed by case id). The selected case's journey renders in
+   * the detail Sheet — lost/stolen signal -> recovery case ->
+   * locate/secure decision -> authorization -> action -> evidence ->
+   * closure/escalation, every stage from real runtime state.
+   */
+  readonly journeys?: Readonly<Record<string, RecoveryCaseJourney>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,10 +130,12 @@ function CasesTable({
 
 function CaseDetail({
   caseView,
+  journey,
   onOpenDestructive,
   onOpenFindMy,
 }: {
   readonly caseView: RecoveryCaseViewModel;
+  readonly journey: RecoveryCaseJourney | undefined;
   readonly onOpenDestructive: (deviceId: DeviceId) => void;
   readonly onOpenFindMy: (deviceId: DeviceId) => void;
 }): JSX.Element {
@@ -271,6 +283,32 @@ function CaseDetail({
           ))}
         </ol>
       </Card>
+      {journey !== undefined && (
+        <Card
+          title="Recovery journey"
+          subtitle="Signal, case, locate/secure decision, authorization, action, evidence, closure/escalation — every stage from real runtime state."
+        >
+          <Timeline
+            items={journey.stages.map((stage) => ({
+              id: stage.id,
+              label: stage.headline,
+              detail: stage.rows.map((row) => `${row.label}: ${row.value}`).join(" · "),
+              state: journeyTimelineState(stage.state),
+              stateLabel:
+                stage.state === "ready"
+                  ? undefined
+                  : stage.state === "not_yet_observed"
+                    ? "Not yet observed"
+                    : stage.state === "empty"
+                      ? "Nothing to show — honest empty"
+                      : stage.state === "approval_required"
+                        ? "Approval required"
+                        : "Blocked",
+            })) satisfies TimelineItem[]}
+            ariaLabel="Recovery case journey"
+          />
+        </Card>
+      )}
       <div className="fos-row">
         <Button variant="primary" onClick={(): void => onOpenDestructive(caseView.deviceId)}>
           Open destructive actions
@@ -337,6 +375,24 @@ export function RecoveryCasesScreen(props: RecoveryCasesScreenProps): JSX.Elemen
   );
 }
 
+/** The journey stage's timeline state (honest, never color alone). */
+function journeyTimelineState(
+  state: "ready" | "not_yet_observed" | "empty" | "blocked" | "approval_required",
+): TimelineItem["state"] {
+  switch (state) {
+    case "ready":
+      return "done";
+    case "not_yet_observed":
+      return "pending";
+    case "empty":
+      return "pending";
+    case "blocked":
+      return "blocked";
+    case "approval_required":
+      return "current";
+  }
+}
+
 /** The selected-case Sheet (loading and ready states). */
 function CaseSheet(props: RecoveryCasesScreenProps): JSX.Element {
   if (props.selectedCaseId === undefined) return <></>;
@@ -353,6 +409,7 @@ function CaseSheet(props: RecoveryCasesScreenProps): JSX.Element {
       ) : (
         <CaseDetail
           caseView={props.selectedCase}
+          journey={props.journeys?.[props.selectedCase.caseId]}
           onOpenDestructive={props.onOpenDestructive}
           onOpenFindMy={props.onOpenFindMy}
         />

@@ -18,6 +18,7 @@ declare module "bun:test" {
     toBeGreaterThanOrEqual(expected: number): void;
     toBeLessThan(expected: number): void;
     toBeLessThanOrEqual(expected: number): void;
+    toMatchObject(expected: Record<string, unknown>): void;
   }
 }
 

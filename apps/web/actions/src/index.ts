@@ -91,6 +91,14 @@ export * from "./screens/print-screen";
 export * from "./screens/role-lens-section";
 export * from "./screens/print-distribution-screen";
 
+// W142 — the honest lane phase vocabulary + the runtime state seams +
+// the Fleet Action journey + the runtime composition feeds.
+export * from "./lane-phase";
+export * from "./seams";
+export * from "./fleet-actions-journey";
+export * from "./fleet-actions-feed";
+export * from "./print-distribution-feed";
+
 // The tagged error/result contract of every builder.
 export type { SurfaceError, SurfaceResult, SurfaceValidationFailure } from "./internal";
 

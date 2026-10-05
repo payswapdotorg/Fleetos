@@ -434,14 +434,17 @@ export interface EmptyStateProps {
   readonly title: string;
   readonly hint?: string;
   readonly action?: { readonly label: string; readonly onClick: () => void };
+  /** W145: optional extra content after the action (e.g. the declared-import cold-start path). */
+  readonly children?: ReactNode;
 }
 
-export function EmptyState({ title, hint, action }: EmptyStateProps): JSX.Element {
+export function EmptyState({ title, hint, action, children }: EmptyStateProps): JSX.Element {
   return (
     <div className="fos-empty">
       <p className="fos-empty__title">{title}</p>
       {hint !== undefined && <p className="fos-empty__hint">{hint}</p>}
       {action !== undefined && <Button variant="primary" onClick={action.onClick}>{action.label}</Button>}
+      {children}
     </div>
   );
 }

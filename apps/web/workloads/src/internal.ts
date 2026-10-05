@@ -159,3 +159,40 @@ export function tenantMismatch(
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// The acting tenant-scope guard (the W040-disclosed pattern, W143)
+// ---------------------------------------------------------------------------
+
+/**
+ * The acting tenant scope. Every workload-surface query carries it as
+ * its FIRST parameter — the acting tenant rides every query (structural
+ * tenant isolation, `spec/ARCHITECTURE-LOCK.md` item 17).
+ */
+export interface WorkloadUiTenantScope {
+  readonly tenantId: TenantId;
+}
+
+/** The tagged guard result. */
+export interface WorkloadUiTenantCheck {
+  readonly ok: boolean;
+  readonly tenantId: TenantId;
+  readonly reason?: string;
+}
+
+/**
+ * Validate the acting tenant scope (non-empty string). Refused scopes
+ * never reach a source: the view-models return deterministic empty
+ * views stamped with the surface system tenant (no data, no leak — the
+ * W040 `checkTenantScope` pattern).
+ */
+export function checkWorkloadUiTenantScope(scope: unknown): WorkloadUiTenantCheck {
+  if (scope === null || typeof scope !== "object") {
+    return { ok: false, tenantId: SURFACE_SYSTEM_TENANT_ID, reason: "scope_object_required" };
+  }
+  const candidate = scope as { tenantId?: unknown };
+  if (typeof candidate.tenantId !== "string" || candidate.tenantId.length === 0) {
+    return { ok: false, tenantId: SURFACE_SYSTEM_TENANT_ID, reason: "tenant_id_required" };
+  }
+  return { ok: true, tenantId: candidate.tenantId as TenantId };
+}

@@ -159,3 +159,22 @@ W144 - Runtime composition + deployment convergence
 TL (apps/web/src/console-app.tsx, apps/web/src/runtime/product-session.ts, apps/web/src/product-gate.tsx as needed; may be executed by a briefed worker under TL-scope grant with TL re-verification). Bind the six lanes' deep views into the console runtime over W141/W142/W143's compositions; wire the approvals inbox to the executed decision path; composition-root wiring so the deployed tier resolves sessions + enrollment server-side (W140 routes) while development keeps the localStorage seam; end-to-end browser journeys for every composed lane; Vercel deploy + post-deploy check + a SIM-B-style re-verification of the six lanes and the Approve/Reject journey on production.
 
 Wave 13 acceptance rule: no item is accepted on worker-reported tests alone — the TL re-runs check (4/4, 150-contract snapshot unchanged unless an ADR is recorded), typecheck, the full battery, and browser-verifies the composed surfaces on production. Lane compositions must render real runtime state (demo tenant + fresh-workspace honest empty states), never fabricated data. W140's routes must fail closed on every refusal path and leak no secret VALUES (names only, per the env module law). Do NOT re-dispatch any shipped item.
+
+
+# Wave 14 — Predictive Twin / World Model Layer (ADR-0002)
+
+Operator directive: add a model-neutral predictive representation around the canonical Fleet Device Twin. The predictive layer NEVER replaces authoritative observations/events/twin truth and NEVER becomes policy authority.
+
+W150 - Predictive feature/provenance feed
+Worker A. Build the device-history feature/provenance boundary needed by predictive representations: privacy/purpose filtering, temporal windows, observation/evidence references, deterministic reference feature projection, and fail-closed handling for missing/insufficient history. No ML provider dependency.
+
+W151 - Predictive Twin engine + model adapter seam
+Worker B. Implement the model-neutral Predictive Twin runtime boundary from ADR-0002, including deterministic reference behavior, representation/prediction/counterfactual/uncertainty/provenance records, capability-versioning, unavailable-model fail-closed behavior, and an adapter boundary suitable for JEPA-family or other predictive world-model implementations. No model is authorized to mutate business truth or bypass Guardian.
+
+W152 - Workload/project context + learning/evaluation bridge
+Worker C. Project workload/project context into the predictive boundary where lawful, preserve tenant isolation and provenance, and connect predictive cases to the existing Learning/Arena evaluation/adoption seams. Predictions remain advisory until an explicit versioned capability adoption.
+
+W153 - Predictive Twin runtime/UI convergence
+TL. Bind W150/W151/W152 into the product without changing the canonical Device Twin semantics; expose observed vs predicted vs hypothetical state clearly; add one end-to-end Device Doctor/Control Tower advisory journey; prove Guardian authorization remains authoritative; integrate model health/provenance/uncertainty; deployment configuration remains optional-GPU/provider neutral.
+
+Wave 14 acceptance rule: ADR-0002 invariants must be machine-tested. A deterministic reference path must work with no model provider. Predictive outputs must carry version, evidence, horizon, uncertainty and provenance. Counterfactuals must be visibly distinct from observed facts. A missing/unavailable predictive capability must degrade honestly. No predictive output may authorize, execute or mutate business truth. At least one live journey must use a predictive output as advisory context, and the UI must distinguish observed/predicted/hypothetical state.
