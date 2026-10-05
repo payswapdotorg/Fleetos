@@ -77,6 +77,16 @@ import {
   INVITATION_TTL_SECONDS,
 } from "./runtime/product-session";
 import type { ProductDurableStore } from "./runtime/product-session";
+import {
+  isDeployedTier,
+  resolveServerSession,
+  serverSignIn,
+  serverCreateWorkspace,
+  serverSignOut,
+} from "./runtime/composition-root";
+import type { ServerSessionProjection } from "./runtime/composition-root";
+import { experienceRoleFromAssignment } from "@fleetos/web-product";
+import type { ProductActiveSession } from "@fleetos/web-product";
 import { ConsoleSessionApp } from "./console-app";
 import type { ShellRoute } from "@fleetos/web-shell";
 import { environmentLabel } from "./runtime/env";
@@ -401,6 +411,69 @@ function browserSaltGenerator(): string {
   return `slt_fallback${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`;
 }
 
+/**
+ * W144 deploy convergence — the SERVER workspace directory (client-side
+ * memory of the workspaces this browser has created or signed into on
+ * the deployed tier; exactly the browser tier's directory pattern, so
+ * the sign-in form's workspace picker works after sign-out). Stores
+ * ONLY {tenantId, name, createdAt} — no credentials, no tokens.
+ */
+const SERVER_DIRECTORY_KEY = "fleetos.server.workspaces.v1";
+
+function loadServerDirectory(): readonly ProductWorkspaceSummary[] {
+  try {
+    const raw = window.localStorage.getItem(SERVER_DIRECTORY_KEY);
+    if (raw === null) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (entry): entry is ProductWorkspaceSummary =>
+        entry !== null && typeof entry === "object" &&
+        typeof (entry as ProductWorkspaceSummary).tenantId === "string" &&
+        typeof (entry as ProductWorkspaceSummary).name === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+function rememberServerWorkspace(entry: ProductWorkspaceSummary): void {
+  try {
+    const current = loadServerDirectory().filter((ws) => ws.tenantId !== entry.tenantId);
+    window.localStorage.setItem(SERVER_DIRECTORY_KEY, JSON.stringify([...current, entry]));
+  } catch {
+    // The directory is best-effort memory — never a blocker.
+  }
+}
+
+/**
+ * W144 deploy convergence — map a server session projection (the
+ * httpOnly-cookie plane's truth) onto the product session state. The
+ * token itself lives ONLY in the cookie (the client never sees it — the
+ * sentinel records that honestly); the first-run flag is the client's
+ * own onboarding state.
+ */
+function sessionFromServerProjection(
+  projection: ServerSessionProjection,
+  isFirstRun: boolean,
+): ProductActiveSession {
+  const activeRole = experienceRoleFromAssignment(projection.activeRole ?? "");
+  return {
+    phase: isFirstRun ? "onboarding" : "active",
+    tenantId: projection.tenantId,
+    workspaceName: projection.workspaceName,
+    principalId: projection.principalId,
+    memberRef: projection.memberRef,
+    displayName: projection.memberRef.split("@")[0] ?? projection.memberRef,
+    sessionToken: "server-cookie",
+    sessionId: projection.sessionId,
+    expiresAt: projection.expiresAt,
+    assignedRoles: projection.assignedRoles,
+    activeRole,
+    isFirstRun,
+  };
+}
+
 export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
   const runtime = useMemo(
     () =>
@@ -427,6 +500,21 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
   // persisted truth after mount — reload restores the session through
   // the resolve seam, never a fabricated first-paint login.
   const [state, setState] = useState<ProductSessionState>(() => ({ phase: "signed-out" }));
+
+  // W144 deploy convergence — the SERVER session (the deployed tier's
+  // httpOnly-cookie plane). Non-null when the server session is the
+  // active truth; the runtime (browser tier) continues to serve the
+  // demo personas and the development tier. The first-run flag rides
+  // alongside (the server session's onboarding is client state).
+  const serverTier = isDeployedTier();
+  const [serverSession, setServerSession] = useState<ProductActiveSession | null>(null);
+  const [serverSessionResolved, setServerSessionResolved] = useState(false);
+  // The deployed tier's workspace directory (the client's memory of the
+  // server workspaces it has seen — the sign-in picker's source).
+  const [serverDirectory, setServerDirectory] = useState<readonly ProductWorkspaceSummary[]>([]);
+  useEffect(() => {
+    if (serverTier) setServerDirectory(loadServerDirectory());
+  }, [serverTier]);
   const [refusal, setRefusal] = useState<
     { readonly reason: ProductAuthRefusal; readonly message: string } | null
   >(null);
@@ -435,6 +523,33 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
     setState(runtime.state());
     setDirectory(runtime.listWorkspaces());
   }, [runtime]);
+  // The deployed tier's mount resolve: the httpOnly cookie's session is
+  // the server's truth (fail-closed — a refusal simply means no server
+  // session: the gate stays on the browser tier / signed-out).
+  useEffect(() => {
+    if (!serverTier) return;
+    let cancelled = false;
+    void (async (): Promise<void> => {
+      const result = await resolveServerSession(window.fetch.bind(window));
+      if (cancelled) return;
+      if (result.ok) {
+        setServerSession(sessionFromServerProjection(result, false));
+        // A resolved session also refreshes the directory memory (a
+        // reload after sign-in keeps the workspace in the picker).
+        rememberServerWorkspace({
+          tenantId: result.tenantId,
+          name: result.workspaceName,
+          createdAt: new Date().toISOString(),
+        });
+      } else {
+        setServerSession(null);
+      }
+      setServerSessionResolved(true);
+    })();
+    return (): void => {
+      cancelled = true;
+    };
+  }, [serverTier]);
   // W110: the invite-member surface state (the display-once lifecycle).
   // The raw code lives here ONLY between issuance and the hide confirm.
   const [invite, setInvite] = useState<InviteMemberState>({ kind: "closed" });
@@ -469,6 +584,33 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
       readonly email: string;
       readonly password: string;
     }) => {
+      // W144 deploy convergence: on the deployed tier, workspace creation
+      // runs through the REAL server identity boundary (POST /api/workspace
+      // — the durable repositories + the founder's httpOnly session).
+      if (serverTier) {
+        void (async (): Promise<void> => {
+          const result = await serverCreateWorkspace(window.fetch.bind(window), {
+            workspaceName: input.name,
+            founderDisplayName: input.displayName,
+            founderEmail: input.email,
+            password: input.password,
+          });
+          if (result.ok) {
+            setServerSession(sessionFromServerProjection(result, true));
+            setRefusal(null);
+            rememberServerWorkspace({
+              tenantId: result.tenantId,
+              name: result.workspaceName,
+              createdAt: new Date().toISOString(),
+            });
+            setServerDirectory(loadServerDirectory());
+          } else {
+            setRefusal({ reason: "invalid_input", message: result.message });
+          }
+        })();
+        resetInvite();
+        return;
+      }
       apply(
         runtime.createWorkspace({
           name: input.name,
@@ -479,7 +621,7 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
       );
       resetInvite();
     },
-    [apply, runtime, resetInvite],
+    [apply, runtime, resetInvite, serverTier],
   );
 
   const onJoin = useCallback(
@@ -507,10 +649,31 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
 
   const onSignIn = useCallback(
     (input: { readonly tenantId: string; readonly email: string; readonly password: string }) => {
+      // W144 deploy convergence: the deployed tier signs in through the
+      // server session plane (POST /api/session — the httpOnly cookie).
+      if (serverTier) {
+        void (async (): Promise<void> => {
+          const result = await serverSignIn(window.fetch.bind(window), input);
+          if (result.ok) {
+            setServerSession(sessionFromServerProjection(result, false));
+            setRefusal(null);
+            rememberServerWorkspace({
+              tenantId: result.tenantId,
+              name: result.workspaceName,
+              createdAt: new Date().toISOString(),
+            });
+            setServerDirectory(loadServerDirectory());
+          } else {
+            setRefusal({ reason: "invalid_input", message: result.message });
+          }
+        })();
+        resetInvite();
+        return;
+      }
       apply(runtime.signIn(input));
       resetInvite();
     },
-    [apply, runtime, resetInvite],
+    [apply, runtime, resetInvite, serverTier],
   );
 
   // W122: the demo quick links' sanctioned entry — the runtime's demo
@@ -527,17 +690,40 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
 
   const onRoleSwitch = useCallback(
     (role: Parameters<typeof runtime.switchActiveRole>[0]) => {
+      // W144 deploy convergence: a SERVER session's active-role switch is
+      // a client-side overlay on the projection (every assigned role is
+      // switchable — the server session already carries the assignments;
+      // the W101 role-switcher's authority model is unchanged).
+      setServerSession((current): ProductActiveSession | null => {
+        if (current === null) return current;
+        const allowed = current.assignedRoles.some(
+          (assigned) => experienceRoleFromAssignment(assigned) === role,
+        );
+        if (!allowed) return current;
+        return { ...current, activeRole: role };
+      });
       apply(runtime.switchActiveRole(role));
     },
     [apply, runtime],
   );
 
   const onSignOut = useCallback(() => {
+    // W144 deploy convergence: the deployed tier revokes the SERVER
+    // session (DELETE /api/session — audited, cookie cleared) and also
+    // clears any local tier state (the demo personas share the gate).
+    if (serverTier) {
+      setServerSession(null);
+      void serverSignOut(window.fetch.bind(window));
+    }
     apply(runtime.signOut());
     resetInvite();
-  }, [apply, runtime, resetInvite]);
+  }, [apply, runtime, resetInvite, serverTier]);
 
   const onCompleteOnboarding = useCallback(() => {
+    setServerSession((current): ProductActiveSession | null => {
+      if (current === null) return current;
+      return { ...current, isFirstRun: false, phase: "active" };
+    });
     apply(runtime.completeOnboarding());
   }, [apply, runtime]);
 
@@ -591,13 +777,35 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
   }, []);
 
   const onRefresh = useCallback(() => {
+    // W144 deploy convergence: the deployed tier re-resolves the SERVER
+    // session (the cookie's truth; fail-closed).
+    if (serverTier) {
+      void (async (): Promise<void> => {
+        const result = await resolveServerSession(window.fetch.bind(window));
+        if (result.ok) {
+          setServerSession(sessionFromServerProjection(result, false));
+        } else {
+          setServerSession(null);
+        }
+      })();
+    }
     apply(runtime.refresh());
-  }, [apply, runtime]);
+  }, [apply, runtime, serverTier]);
 
-  if (state.phase === "signed-out") {
+  // The effective session: the SERVER session (when present) is the
+  // active truth; otherwise the runtime state (the browser tier /
+  // the demo personas / the development tier).
+  const effectiveState: ProductSessionState =
+    serverSession !== null
+      ? serverSession.expiresAt > new Date().toISOString()
+        ? serverSession
+        : { phase: "signed-out" as const }
+      : state;
+
+  if (effectiveState.phase === "signed-out") {
     return (
       <WorkspaceChoiceScreen
-        workspaces={directory}
+        workspaces={serverTier ? serverDirectory : directory}
         environmentLabel={environmentLabel()}
         onCreate={onCreate}
         onJoin={onJoin}
@@ -611,14 +819,14 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
 
   return (
     <>
-      {state.phase === "expired" ? (
+      {effectiveState.phase === "expired" ? (
         <SessionExpiredBanner onRecover={onRecover} onSignOut={onSignOut} />
       ) : (
         // W110: the invite-member surface — signed-in shell only (the
         // onboarding and active phases), composed above the console in
         // the session chrome area next to the member chip's topbar.
         <InviteMemberControl
-          workspaceName={state.workspaceName}
+          workspaceName={effectiveState.workspaceName}
           state={invite}
           ttlSeconds={INVITATION_TTL_SECONDS}
           onIssue={onInviteIssue}
@@ -629,7 +837,7 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
       )}
       <ConsoleSessionApp
         initialRoute={initialRoute}
-        session={state}
+        session={effectiveState}
         onRoleSwitch={onRoleSwitch}
         onSignOut={onSignOut}
         onCompleteOnboarding={onCompleteOnboarding}
