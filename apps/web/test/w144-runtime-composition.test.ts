@@ -62,8 +62,17 @@ test("W144 lane 1 — the Device Doctor feed composes for the demo tenant (REAL 
   const feeds: LaneFeeds = result.view;
   expect(feeds.isDemo).toBe(true);
   expect(feeds.doctor).toBeDefined();
-  expect(feeds.doctor.lanePhase.kind).toBe("blocked"); // no health signals for the demo device (the honest state)
-  expect(feeds.doctor.lanePhase.kind).toBe("blocked");
+  // W148 — the Device Doctor binds to the demo fleet's REAL TwinStore
+  // (the doctor sees the demo tenant's own device `dev_w091demo000001`
+  // — the device-not-in-fleet blocker is GONE). The doctor's
+  // health-pipeline sources stay empty (no signals/baselines/anomalies/
+  // diagnoses/treatments) — the honest `ready` state over REAL runtime
+  // state (the demo device exists in the roster; the doctor's
+  // diagnosis store is empty until a real agent reports health signals).
+  expect(feeds.doctor.lanePhase.kind).toBe("ready");
+  if (feeds.doctor.lanePhase.kind !== "ready") return;
+  const doctorView = feeds.doctor.lanePhase.view;
+  expect(doctorView?.deviceId).toBe("dev_w091demo000001");
 });
 
 test("W144 lane 1 — the Device Doctor feed composes for a fresh workspace (honest empty)", () => {
@@ -184,13 +193,19 @@ test("W144 lane 4 — the Fleet Actions feed composes for a fresh workspace (hon
 // Lane 5 — the Workload Planning feed (bound + reachable on REAL runtime state)
 // ---------------------------------------------------------------------------
 
-test("W144 lane 5 — the Workload Planning feed composes for the demo tenant (honest empty)", () => {
+test("W144 lane 5 — the Workload Planning feed composes for the demo tenant (REAL runtime state)", () => {
   const result = composeLaneFeeds(DEMO_TENANT, { now: NOW });
   expect(result.ok).toBe(true);
   if (!result.ok) return;
   expect(result.view.workloadPlanning).toBeDefined();
-  // The demo has no workload profiles -> the honest empty state.
-  expect(result.view.workloadPlanning.lanePhase.kind).toBe("empty");
+  // W148 — the demo tenant has ONE workload profile (the analyst
+  // workstation) bound at the composition root; the Loading resolves to
+  // `ready` over REAL runtime state. The six-stage planning journey
+  // runs over the demo workload profile (honest not_decided stages
+  // where undecided — the recommendation ledger is empty for the demo).
+  expect(result.view.workloadPlanning.lanePhase.kind).toBe("ready");
+  if (result.view.workloadPlanning.lanePhase.kind !== "ready") return;
+  expect(result.view.workloadPlanning.lanePhase.view.profiles.rows.length).toBe(1);
 });
 
 test("W144 lane 5 — the Workload Planning feed composes for a fresh workspace (honest empty)", () => {
@@ -204,13 +219,18 @@ test("W144 lane 5 — the Workload Planning feed composes for a fresh workspace 
 // Lane 6 — the Procurement Cases feed (bound + reachable on REAL runtime state)
 // ---------------------------------------------------------------------------
 
-test("W144 lane 6 — the Procurement Cases feed composes for the demo tenant (honest empty)", () => {
+test("W144 lane 6 — the Procurement Cases feed composes for the demo tenant (REAL runtime state)", () => {
   const result = composeLaneFeeds(DEMO_TENANT, { now: NOW });
   expect(result.ok).toBe(true);
   if (!result.ok) return;
   expect(result.view.procurementCases).toBeDefined();
-  // The demo has no procurement demands -> the honest empty state.
-  expect(result.view.procurementCases.lanePhase.kind).toBe("empty");
+  // W148 — the demo tenant has ONE procurement demand (the laptop
+  // replacement for the analyst's workstation) bound at the composition
+  // root; the Loading resolves to `ready` over REAL runtime state. The
+  // seven-stage procurement journey runs over the demo demand (honest
+  // not_decided/not_requested stages where undecided — no matches/quotes/
+  // orders yet).
+  expect(result.view.procurementCases.lanePhase.kind).toBe("ready");
 });
 
 test("W144 lane 6 — the Procurement Cases feed composes for a fresh workspace (honest empty)", () => {

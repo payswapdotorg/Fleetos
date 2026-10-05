@@ -244,9 +244,12 @@ test("the security.compliance persona walks findings -> approvals -> decides (RE
     <ApprovalsQueueScreen
       phase={{ kind: "ready", view: persona.queue }}
       actingApprover={{ userId: PRINCIPAL.principalId }}
-      pendingDecision={null}
+      decisionDialog={null}
       onRequestDecision={() => undefined}
       onCancelDecision={() => undefined}
+      onAcknowledgeConsequences={() => undefined}
+      onPhraseChange={() => undefined}
+      onRejectionReasonChange={() => undefined}
       onConfirmDecision={() => undefined}
       roleLens={persona.lens}
       explanations={{ [persona.explanation.planId]: persona.explanation }}
@@ -313,9 +316,12 @@ test("the employee persona sees the SAME records with restricted explanations (n
     <ApprovalsQueueScreen
       phase={{ kind: "ready", view: persona.queue }}
       actingApprover={null}
-      pendingDecision={null}
+      decisionDialog={null}
       onRequestDecision={() => undefined}
       onCancelDecision={() => undefined}
+      onAcknowledgeConsequences={() => undefined}
+      onPhraseChange={() => undefined}
+      onRejectionReasonChange={() => undefined}
       onConfirmDecision={() => undefined}
       roleLens={persona.lens}
       explanations={{ [persona.explanation.planId]: persona.explanation }}

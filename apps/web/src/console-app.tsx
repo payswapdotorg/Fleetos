@@ -122,6 +122,14 @@ import {
   DECLARE_OWNERSHIP_TYPE_OPTIONS,
   newDeclaredImportCorrelationId,
 } from "./runtime/declared-import-binding";
+// W148 — the session-scoped recovery-case store + the REAL W040 record
+// factory (the O5 case-creation affordance's binding).
+import {
+  createSessionRecoveryCaseStore,
+  sessionRecoveryCaseSource,
+  createAndAppendRecoveryCase,
+} from "./runtime/recovery-case-binding";
+import type { SessionRecoveryCaseStore } from "./runtime/recovery-case-binding";
 import { environmentLabel } from "./runtime/env";
 
 // W144 — the lane composition feeds (the six lanes' deep views bound
@@ -153,6 +161,18 @@ import type {
   ApprovalDecisionAuthority,
 } from "./runtime/approval-decision-runtime";
 
+// W148 — the W142 executed-decision contract surface (the typed-phrase
+// gate's required phrase + the machine-stable refusal shape + the
+// approval-decision feedback). The screen renders the gate's prompt;
+// the runtime performs the dispatch through the W142 path.
+import {
+  requiredApprovalConfirmationPhrase,
+} from "@fleetos/web-security";
+import type {
+  ApprovalRefusal,
+  ApprovalDecisionDialogState,
+} from "@fleetos/web-security";
+
 // W144 — the composition root (the deployment-tier driver selection).
 import {
   sessionDriverKind,
@@ -177,12 +197,32 @@ import {
   DestructiveActionScreen,
 } from "@fleetos/web-recovery";
 import { SecurityDoctorScreen } from "@fleetos/web-security";
+// W148 — the in-vocabulary route bindings (security.decisions + the
+// commerce.software family). The screens render their honest phases
+// (loading/empty/ready — REAL runtime state, never fabricated data).
+import {
+  GuardianDecisionsScreen,
+} from "@fleetos/web-security";
+import type {
+  GuardianDecisionPresentationView,
+  GuardianDecisionsData,
+  BlockHistoryView,
+} from "@fleetos/web-security";
 import {
   FleetActionsScreen,
   PrintDistributionScreen,
 } from "@fleetos/web-actions";
 import { WorkloadPlanningScreen } from "@fleetos/web-workloads";
-import { ProcurementScreen } from "@fleetos/web-commerce";
+import type { WorkloadPlanningData } from "@fleetos/web-workloads";
+import {
+  ProcurementScreen,
+  SoftwareScreen,
+  VendorsScreen,
+  MaintenanceScreen,
+  ConnectivityScreen,
+  CommunicationScreen,
+} from "@fleetos/web-commerce";
+import type { ProcurementScreenData } from "@fleetos/web-commerce";
 
 // ---------------------------------------------------------------------------
 // Route <-> path mapping (the final route vocabulary's URL form)
@@ -358,6 +398,18 @@ export function ConsoleSessionApp({
     initialDeclaredImportJourney(asTenantId(session.tenantId)),
   );
   const [declaredVersion, setDeclaredVersion] = useState(0);
+
+  // W148 — the session-scoped recovery-case store (the O5 case-creation
+  // affordance's binding). One store per active session (per tenant);
+  // the demo tier shares the in-memory store, the deployed tier's
+  // server-plane persistence arrives with the W140 server-route lane.
+  // A `recoveryCaseVersion` bump re-derives the lane feeds (the new
+  // case appears in the cases list + the destructive gate's
+  // precondition becomes satisfiable).
+  const [sessionRecoveryStore, setSessionRecoveryStore] = useState<SessionRecoveryCaseStore>(
+    () => createSessionRecoveryCaseStore(asTenantId(session.tenantId)),
+  );
+  const [recoveryCaseVersion, setRecoveryCaseVersion] = useState(0);
   /**
    * The deployed tier's roster hydration: the tenant's DURABLE twins
    * (GET /api/device/twins — the W140 server plane's records, including
@@ -404,6 +456,9 @@ export function ConsoleSessionApp({
     setSessionTwinStore(isDemoTenant(session.tenantId) ? demoTwinStore() : createSessionTwinStore());
     setDeclareJourney(initialDeclaredImportJourney(asTenantId(session.tenantId)));
     setDeclaredVersion((v) => v + 1);
+    // W148 — reset the session recovery-case store on workspace change.
+    setSessionRecoveryStore(createSessionRecoveryCaseStore(asTenantId(session.tenantId)));
+    setRecoveryCaseVersion((v) => v + 1);
     if (isDeployedTier() && !isDemoTenant(session.tenantId)) {
       // The store resets above; hydrate AFTER the state settles (the refs
       // see the fresh store on the next commit).
@@ -563,6 +618,22 @@ export function ConsoleSessionApp({
     () => createApprovalDecisionRuntime(),
   );
 
+  // W148 — the approvals dialog state (the controlled view of the W142
+  // decision-lifecycle machine). The dialog's `acknowledged` / `phrase` /
+  // `refusal` fields are PROJECTIONS of the runtime's decision state;
+  // the dialog NEVER executes anything itself. The pending plan + action
+  // is the dialog's own UI state (the runtime's `idle`/`reviewing`/
+  // `ready_to_decide` distinction maps to the dialog's open/closed +
+  // canConfirm state).
+  const [approvalDialogPending, setApprovalDialogPending] = useState<{
+    readonly planId: string;
+    readonly action: "approve" | "reject";
+  } | null>(null);
+  const [approvalDialogAcknowledged, setApprovalDialogAcknowledged] = useState<boolean>(false);
+  const [approvalDialogPhrase, setApprovalDialogPhrase] = useState<string>("");
+  const [approvalDialogRejectionReason, setApprovalDialogRejectionReason] = useState<string>("");
+  const [approvalDialogRefusal, setApprovalDialogRefusal] = useState<ApprovalRefusal | null>(null);
+
   // W101: the Install Center's controlled state (the W100A machine) —
   // W122: bound to the ACTIVE session's tenant (never a static one).
   const [installState, setInstallState] = useState<InstallCenterState>(() =>
@@ -608,8 +679,13 @@ export function ConsoleSessionApp({
       ...(selectedRecoveryCaseId !== undefined ? { selectedRecoveryCaseId } : {}),
       ...(selectedFindingId !== null ? { selectedFindingId } : {}),
       ...(selectedPlanId !== null ? { selectedPlanId } : {}),
+      // W148 — the session-scoped recovery-case source (the O5
+      // case-creation affordance's binding). The recovery cases feed
+      // composes over the session's cases; the destructive gate's
+      // precondition becomes satisfiable when a case exists.
+      recoveryCaseSource: sessionRecoveryCaseSource(sessionRecoveryStore),
     }),
-    [selectedRecoveryCaseId, selectedFindingId, selectedPlanId],
+    [selectedRecoveryCaseId, selectedFindingId, selectedPlanId, sessionRecoveryStore, recoveryCaseVersion],
   );
   const laneFeedsResult = useMemo(
     () => composeLaneFeeds(session.tenantId, laneFeedOptions),
@@ -740,6 +816,23 @@ export function ConsoleSessionApp({
         laneFeeds,
         approvalRuntime,
         setApprovalRuntime,
+        // W148 — the approvals dialog state (the controlled view of the
+        // W142 decision-lifecycle machine).
+        approvalDialogPending,
+        setApprovalDialogPending,
+        approvalDialogAcknowledged,
+        setApprovalDialogAcknowledged,
+        approvalDialogPhrase,
+        setApprovalDialogPhrase,
+        approvalDialogRejectionReason,
+        setApprovalDialogRejectionReason,
+        approvalDialogRefusal,
+        setApprovalDialogRefusal,
+        // W148 — the session-scoped recovery-case store (the O5
+        // case-creation affordance's binding).
+        sessionRecoveryStore,
+        setSessionRecoveryStore,
+        setRecoveryCaseVersion,
         doctorPanel,
         setDoctorPanel,
         setSelectedRecoveryCaseId,
@@ -891,6 +984,29 @@ interface RenderInput {
   // W144 — the approval decision runtime (the EXECUTED decision path).
   readonly approvalRuntime: ApprovalDecisionRuntimeState;
   readonly setApprovalRuntime: (state: ApprovalDecisionRuntimeState) => void;
+  // W148 — the approvals dialog state (the controlled view of the W142
+  // decision-lifecycle machine). The dialog never executes anything
+  // itself; every field is a projection of the runtime's state. The
+  // pending plan + action is the dialog's own UI state (the runtime's
+  // idle/reviewing/ready_to_decide distinction maps to the dialog's
+  // open/closed + canConfirm state).
+  readonly approvalDialogPending: { readonly planId: string; readonly action: "approve" | "reject" } | null;
+  readonly setApprovalDialogPending: (pending: { readonly planId: string; readonly action: "approve" | "reject" } | null) => void;
+  readonly approvalDialogAcknowledged: boolean;
+  readonly setApprovalDialogAcknowledged: (acknowledged: boolean) => void;
+  readonly approvalDialogPhrase: string;
+  readonly setApprovalDialogPhrase: (phrase: string) => void;
+  readonly approvalDialogRejectionReason: string;
+  readonly setApprovalDialogRejectionReason: (reason: string) => void;
+  readonly approvalDialogRefusal: ApprovalRefusal | null;
+  readonly setApprovalDialogRefusal: (refusal: ApprovalRefusal | null) => void;
+  // W148 — the session-scoped recovery-case store (the O5 case-creation
+  // affordance's binding). The recovery cases feed composes over this
+  // store; the destructive gate's precondition becomes satisfiable when
+  // a case exists.
+  readonly sessionRecoveryStore: SessionRecoveryCaseStore;
+  readonly setSessionRecoveryStore: (store: SessionRecoveryCaseStore) => void;
+  readonly setRecoveryCaseVersion: (updater: (v: number) => number) => void;
   // W144 — the lane interaction state (UI state only).
   readonly doctorPanel: DoctorPanelState;
   readonly setDoctorPanel: (panel: DoctorPanelState) => void;
@@ -1184,15 +1300,20 @@ function renderRoute(input: RenderInput): JSX.Element {
         />
       );
     case "security.approvals": {
-      // W144 — the approvals inbox is wired to the EXECUTED decision
-      // path. The Approve/Reject decision lifecycle drives the
-      // approval-decision-runtime: the operator opens the review
-      // (begin), acknowledges the consequences, types the confirmation
-      // phrase, marks the confirmation, and dispatches through the
-      // gated boundary. The boundary transitions the plan out of
-      // PARKED, the audit sink records the decision, and the badge
-      // count drops. The journey from inbox item to decision record
-      // to evidence trail is real.
+      // W148 — the approvals inbox is wired to the W142 EXECUTED decision
+      // path through the W144 runtime. The Approve/Reject click handler
+      // opens the typed-phrase confirmation dialog (the dialog is fully
+      // controlled: acknowledged + typed phrase + refusal are projections
+      // of the runtime's state). The dialog's Confirm button is DISABLED
+      // until the operator acknowledges the consequences AND types the
+      // exact `CONFIRM <ACTION> <planId>` phrase. On confirm, the runtime
+      // drives the lifecycle: acknowledge -> enter phrase -> mark
+      // confirmed -> dispatch through the gated boundary. The boundary
+      // transitions the plan out of PARKED, the audit sink records the
+      // decision, the badge count drops, and the duplicate-safe guard
+      // refuses a second decision with `already_decided`. Restricted
+      // roles get the FROZEN `authorization_required` refusal (visible,
+      // explicit — never a silent no-op).
       const authority: ApprovalDecisionAuthority = buildAuthority(
         input.sessionTenantId,
         input.actingApproverId,
@@ -1201,20 +1322,28 @@ function renderRoute(input: RenderInput): JSX.Element {
         input.sessionAssignedRoles.includes("fleet.admin") ? [APPROVAL_PERMISSION] : [],
         input.sessionAssignedRoles,
       );
-      const canApprovePlan = canApprove(authority);
-      void canApprovePlan;
-      void approvalRefusalExplanation;
-      void confirmationPhrase;
-      void decisionCorrelationId;
+      const NOW = "2026-01-06T14:00:00Z";
+      const decisionDialog: ApprovalDecisionDialogState | null =
+        input.approvalDialogPending === null
+          ? null
+          : {
+              pending: input.approvalDialogPending,
+              acknowledged: input.approvalDialogAcknowledged,
+              phrase: input.approvalDialogPhrase,
+              refusal: input.approvalDialogRefusal,
+              rejectionReason: input.approvalDialogRejectionReason,
+            };
       return (
         <ApprovalsQueueScreen
           phase={input.approvalsPhase}
           actingApprover={{ userId: input.actingApproverId } satisfies ActingApprover}
-          pendingDecision={null}
-          onRequestDecision={(planId) => {
-            // W144 — open the decision review for the parked plan. The
+          decisionDialog={decisionDialog}
+          onRequestDecision={(planId, action) => {
+            // W148 — open the decision review for the parked plan. The
             // authority gate may refuse (authorization_required) — the
-            // refusal is visible (never a silent no-op).
+            // refusal is visible (never a silent no-op). The dialog's
+            // pending state opens; the runtime's `reviewing` state is
+            // the source of truth for the typed-phrase gate.
             const plan = input.approvalsPhase.kind === "ready"
               ? input.approvalsPhase.view.items.find((item) => item.planId === planId)
               : undefined;
@@ -1222,7 +1351,7 @@ function renderRoute(input: RenderInput): JSX.Element {
             const context = {
               tenantId: asTenantId(input.sessionTenantId),
               planId,
-              action: "approve" as const,
+              action,
               by: asUserId(input.actingApproverId),
               correlationId: decisionCorrelationId(),
             };
@@ -1231,30 +1360,111 @@ function renderRoute(input: RenderInput): JSX.Element {
               { tenantId: asTenantId(input.sessionTenantId) },
               context,
               authority,
-              "2026-01-06T14:00:00Z",
+              NOW,
             );
             input.setApprovalRuntime(opened.state);
+            // The authority gate refused: surface the machine-stable
+            // refusal visibly (the FROZEN authorization_required
+            // denial with the escalation path — never a silent no-op).
+            const refusal: ApprovalRefusal | null =
+              opened.state.decision.kind === "refused"
+                ? {
+                    ok: false,
+                    reason: opened.state.decision.reason,
+                    explanation: opened.state.decision.explanation,
+                  }
+                : null;
+            input.setApprovalDialogPending({ planId, action });
+            input.setApprovalDialogAcknowledged(false);
+            input.setApprovalDialogPhrase("");
+            input.setApprovalDialogRejectionReason("");
+            input.setApprovalDialogRefusal(refusal);
           }}
           onCancelDecision={() => {
-            const cancelled = cancelDecision(input.approvalRuntime, "2026-01-06T14:00:00Z");
+            // W148 — cancel the open decision. The runtime returns to
+            // `cancelled`; NO audit entry is written (the audit policy:
+            // consequential events only — nothing happened). The dialog
+            // closes.
+            const cancelled = cancelDecision(input.approvalRuntime, NOW);
             input.setApprovalRuntime(cancelled.state);
+            input.setApprovalDialogPending(null);
+            input.setApprovalDialogAcknowledged(false);
+            input.setApprovalDialogPhrase("");
+            input.setApprovalDialogRejectionReason("");
+            input.setApprovalDialogRefusal(null);
+          }}
+          onAcknowledgeConsequences={() => {
+            // W148 — explicit step 1: acknowledge the consequences.
+            // The runtime's `acknowledgeDecision` records the
+            // transition; the dialog's checkbox reflects the runtime's
+            // state. A refusal clears on the next acknowledge cycle.
+            const acknowledged = acknowledgeDecision(input.approvalRuntime, NOW);
+            input.setApprovalRuntime(acknowledged.state);
+            if (acknowledged.state.decision.kind === "reviewing") {
+              input.setApprovalDialogAcknowledged(acknowledged.state.decision.acknowledged);
+            }
+          }}
+          onPhraseChange={(phrase) => {
+            // W148 — explicit step 2: type (or retype) the confirmation
+            // phrase. The runtime's `enterConfirmationPhrase` records
+            // the transition; the dialog's input reflects the runtime's
+            // state. The phrase MUST match exactly to unlock the
+            // dispatch.
+            const entered = enterConfirmationPhrase(input.approvalRuntime, phrase);
+            input.setApprovalRuntime(entered.state);
+            input.setApprovalDialogPhrase(phrase);
+          }}
+          onRejectionReasonChange={(reason) => {
+            // W148 — the rejection reason (REJECT only). Recorded by
+            // the boundary on a successful REJECT — the plan does NOT
+            // execute. The dialog's textarea is fully controlled.
+            input.setApprovalDialogRejectionReason(reason);
           }}
           onConfirmDecision={() => {
-            // W144 — the explicit-confirmation gate: acknowledge ->
-            // type the phrase -> mark -> dispatch. The dispatch
-            // routes through the gated boundary; the badge count
-            // drops when the plan transitions out of PARKED.
-            const acknowledged = acknowledgeDecision(input.approvalRuntime, "2026-01-06T14:00:00Z");
-            const entered = enterConfirmationPhrase(acknowledged.state, confirmationPhrase({
-              tenantId: asTenantId(input.sessionTenantId),
-              planId: "",
-              action: "approve",
-              by: asUserId(input.actingApproverId),
-              correlationId: decisionCorrelationId(),
-            }));
-            const marked = markConfirmed(entered.state, "2026-01-06T14:00:00Z");
-            const dispatched = dispatchDecision(marked.state, "2026-01-06T14:00:00Z");
+            // W148 — the explicit-confirmation gate's terminal
+            // transition: mark confirmed -> dispatch through the gated
+            // boundary. The dispatch routes through the W142 path; the
+            // boundary transitions the plan out of PARKED, the audit
+            // sink records BOTH the explicit confirmation AND the
+            // routed dispatch (the evidence trail), and the badge count
+            // drops. A refusal (the explicit_confirmation_required
+            // gate, the already_decided duplicate guard) returns the
+            // machine-stable reason — visible, never silent.
+            const marked = markConfirmed(input.approvalRuntime, NOW);
+            if (marked.state.decision.kind !== "ready_to_decide") {
+              // The gate refused: the explicit confirmation was not
+              // satisfied. Surface the machine-stable refusal visibly.
+              const refusal: ApprovalRefusal = {
+                ok: false,
+                reason: "explicit_confirmation_required",
+                explanation:
+                  "The explicit confirmation has not been satisfied. Acknowledge the consequences and type the exact confirmation phrase to unlock the dispatch.",
+              };
+              input.setApprovalRuntime(marked.state);
+              input.setApprovalDialogRefusal(refusal);
+              return;
+            }
+            const dispatched = dispatchDecision(marked.state, NOW);
             input.setApprovalRuntime(dispatched.state);
+            if (dispatched.state.decision.kind === "decided") {
+              // The dispatch succeeded: the dialog closes; the badge
+              // count drops (the existing approvalBadgeCount call site
+              // re-derives from the runtime's decidedPlanIds).
+              input.setApprovalDialogPending(null);
+              input.setApprovalDialogAcknowledged(false);
+              input.setApprovalDialogPhrase("");
+              input.setApprovalDialogRejectionReason("");
+              input.setApprovalDialogRefusal(null);
+            } else if (dispatched.state.decision.kind === "refused") {
+              // The boundary refused (the duplicate-safe guard). The
+              // refusal is visible (never a silent no-op).
+              const refusal: ApprovalRefusal = {
+                ok: false,
+                reason: dispatched.state.decision.reason,
+                explanation: dispatched.state.decision.explanation,
+              };
+              input.setApprovalDialogRefusal(refusal);
+            }
           }}
         />
       );
@@ -1331,6 +1541,33 @@ function renderRoute(input: RenderInput): JSX.Element {
         return <EmptyState title="The lane feeds refused to compose." hint="The composition root failed; refresh the session." action={<Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>Back to Control Tower</Button>} />;
       }
       const feed = input.laneFeeds.recoveryCases;
+      // W148 — the case-creation affordance's binding: the binding site
+      // routes the intent through the REAL recovery-case journey
+      // factory (`createAndAppendRecoveryCase` over the session store).
+      // The case enters the OPEN status (the active-recovery state that
+      // gates destructive requests); the per-case seven-stage journey
+      // + the typed-CONFIRM destructive gate become reachable.
+      const onCreateCase = (deviceId: DeviceId): void => {
+        // The demo tier's selected device (the demo tenant's own
+        // dev_w091demo000001); the binding site picks the device.
+        const selectedDeviceId = input.laneFeeds !== null && input.laneFeeds.isDemo
+          ? asDeviceId("dev_w091demo000001")
+          : deviceId;
+        const openedAt = "2026-01-06T14:00:00Z";
+        const { store: nextStore } = createAndAppendRecoveryCase(
+          input.sessionRecoveryStore,
+          {
+            tenantId: asTenantId(input.sessionTenantId),
+            deviceId: selectedDeviceId,
+            triggerKind: "lost_device_report",
+            triggerReportedAt: openedAt,
+            triggerNote: "Operator-initiated recovery case (the demo tier's session-scoped truth).",
+            openedAt,
+          },
+        );
+        input.setSessionRecoveryStore(nextStore);
+        input.setRecoveryCaseVersion((v) => v + 1);
+      };
       return (
         <RecoveryCasesScreen
           phase={feed.phase}
@@ -1346,6 +1583,7 @@ function renderRoute(input: RenderInput): JSX.Element {
             void deviceId;
             navigate({ area: "recovery", view: "find-my" });
           }}
+          onCreateCase={onCreateCase}
           journeys={feed.journeys}
         />
       );
@@ -1453,33 +1691,186 @@ function renderRoute(input: RenderInput): JSX.Element {
       if (input.laneFeeds === null) {
         return <EmptyState title="The lane feeds refused to compose." hint="The composition root failed; refresh the session." action={<Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>Back to Control Tower</Button>} />;
       }
-      // The Workload Planning screen expects a WorkloadPlanningData +
-      // the workload surface state machine; the feed produces a
-      // WorkloadPlanningViewModel. The full view-model conversion is
-      // the W090C builder's job; the lane is reachable + the
-      // composition is called.
-      return <WorkloadPlanningScreen phase={{ kind: "loading" }} surface={{ view: "list" } as never} onSurfaceEvent={() => undefined} tab="recommendations" onTabChange={() => undefined} journey={null} />;
+      // W148 — the Workload Planning screen binds to the feed's
+      // view-model (the W143 `composeWorkloadPlanningFeed` over the
+      // demo tenant's REAL workload profile — the Loading resolves to
+      // ready; the six-stage planning journey runs over REAL runtime
+      // state with honest not_decided stages where undecided).
+      const feed = input.laneFeeds.workloadPlanning;
+      // The feed's `phase` is the screen's prop (the lane's
+      // machine-proven state — loading / empty / ready / blocked /
+      // approval_required / error). The WorkloadPlanningViewModel
+      // mirrors WorkloadPlanningData (the screen's view-model shape);
+      // the extra `tenantId` field is harmless.
+      const screenPhase =
+        feed.phase.kind === "ready"
+          ? { kind: "ready" as const, view: feed.phase.view as unknown as WorkloadPlanningData }
+          : feed.phase.kind === "error"
+            ? { kind: "error" as const, message: feed.phase.message }
+            : feed.phase.kind === "loading"
+              ? { kind: "loading" as const }
+              : { kind: "loading" as const };
+      return (
+        <WorkloadPlanningScreen
+          phase={screenPhase}
+          surface={{ view: "list" } as never}
+          onSurfaceEvent={() => undefined}
+          tab="recommendations"
+          onTabChange={() => undefined}
+          journey={null}
+        />
+      );
     }
     case "commerce.procurement": {
       if (input.laneFeeds === null) {
         return <EmptyState title="The lane feeds refused to compose." hint="The composition root failed; refresh the session." action={<Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>Back to Control Tower</Button>} />;
       }
-      // The Procurement screen expects a ProcurementScreenData + the
-      // commerce surface state machine; the feed produces a
-      // ProcurementCasesViewModel. The full view-model conversion is
-      // the W090C builder's job; the lane is reachable + the
-      // composition is called.
-      return <ProcurementScreen phase={{ kind: "loading" }} surface={{ view: "demands" } as never} onSurfaceEvent={() => undefined} tab="matching" onTabChange={() => undefined} journey={null} />;
+      // W148 — the Procurement screen binds to the feed's view-model
+      // (the W143 `composeProcurementCasesFeed` over the demo tenant's
+      // REAL procurement demand — the Loading resolves to ready; the
+      // seven-stage procurement journey runs over REAL runtime state
+      // with honest not_decided/not_requested stages where undecided).
+      const feed = input.laneFeeds.procurementCases;
+      const screenPhase =
+        feed.phase.kind === "ready"
+          ? { kind: "ready" as const, view: feed.phase.view as unknown as ProcurementScreenData }
+          : feed.phase.kind === "error"
+            ? { kind: "error" as const, message: feed.phase.message }
+            : feed.phase.kind === "loading"
+              ? { kind: "loading" as const }
+              : { kind: "loading" as const };
+      return (
+        <ProcurementScreen
+          phase={screenPhase}
+          surface={{ view: "demands" } as never}
+          onSurfaceEvent={() => undefined}
+          tab="matching"
+          onTabChange={() => undefined}
+          journey={null}
+        />
+      );
     }
     default: {
+      // W148 — the in-vocabulary route bindings (security.decisions,
+      // workloads.recommendations, the commerce.software family). These
+      // routes are INSIDE the frozen route vocabulary; the previous
+      // "not yet composed in this runtime" placeholder is GONE. Each
+      // route binds to its lane's existing screen composition (over
+      // REAL runtime state — honest empty/blocked where the demo fleet
+      // has no records, never fabricated data).
+      const routeKey = `${route.area}.${route.view}`;
+      if (routeKey === "security.decisions") {
+        // The Guardian decisions view — the demo fleet's evaluation
+        // is the parked-plan's REQUIRE_APPROVAL decision (visible in
+        // the Security Doctor); the decisions LIST composes the
+        // honest empty state (no BLOCK decisions recorded for the
+        // demo tenant — the audit log's 5 seeded events include no
+        // BLOCK outcome). The screen renders its ready/empty phase
+        // honestly.
+        const emptyData = {
+          presentations: [] as readonly GuardianDecisionPresentationView[],
+          blockHistory: {
+            tenantId: asTenantId(input.sessionTenantId),
+            total: 0,
+            items: [],
+          } as BlockHistoryView,
+        } as GuardianDecisionsData;
+        return (
+          <GuardianDecisionsScreen
+            phase={{ kind: "ready", view: emptyData }}
+            panel="decisions"
+            onPanelChange={() => undefined}
+            onOpenApprovals={() => navigate({ area: "security", view: "approvals" })}
+          />
+        );
+      }
+      if (routeKey === "workloads.recommendations") {
+        // The recommendations view is the planning screen's
+        // recommendations tab (the same W143 feed; the route is a
+        // deep-link into the planning surface). Render the planning
+        // screen with the recommendations tab selected.
+        if (input.laneFeeds === null) {
+          return <EmptyState title="The lane feeds refused to compose." hint="The composition root failed; refresh the session." action={<Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>Back to Control Tower</Button>} />;
+        }
+        const feed = input.laneFeeds.workloadPlanning;
+        const screenPhase =
+          feed.phase.kind === "ready"
+            ? { kind: "ready" as const, view: feed.phase.view as unknown as WorkloadPlanningData }
+            : feed.phase.kind === "error"
+              ? { kind: "error" as const, message: feed.phase.message }
+              : { kind: "loading" as const };
+        return (
+          <WorkloadPlanningScreen
+            phase={screenPhase}
+            surface={{ view: "list" } as never}
+            onSurfaceEvent={() => undefined}
+            tab="recommendations"
+            onTabChange={() => undefined}
+            journey={null}
+          />
+        );
+      }
+      // The commerce.software family — each sub-route binds to its
+      // lane screen with the honest empty phase (the demo fleet has no
+      // software subscriptions / vendor catalog / maintenance work
+      // orders / connectivity submissions / outbox entries — REAL
+      // runtime state, never fabricated data). The screen renders its
+      // loading/empty phase honestly.
+      if (routeKey === "commerce.software") {
+        return <SoftwareScreen phase={{ kind: "loading" }} journey={null} />;
+      }
+      if (routeKey === "commerce.vendors") {
+        return (
+          <VendorsScreen
+            phase={{ kind: "loading" }}
+            openVendorId={null}
+            onOpenVendor={() => undefined}
+            journey={null}
+          />
+        );
+      }
+      if (routeKey === "commerce.maintenance") {
+        return (
+          <MaintenanceScreen
+            phase={{ kind: "loading" }}
+            surface={{ view: "workorders" } as never}
+            onSurfaceEvent={() => undefined}
+            tab="matching"
+            onTabChange={() => undefined}
+            journey={null}
+          />
+        );
+      }
+      if (routeKey === "commerce.connectivity") {
+        return (
+          <ConnectivityScreen
+            phase={{ kind: "loading" }}
+            openSubmissionId={null}
+            onOpenSubmission={() => undefined}
+            openConnectivityId={null}
+            onOpenConnectivity={() => undefined}
+            journey={null}
+          />
+        );
+      }
+      if (routeKey === "commerce.communication") {
+        return (
+          <CommunicationScreen
+            phase={{ kind: "loading" }}
+            openMessageId={null}
+            onOpenMessage={() => undefined}
+            journey={null}
+          />
+        );
+      }
       // Genuinely unknown routes fail safely — never a crash, always a
       // way forward. The six lanes' deep screens are bound above; this
       // default catches only routes outside the frozen vocabulary.
       const area = route.area;
       return (
         <EmptyState
-          title={`${route.view} — not yet composed in this runtime`}
-          hint={`The ${area} lane's rendered screens are accepted (their browser tests prove the journeys); the runtime binding for this view arrives with the lane composition work.`}
+          title="This route does not exist"
+          hint={`The console's route vocabulary is closed — unknown areas and views refuse rather than render something misleading. The ${area} area is not in the vocabulary.`}
           action={
             <Button variant="secondary" onClick={() => navigate({ area: "overview", view: "home" })}>
               Back to Control Tower

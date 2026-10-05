@@ -56,6 +56,16 @@ export interface RecoveryCasesScreenProps {
   readonly onOpenDestructive: (deviceId: DeviceId) => void;
   readonly onOpenFindMy: (deviceId: DeviceId) => void;
   /**
+   * W148 — the case-creation affordance (the destructive gate's
+   * precondition). The cases list's empty state and the screen header
+   * both expose the affordance; the binding site routes the intent
+   * through the REAL recovery-case journey factory (a case is the
+   * durable context that gates every destructive recovery action).
+   * The per-case seven-stage journey + the typed-CONFIRM destructive
+   * gate become reachable when a case exists.
+   */
+  readonly onCreateCase?: (deviceId: DeviceId) => void;
+  /**
    * W141: the per-case journeys (optional; the runtime feed supplies
    * them, keyed by case id). The selected case's journey renders in
    * the detail Sheet — lost/stolen signal -> recovery case ->
@@ -329,6 +339,35 @@ function CaseDetail({
 export function RecoveryCasesScreen(props: RecoveryCasesScreenProps): JSX.Element {
   const { phase } = props;
 
+  // W148 — the case-creation affordance: the screen header exposes it
+  // whenever the binding site supplies the callback (the binding site
+  // routes the intent through the REAL recovery-case journey factory).
+  // The affordance is a PROPOSAL — the case is the durable context
+  // that gates every destructive recovery action; the typed-CONFIRM
+  // destructive gate becomes reachable when a case exists.
+  const createCaseAffordance = props.onCreateCase !== undefined ? (
+    <Button
+      variant="primary"
+      onClick={(): void => {
+        // The binding site routes the intent; the screen never creates
+        // a case itself (the case factory is the binding site's job).
+        if (props.onCreateCase !== undefined) {
+          // The device id is the binding site's pick (the demo tenant's
+          // selected device, or the fresh-workspace's first roster
+          // device — the binding site decides). The screen passes the
+          // intent through; the binding site supplies the device.
+          props.onCreateCase("" as DeviceId);
+        }
+      }}
+      testId="create-recovery-case"
+    >
+      Open recovery case
+    </Button>
+  ) : null;
+  const emptyStateAction = props.onCreateCase !== undefined
+    ? { label: "Open recovery case", onClick: () => props.onCreateCase?.("" as DeviceId) }
+    : undefined;
+
   let body: ReactNode;
   if (phase.kind === "loading") {
     body = (
@@ -344,6 +383,7 @@ export function RecoveryCasesScreen(props: RecoveryCasesScreenProps): JSX.Elemen
       <EmptyState
         title="No recovery cases"
         hint="Cases open from lost-device reports or posture escalations. A case is the durable context that gates every destructive recovery action."
+        action={emptyStateAction}
       />
     ) : (
       <>
@@ -353,6 +393,11 @@ export function RecoveryCasesScreen(props: RecoveryCasesScreenProps): JSX.Elemen
         >
           <CasesTable view={view} onSelectCase={props.onSelectCase} />
         </Card>
+        {createCaseAffordance !== null && (
+          <div className="fos-row" style={{ marginTop: "0.75rem" }}>
+            {createCaseAffordance}
+          </div>
+        )}
       </>
     );
   }
@@ -368,6 +413,9 @@ export function RecoveryCasesScreen(props: RecoveryCasesScreenProps): JSX.Elemen
             The durable, versioned context for lost-device and posture-escalation recovery.
           </p>
         </div>
+        {createCaseAffordance !== null && phase.kind === "ready" && phase.view.cases.length > 0 && (
+          createCaseAffordance
+        )}
       </header>
       {body}
       <CaseSheet {...props} />

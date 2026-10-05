@@ -320,9 +320,12 @@ test("the approvals queue shows PARKED items with the gated, confirm-required tr
     <ApprovalsQueueScreen
       phase={{ kind: "ready", view: queueView() }}
       actingApprover={{ userId: "usr_w090b_owner" }}
-      pendingDecision={null}
+      decisionDialog={null}
       onRequestDecision={(planId, action): void => { requests.push([planId, action]); }}
       onCancelDecision={(): void => {}}
+      onAcknowledgeConsequences={(): void => {}}
+      onPhraseChange={(): void => {}}
+      onRejectionReasonChange={(): void => {}}
       onConfirmDecision={(): void => {}}
     />,
   );
@@ -339,17 +342,36 @@ test("the approvals queue shows PARKED items with the gated, confirm-required tr
 test("the approve confirmation dialog is fully controlled and requires the human gate", async () => {
   const user = userEvent.setup();
   const confirmed: Array<[string, string]> = [];
+  const planId = queueView().items[0]?.planId ?? "plan_w060b_01";
+  const requiredPhrase = `CONFIRM APPROVE ${planId}`;
   function Shell(): React.JSX.Element {
     const [pending, setPending] = useState<{ planId: string; action: "approve" | "reject" } | null>(null);
+    const [acknowledged, setAcknowledged] = useState<boolean>(false);
+    const [phrase, setPhrase] = useState<string>("");
+    const dialog = pending === null ? null : {
+      pending,
+      acknowledged,
+      phrase,
+      refusal: null,
+      rejectionReason: "",
+    };
     return (
       <ApprovalsQueueScreen
         phase={{ kind: "ready", view: queueView() }}
         actingApprover={{ userId: "usr_w090b_owner" }}
-        pendingDecision={pending}
-        onRequestDecision={(planId, action): void => setPending({ planId, action })}
+        decisionDialog={dialog}
+        onRequestDecision={(planId, action): void => {
+          setPending({ planId, action });
+          setAcknowledged(false);
+          setPhrase("");
+        }}
         onCancelDecision={(): void => setPending(null)}
-        onConfirmDecision={(planId, action): void => {
-          confirmed.push([planId, action]);
+        onAcknowledgeConsequences={(): void => setAcknowledged(true)}
+        onPhraseChange={(next): void => setPhrase(next)}
+        onRejectionReasonChange={(): void => undefined}
+        onConfirmDecision={(): void => {
+          if (!acknowledged || phrase !== requiredPhrase) return;
+          confirmed.push([pending!.planId, pending!.action]);
           setPending(null);
         }}
       />
@@ -361,7 +383,14 @@ test("the approve confirmation dialog is fully controlled and requires the human
   // The gate + confirmation requirements are explicit.
   expect(within(dialog).getByText("human_decision")).toBeDefined();
   expect(within(dialog).getAllByText(/never one-click/i).length).toBeGreaterThan(0);
-  await user.click(within(dialog).getByRole("button", { name: "Confirm approve" }));
+  // W148 — the typed-phrase gate: the Confirm button is DISABLED until
+  // the operator acknowledges the consequences AND types the exact
+  // confirmation phrase.
+  const confirmButton = within(dialog).getByRole("button", { name: "Confirm approve" }) as HTMLButtonElement;
+  expect(confirmButton.disabled).toBe(true);
+  await user.click(within(dialog).getByTestId("confirm-acknowledged"));
+  await user.type(within(dialog).getByTestId("confirm-phrase"), requiredPhrase);
+  await user.click(confirmButton);
   expect(confirmed).toEqual([["plan_w060b_01", "approve"]]);
   expect(screen.queryByRole("alertdialog")).toBeNull();
 });
@@ -371,9 +400,12 @@ test("without an acting approver the queue is reviewable but NOT decidable (owne
     <ApprovalsQueueScreen
       phase={{ kind: "ready", view: queueView() }}
       actingApprover={null}
-      pendingDecision={null}
+      decisionDialog={null}
       onRequestDecision={(): void => {}}
       onCancelDecision={(): void => {}}
+      onAcknowledgeConsequences={(): void => {}}
+      onPhraseChange={(): void => {}}
+      onRejectionReasonChange={(): void => {}}
       onConfirmDecision={(): void => {}}
     />,
   );
