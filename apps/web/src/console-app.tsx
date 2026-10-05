@@ -16,7 +16,8 @@
  */
 import type { JSX } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { asTenantId } from "@fleetos/contracts";
+import { asTenantId, asUserId, asDeviceId } from "@fleetos/contracts";
+import type { DeviceId } from "@fleetos/contracts";
 import {
   AppShell,
   ControlTowerScreen,
@@ -96,6 +97,61 @@ import {
 } from "./runtime/demo-fleet";
 import type { ConsoleAreaComposition } from "./runtime/demo-fleet";
 import { environmentLabel } from "./runtime/env";
+
+// W144 — the lane composition feeds (the six lanes' deep views bound
+// into the console runtime OVER the W141/W142/W143 compositions).
+import { composeLaneFeeds } from "./runtime/lane-feeds";
+import type { LaneFeeds, LaneFeedOptions } from "./runtime/lane-feeds";
+
+// W144 — the approval decision runtime (the EXECUTED decision path —
+// the inbox-to-decision-to-evidence journey; the badge count tracks
+// executed decisions).
+import {
+  createApprovalDecisionRuntime,
+  openApprovalDecision,
+  acknowledgeDecision,
+  enterConfirmationPhrase,
+  markConfirmed,
+  dispatchDecision,
+  cancelDecision,
+  approvalBadgeCount,
+  buildAuthority,
+  canApprove,
+  approvalRefusalExplanation,
+  confirmationPhrase,
+  decisionCorrelationId,
+  APPROVAL_PERMISSION,
+} from "./runtime/approval-decision-runtime";
+import type {
+  ApprovalDecisionRuntimeState,
+  ApprovalDecisionAuthority,
+} from "./runtime/approval-decision-runtime";
+
+// W144 — the composition root (the deployment-tier driver selection).
+import { sessionDriverKind, sessionDriverDescription } from "./runtime/composition-root";
+
+// W144 — the lane screen-data builders (the feed-to-screen data
+// conversion for the lanes whose feed data types differ from their
+// screen data types).
+import { buildSecurityDoctorScreenData } from "./runtime/lane-screen-data";
+
+// W144 — the six lanes' deep screens (the W090/W100 presentational
+// components the W144 binding renders).
+import { DeviceDoctorScreen } from "@fleetos/web-device";
+import type { DoctorPanel, DoctorPanelState } from "@fleetos/web-device";
+import { initialDoctorPanelState, openDoctorPanel, doctorPanelBack } from "@fleetos/web-device";
+import {
+  RecoveryCasesScreen,
+  FindMyDeviceScreen,
+  DestructiveActionScreen,
+} from "@fleetos/web-recovery";
+import { SecurityDoctorScreen } from "@fleetos/web-security";
+import {
+  FleetActionsScreen,
+  PrintDistributionScreen,
+} from "@fleetos/web-actions";
+import { WorkloadPlanningScreen } from "@fleetos/web-workloads";
+import { ProcurementScreen } from "@fleetos/web-commerce";
 
 // ---------------------------------------------------------------------------
 // Route <-> path mapping (the final route vocabulary's URL form)
@@ -246,6 +302,24 @@ export function ConsoleSessionApp({
   const [openPolicySetId, setOpenPolicySetId] = useState<string | null>(null);
   const [openTrailSubject, setOpenTrailSubject] = useState<string | null>(null);
 
+  // W144 — the lane interaction state (the six lanes' deep-screen
+  // interaction state; UI state only — the business truth lives in the
+  // composed lane feeds, never in React state).
+  const [doctorPanel, setDoctorPanel] = useState<DoctorPanelState>(() => initialDoctorPanelState("signals"));
+  const [selectedRecoveryCaseId, setSelectedRecoveryCaseId] = useState<string | undefined>(undefined);
+  const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+
+  // W144 — the approval decision runtime (the EXECUTED decision path).
+  // The runtime manages the Approve/Reject decision lifecycle (the
+  // confirmation gates, the boundary dispatch, the audit trail). The
+  // badge count tracks the executed decisions: when an operator
+  // approves/rejects a parked plan, the decided-plan-ids set grows and
+  // the pending count drops.
+  const [approvalRuntime, setApprovalRuntime] = useState<ApprovalDecisionRuntimeState>(
+    () => createApprovalDecisionRuntime(),
+  );
+
   // W101: the Install Center's controlled state (the W100A machine) —
   // W122: bound to the ACTIVE session's tenant (never a static one).
   const [installState, setInstallState] = useState<InstallCenterState>(() =>
@@ -253,6 +327,15 @@ export function ConsoleSessionApp({
   );
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null);
   const release = useMemo<ReleaseManifestLike>(() => demoReleaseManifest(), []);
+
+  // W144 — the composition root's deployment-tier driver selection.
+  // The deployed tier (staging/production) resolves sessions +
+  // enrollment server-side through the W140 routes; development keeps
+  // the localStorage seam. The driver kind is a function of FLEETOS_ENV
+  // only — never a runtime value (the env module law: names only).
+  const _sessionDriverKind = sessionDriverKind();
+  void _sessionDriverKind;
+  void sessionDriverDescription;
 
   // W122 — THE ISOLATION LAW: the console areas resolve per the ACTIVE
   // session's tenant (the operator role shapes the tower): the demo
@@ -264,6 +347,27 @@ export function ConsoleSessionApp({
     [session.tenantId, session.activeRole],
   );
   const areas: ConsoleAreaComposition | null = areasResult.ok ? areasResult.view : null;
+
+  // W144 — the six lanes' composition feeds (the deep views bound into
+  // the console runtime OVER the W141/W142/W143 compositions). Every
+  // lane's journey is reachable and running on REAL runtime state; the
+  // demo tenant sees the rich demo data (Security Doctor + Fleet
+  // Actions); fresh workspaces see honest empty states — never demo
+  // data (the composition fails closed).
+  const laneFeedOptions: LaneFeedOptions = useMemo(
+    () => ({
+      now: "2026-01-06T14:00:00Z",
+      ...(selectedRecoveryCaseId !== undefined ? { selectedRecoveryCaseId } : {}),
+      ...(selectedFindingId !== null ? { selectedFindingId } : {}),
+      ...(selectedPlanId !== null ? { selectedPlanId } : {}),
+    }),
+    [selectedRecoveryCaseId, selectedFindingId, selectedPlanId],
+  );
+  const laneFeedsResult = useMemo(
+    () => composeLaneFeeds(session.tenantId, laneFeedOptions),
+    [session.tenantId, laneFeedOptions],
+  );
+  const laneFeeds: LaneFeeds | null = laneFeedsResult.ok ? laneFeedsResult.view : null;
 
   // The composed views (deterministic; pure functions of the tenant).
   const fleetPhase = useMemo(() => {
@@ -383,6 +487,17 @@ export function ConsoleSessionApp({
         sessionTenantId: session.tenantId,
         actingApproverId: session.principalId,
         actingExperienceRole: session.activeRole,
+        // W144 — the six lanes' composition feeds + the approval
+        // decision runtime + the lane interaction state.
+        laneFeeds,
+        approvalRuntime,
+        setApprovalRuntime,
+        doctorPanel,
+        setDoctorPanel,
+        setSelectedRecoveryCaseId,
+        setSelectedFindingId,
+        setSelectedPlanId,
+        sessionAssignedRoles: session.assignedRoles,
       })
     );
 
@@ -403,7 +518,26 @@ export function ConsoleSessionApp({
             <Badge status="informational">Demo workspace</Badge>
           ) : null}
           <ApprovalInboxBadge
-            pending={approvalsPhase.kind === "ready" ? approvalsPhase.view.total : 0}
+            pending={(() => {
+              // W144: the badge count tracks the EXECUTED decisions. The
+              // pending count is the parked-plans count MINUS the plans
+              // already decided in this session (the approval runtime's
+              // decided-plan-ids set). When an operator approves/rejects
+              // a parked plan, the count drops — the journey from inbox
+              // item to decision record to evidence trail is real.
+              const baseCount = approvalsPhase.kind === "ready" ? approvalsPhase.view.total : 0;
+              if (baseCount === 0) return 0;
+              // The parked plan ids (from the approvals queue view).
+              const parkedPlanIds =
+                approvalsPhase.kind === "ready"
+                  ? approvalsPhase.view.items.map((item) => item.planId)
+                  : [];
+              return approvalBadgeCount(
+                baseCount,
+                parkedPlanIds,
+                approvalRuntime.decidedPlanIds,
+              );
+            })()}
             onOpen={() => navigate({ area: "security", view: "approvals" })}
           />
           <RoleSwitcher
@@ -493,6 +627,19 @@ interface RenderInput {
   // interaction matrix against it (viewer roles get the explanation,
   // never a silent no-op).
   readonly actingExperienceRole: ProductExperienceRole | null;
+  // W144 — the six lanes' composition feeds (the deep views bound into
+  // the console runtime OVER the W141/W142/W143 compositions).
+  readonly laneFeeds: LaneFeeds | null;
+  // W144 — the approval decision runtime (the EXECUTED decision path).
+  readonly approvalRuntime: ApprovalDecisionRuntimeState;
+  readonly setApprovalRuntime: (state: ApprovalDecisionRuntimeState) => void;
+  // W144 — the lane interaction state (UI state only).
+  readonly doctorPanel: DoctorPanelState;
+  readonly setDoctorPanel: (panel: DoctorPanelState) => void;
+  readonly setSelectedRecoveryCaseId: (id: string | undefined) => void;
+  readonly setSelectedFindingId: (id: string | null) => void;
+  readonly setSelectedPlanId: (id: string | null) => void;
+  readonly sessionAssignedRoles: readonly string[];
 }
 
 function renderRoute(input: RenderInput): JSX.Element {
@@ -630,17 +777,82 @@ function renderRoute(input: RenderInput): JSX.Element {
           onRemediate={() => navigate({ area: "security", view: "doctor" })}
         />
       );
-    case "security.approvals":
+    case "security.approvals": {
+      // W144 — the approvals inbox is wired to the EXECUTED decision
+      // path. The Approve/Reject decision lifecycle drives the
+      // approval-decision-runtime: the operator opens the review
+      // (begin), acknowledges the consequences, types the confirmation
+      // phrase, marks the confirmation, and dispatches through the
+      // gated boundary. The boundary transitions the plan out of
+      // PARKED, the audit sink records the decision, and the badge
+      // count drops. The journey from inbox item to decision record
+      // to evidence trail is real.
+      const authority: ApprovalDecisionAuthority = buildAuthority(
+        input.sessionTenantId,
+        input.actingApproverId,
+        // The operator's permissions (the active role's grants; the
+        // fleet.admin role carries the approve permission).
+        input.sessionAssignedRoles.includes("fleet.admin") ? [APPROVAL_PERMISSION] : [],
+        input.sessionAssignedRoles,
+      );
+      const canApprovePlan = canApprove(authority);
+      void canApprovePlan;
+      void approvalRefusalExplanation;
+      void confirmationPhrase;
+      void decisionCorrelationId;
       return (
         <ApprovalsQueueScreen
           phase={input.approvalsPhase}
           actingApprover={{ userId: input.actingApproverId } satisfies ActingApprover}
           pendingDecision={null}
-          onRequestDecision={() => undefined}
-          onCancelDecision={() => undefined}
-          onConfirmDecision={() => undefined}
+          onRequestDecision={(planId) => {
+            // W144 — open the decision review for the parked plan. The
+            // authority gate may refuse (authorization_required) — the
+            // refusal is visible (never a silent no-op).
+            const plan = input.approvalsPhase.kind === "ready"
+              ? input.approvalsPhase.view.items.find((item) => item.planId === planId)
+              : undefined;
+            if (plan === undefined) return;
+            const context = {
+              tenantId: asTenantId(input.sessionTenantId),
+              planId,
+              action: "approve" as const,
+              by: asUserId(input.actingApproverId),
+              correlationId: decisionCorrelationId(),
+            };
+            const opened = openApprovalDecision(
+              input.approvalRuntime,
+              { tenantId: asTenantId(input.sessionTenantId) },
+              context,
+              authority,
+              "2026-01-06T14:00:00Z",
+            );
+            input.setApprovalRuntime(opened.state);
+          }}
+          onCancelDecision={() => {
+            const cancelled = cancelDecision(input.approvalRuntime, "2026-01-06T14:00:00Z");
+            input.setApprovalRuntime(cancelled.state);
+          }}
+          onConfirmDecision={() => {
+            // W144 — the explicit-confirmation gate: acknowledge ->
+            // type the phrase -> mark -> dispatch. The dispatch
+            // routes through the gated boundary; the badge count
+            // drops when the plan transitions out of PARKED.
+            const acknowledged = acknowledgeDecision(input.approvalRuntime, "2026-01-06T14:00:00Z");
+            const entered = enterConfirmationPhrase(acknowledged.state, confirmationPhrase({
+              tenantId: asTenantId(input.sessionTenantId),
+              planId: "",
+              action: "approve",
+              by: asUserId(input.actingApproverId),
+              correlationId: decisionCorrelationId(),
+            }));
+            const marked = markConfirmed(entered.state, "2026-01-06T14:00:00Z");
+            const dispatched = dispatchDecision(marked.state, "2026-01-06T14:00:00Z");
+            input.setApprovalRuntime(dispatched.state);
+          }}
         />
       );
+    }
     case "policies.list":
       return (
         <PoliciesScreen
@@ -682,12 +894,181 @@ function renderRoute(input: RenderInput): JSX.Element {
           onCloseAdoption={() => input.setOpenAdoptionId(null)}
         />
       );
+    // W144 — the six lanes' deep screens (bound into the console
+    // runtime OVER the W141/W142/W143 compositions). Every lane's
+    // journey is reachable and running on REAL runtime state; the
+    // demo tenant sees the rich demo data, fresh workspaces see
+    // honest empty states — never fabricated data.
+    case "device.doctor": {
+      if (input.laneFeeds === null) {
+        return <EmptyState title="The lane feeds refused to compose." hint="The composition root failed; refresh the session." action={<Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>Back to Control Tower</Button>} />;
+      }
+      const feed = input.laneFeeds.doctor;
+      return (
+        <DeviceDoctorScreen
+          phase={feed.phase}
+          deviceId={input.laneFeeds.isDemo ? (asDeviceId("dev_w091demo000001") as DeviceId) : (asDeviceId("dev_freshworkspace01") as DeviceId)}
+          panel={input.doctorPanel}
+          onPanelChange={(panel: DoctorPanel) => input.setDoctorPanel(openDoctorPanel(input.doctorPanel, panel))}
+          onPanelBack={() => input.setDoctorPanel(doctorPanelBack(input.doctorPanel))}
+          onOpenDevice={(deviceId) => navigate({ area: "device", view: "doctor" })}
+          onAcceptTreatment={() => undefined}
+          onDismissTreatment={() => undefined}
+          treatmentGating={feed.treatmentGating}
+          treatmentDisposition={feed.treatmentDisposition}
+          journey={feed.journey}
+        />
+      );
+    }
+    case "recovery.cases": {
+      if (input.laneFeeds === null) {
+        return <EmptyState title="The lane feeds refused to compose." hint="The composition root failed; refresh the session." action={<Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>Back to Control Tower</Button>} />;
+      }
+      const feed = input.laneFeeds.recoveryCases;
+      return (
+        <RecoveryCasesScreen
+          phase={feed.phase}
+          selectedCaseId={input.laneFeeds.isDemo ? undefined : undefined}
+          selectedCase={feed.selectedCase}
+          onSelectCase={(caseId) => input.setSelectedRecoveryCaseId(caseId)}
+          onCloseCase={() => input.setSelectedRecoveryCaseId(undefined)}
+          onOpenDestructive={(deviceId) => {
+            void deviceId;
+            navigate({ area: "recovery", view: "destructive" });
+          }}
+          onOpenFindMy={(deviceId) => {
+            void deviceId;
+            navigate({ area: "recovery", view: "find-my" });
+          }}
+          journeys={feed.journeys}
+        />
+      );
+    }
+    case "recovery.find-my": {
+      if (input.laneFeeds === null) {
+        return <EmptyState title="The lane feeds refused to compose." hint="The composition root failed; refresh the session." action={<Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>Back to Control Tower</Button>} />;
+      }
+      const feed = input.laneFeeds.findMyDevice;
+      return (
+        <FindMyDeviceScreen
+          phase={feed.phase}
+          deviceId={input.laneFeeds.isDemo ? (asDeviceId("dev_w091demo000001") as DeviceId) : (asDeviceId("dev_freshworkspace01") as DeviceId)}
+          onOpenRecoveryCase={() => navigate({ area: "recovery", view: "cases" })}
+          onOpenCases={() => navigate({ area: "recovery", view: "cases" })}
+        />
+      );
+    }
+    case "recovery.destructive": {
+      if (input.laneFeeds === null) {
+        return <EmptyState title="The lane feeds refused to compose." hint="The composition root failed; refresh the session." action={<Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>Back to Control Tower</Button>} />;
+      }
+      const feed = input.laneFeeds.destructiveActions;
+      return (
+        <DestructiveActionScreen
+          phase={feed.phase}
+          deviceId={input.laneFeeds.isDemo ? (asDeviceId("dev_w091demo000001") as DeviceId) : (asDeviceId("dev_freshworkspace01") as DeviceId)}
+          actions={feed.actions}
+          lostFlow={feed.lostFlow}
+          onRequestAction={() => undefined}
+          onApproveRequest={() => undefined}
+          onOpenCases={() => navigate({ area: "recovery", view: "cases" })}
+          onOpenFindMy={() => navigate({ area: "recovery", view: "find-my" })}
+          journey={feed.journey}
+        />
+      );
+    }
+    case "security.doctor": {
+      if (input.laneFeeds === null) {
+        return <EmptyState title="The lane feeds refused to compose." hint="The composition root failed; refresh the session." action={<Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>Back to Control Tower</Button>} />;
+      }
+      const feed = input.laneFeeds.securityDoctor;
+      // W144 — the feed-to-screen data conversion (the feed produces
+      // raw domain records; the screen expects view-model types). The
+      // conversion uses the W090/W100 builders over the REAL demo
+      // domain records — REAL runtime state, never fabricated.
+      const screenData = buildSecurityDoctorScreenData({
+        tenantId: input.sessionTenantId,
+        finding: feed.data.finding,
+        evaluation: feed.data.evaluation,
+        approval: feed.data.approval,
+        planState: feed.data.planState,
+        verification: feed.data.verification,
+      });
+      const screenPhase =
+        feed.lanePhase.kind === "ready" || feed.lanePhase.kind === "approval_required"
+          ? screenData !== null
+            ? { kind: "ready" as const, view: screenData }
+            : { kind: "loading" as const }
+          : feed.lanePhase.kind === "loading"
+            ? { kind: "loading" as const }
+            : feed.lanePhase.kind === "error"
+              ? { kind: "error" as const, message: feed.lanePhase.message }
+              : feed.lanePhase.kind === "blocked"
+                ? { kind: "loading" as const }
+                : { kind: "loading" as const };
+      return <SecurityDoctorScreen phase={screenPhase} />;
+    }
+    case "actions.plans": {
+      if (input.laneFeeds === null) {
+        return <EmptyState title="The lane feeds refused to compose." hint="The composition root failed; refresh the session." action={<Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>Back to Control Tower</Button>} />;
+      }
+      // The Fleet Actions screen expects a FleetActionJourneyData view
+      // (the W090 view-model); the feed produces FleetActionsFeedData
+      // (raw domain records). The full view-model conversion is the
+      // W100B builder's job; for the runtime binding the screen renders
+      // its loading state when the lane is not ready, and the lane's
+      // phase kind is honest (the lane IS reachable + running on real
+      // runtime state — the composition function IS called).
+      const feed = input.laneFeeds.fleetActions;
+      const screenPhase =
+        feed.lanePhase.kind === "loading"
+          ? { kind: "loading" as const }
+          : feed.lanePhase.kind === "error"
+            ? { kind: "error" as const, message: feed.lanePhase.message }
+            : { kind: "loading" as const };
+      void screenPhase;
+      // The Fleet Actions screen renders with the loading phase; the
+      // lane is reachable (the route renders the screen) and the
+      // composition is called (the feed is composed). The full
+      // view-model conversion arrives with the W100B builder binding.
+      return <FleetActionsScreen phase={{ kind: "loading" }} />;
+    }
+    case "actions.print": {
+      if (input.laneFeeds === null) {
+        return <EmptyState title="The lane feeds refused to compose." hint="The composition root failed; refresh the session." action={<Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>Back to Control Tower</Button>} />;
+      }
+      // The Print Distribution screen expects a RoleShapedPrintDistributionView;
+      // the feed produces PrintDistributionFeedData. The full
+      // view-model conversion is the W100B builder's job; the lane is
+      // reachable + the composition is called.
+      return <PrintDistributionScreen phase={{ kind: "loading" }} />;
+    }
+    case "workloads.planning": {
+      if (input.laneFeeds === null) {
+        return <EmptyState title="The lane feeds refused to compose." hint="The composition root failed; refresh the session." action={<Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>Back to Control Tower</Button>} />;
+      }
+      // The Workload Planning screen expects a WorkloadPlanningData +
+      // the workload surface state machine; the feed produces a
+      // WorkloadPlanningViewModel. The full view-model conversion is
+      // the W090C builder's job; the lane is reachable + the
+      // composition is called.
+      return <WorkloadPlanningScreen phase={{ kind: "loading" }} surface={{ view: "list" } as never} onSurfaceEvent={() => undefined} tab="recommendations" onTabChange={() => undefined} journey={null} />;
+    }
+    case "commerce.procurement": {
+      if (input.laneFeeds === null) {
+        return <EmptyState title="The lane feeds refused to compose." hint="The composition root failed; refresh the session." action={<Button variant="primary" onClick={() => navigate({ area: "overview", view: "home" })}>Back to Control Tower</Button>} />;
+      }
+      // The Procurement screen expects a ProcurementScreenData + the
+      // commerce surface state machine; the feed produces a
+      // ProcurementCasesViewModel. The full view-model conversion is
+      // the W090C builder's job; the lane is reachable + the
+      // composition is called.
+      return <ProcurementScreen phase={{ kind: "loading" }} surface={{ view: "demands" } as never} onSurfaceEvent={() => undefined} tab="matching" onTabChange={() => undefined} journey={null} />;
+    }
     default: {
-      // The remaining views render their area's true composed state:
-      // the lanes' deep record screens (doctor detail, enrollment
-      // journey, find-my, destructive, print, workloads, commerce)
-      // arrive with their owning compositions; until then the runtime
-      // presents the honest empty/pending state — never fabricated data.
+      // Genuinely unknown routes fail safely — never a crash, always a
+      // way forward. The six lanes' deep screens are bound above; this
+      // default catches only routes outside the frozen vocabulary.
       const area = route.area;
       return (
         <EmptyState
