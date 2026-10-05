@@ -30,7 +30,7 @@ dcf4474) by five first-hand evaluators covering TRN, HOS, FEM, LEG, DEF real-wor
 journeys, the DEMO persona operational journeys, and the mobile pass. All raw evidence
 is in the seven files under `docs/simulations/sim-c-evidence/`.
 
-**Verdict distribution (105 personas, post-second-fix-wave recount v2): SWITCH-ONLY 0 (0%) · MAIN-INTERFACE 0 (0%) · COMPLEMENT 5 (~4.8%) · RETAIN 100 (~95.2%).** **Second-fix-wave update (2026-10-05 evening, §4.9/§4.10):** the W147/W148/W149 lanes closed rerun blockers 1-9 and moved 5 SMALL-firm founders running governance from RETAIN → COMPLEMENT; blocker 10 (demo-tier session-scoped state) is by-design and the W149 R1 residual (procurement per-demand case journey list-level) is the last open code item. The before/after delta is 0/0/105 → 0/0/0/105
+**Verdict distribution (105 personas, post-second-fix-wave recount v2): SWITCH-ONLY 0 (0%) · MAIN-INTERFACE 0 (0%) · COMPLEMENT 5 (~4.8%) · RETAIN 100 (~95.2%).** **Second-fix-wave update (2026-10-05 evening, §4.9/§4.10):** the W147/W148/W149 lanes closed rerun blockers 1-9 and moved 5 SMALL-firm founders running governance from RETAIN → COMPLEMENT; blocker 10 (demo-tier session-scoped state) is by-design and the W149 R1 residual (procurement per-demand case journey list-level) is the last open code item. At the first recount (§4.7) the before/after delta was 0/0/105 → 0/0/0/105
 — no verdict changed. The fix lanes (W140, W144, W145) landed real technical progress
 (server-tier session persistence, composed lane surfaces, mobile priority-card roster,
 declared-import surface) but the central adoption blockers persist in the deployed
