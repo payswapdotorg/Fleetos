@@ -47,6 +47,7 @@ import {
   asObservationId,
   asTenantId,
   asUserId,
+  asWorkloadId,
   makeGuardianDecision,
 } from "@fleetos/contracts";
 import type {
@@ -56,6 +57,7 @@ import type {
   GuardianDecision,
   TenantId,
   UserId,
+  WorkloadId,
 } from "@fleetos/contracts";
 
 // The REAL domain packages available in apps/web's dependency closure.
@@ -80,6 +82,7 @@ import {
 import type {
   DeviceDoctorFeed,
   DeviceDoctorRuntimeState,
+  DeviceTwinLike,
   DeviceTwinSource,
   DoctorSources,
   DeviceObservationSource,
@@ -143,6 +146,7 @@ import {
 import type {
   WorkloadPlanningFeed,
   WorkloadPlanningRuntimeState,
+  WorkloadProfileFacets,
   WorkloadProfileSource,
   WorkloadRecommendationSource,
   WorkloadResourceSource,
@@ -152,6 +156,7 @@ import {
 } from "@fleetos/web-commerce";
 import type {
   ProcurementCasesFeed,
+  ProcurementDemandFacets,
   ProcurementRuntimeState,
   ProcurementDemandSource,
   ProcurementMatchSource,
@@ -240,6 +245,15 @@ export interface LaneFeedOptions {
   readonly selectedPlanId?: string;
   /** The selected document ref (the Print Distribution's subject). */
   readonly selectedDocumentRef?: string;
+  /**
+   * W148 — the session-scoped recovery-case source (the O5 case-creation
+   * affordance's binding). When supplied, the recovery cases feed
+   * composes over the session's cases (in-memory for the demo tier; the
+   * deployed tier's server-plane persistence arrives with the W140
+   * server-route lane). When absent, the feed composes the honest empty
+   * state (the fresh-tenant / no-cases state — never fabricated data).
+   */
+  readonly recoveryCaseSource?: RecoveryCaseSource;
 }
 
 /**
@@ -330,6 +344,34 @@ function emptyRecoveryState(): RecoveryRuntimeState {
   };
 }
 
+/**
+ * W148 — the session-scoped recovery runtime state: the binding site
+ * supplies the session's `RecoveryCaseSource` (the demo tier's in-memory
+ * store, the deployed tier's server-plane persistence); the destructive
+ * request source + the find-my-device source + the capability source
+ * stay empty (the demo has no destructive requests + no location-bearing
+ * observations — the honest empty states).
+ */
+function sessionRecoveryState(cases: RecoveryCaseSource): RecoveryRuntimeState {
+  return {
+    cases,
+    requests: { list: () => [], requests: () => [], latest: () => undefined } as unknown as DestructiveRequestSource,
+    findMy: {
+      view: (tenantId: TenantId, deviceId: DeviceId, at: string) => ({
+        tenantId,
+        deviceId,
+        asOf: at,
+        lastSeen: undefined,
+        location: { status: "no_location_evidence" as const },
+        ledger: Object.freeze([]) as readonly { readonly recordId: string; readonly version: number; readonly observedAt: string; readonly recordedAt: string; readonly staleness: string; readonly evidenceCount: number; readonly locationBorne: boolean }[],
+        locationKnown: false,
+      }),
+      revisions: () => [],
+    } as unknown as FindMyDeviceSource,
+    capabilities: { capabilities: () => undefined } as unknown as DestructiveCapabilitySource,
+  };
+}
+
 /** An empty Security Doctor runtime state. */
 function emptySecurityDoctorState(): SecurityDoctorRuntimeState {
   return {
@@ -390,6 +432,161 @@ function emptyDoctorState(): DeviceDoctorRuntimeState {
     doctor: emptyDoctorSources(),
     observations: emptyObservationSource(),
     remediation: emptyRemediationSource(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// W148 — the DEMO tenant's roster-backed twin source (the doctor's binding
+// over the demo fleet's OWN devices — the nine-stage diagnosis walk runs
+// over the roster's real devices; honest empties only where no doctor
+// health-pipeline data exists).
+// ---------------------------------------------------------------------------
+
+/**
+ * The DEMO tenant's twin source: backed by the demo fleet's REAL
+ * TwinStore (the same store the device roster reads — the doctor binds
+ * to the tenant's roster, never to an empty diagnosis store). A non-demo
+ * tenant gets an empty twin source (the honest fresh-tenant state).
+ *
+ * The structural `DeviceTwinSource` is satisfied by the in-memory
+ * TwinStore (`list` returns the tenant's twins sorted by deviceId;
+ * `get` returns the twin or undefined — no existence side channel).
+ */
+function demoTwinSource(): DeviceTwinSource {
+  // The demo fleet's REAL TwinStore (the same store the roster reads).
+  // Lazy-imported to keep the module pure (no top-level I/O).
+  const store = DEMO.store;
+  return {
+    list: (tenantId: TenantId) => {
+      if (tenantId !== TENANT_ID) return [];
+      // The TwinStore's list() returns the tenant's twins sorted by
+      // deviceId (the roster's deterministic order).
+      return store.list(tenantId) as unknown as readonly DeviceTwinLike[];
+    },
+    get: (tenantId: TenantId, deviceId: DeviceId) => {
+      if (tenantId !== TENANT_ID) return undefined;
+      return store.get(tenantId, deviceId) as unknown as DeviceTwinLike | undefined;
+    },
+  } as DeviceTwinSource;
+}
+
+/**
+ * W148 — the DEMO tenant's roster-backed doctor runtime state. The
+ * doctor's twin source is the demo fleet's REAL TwinStore (the same
+ * store the device roster reads); the doctor health-pipeline sources
+ * stay empty (the demo fleet has no health signals/baselines/anomalies/
+ * diagnoses/treatments — the honest empty state, never fabricated
+ * data). The nine-stage journey runs over the roster's real device
+ * (the device-not-in-fleet blocker is GONE for the demo tenant's own
+ * device `dev_w091demo000001`).
+ */
+function demoDoctorState(): DeviceDoctorRuntimeState {
+  return {
+    twins: demoTwinSource(),
+    doctor: emptyDoctorSources(),
+    observations: emptyObservationSource(),
+    remediation: emptyRemediationSource(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// W148 — the DEMO tenant's workload-planning state (the demo fleet has
+// ONE workload profile: the analyst workstation that targets the demo
+// device; the planning surface's Loading resolves to ready; the six-stage
+// journey runs over REAL runtime state).
+// ---------------------------------------------------------------------------
+
+const DEMO_WORKLOAD_ID: WorkloadId = asWorkloadId("wl_w091demo000001");
+const DEMO_WORKLOAD_PROFILE_FACETS: WorkloadProfileFacets = Object.freeze({
+  workloadId: DEMO_WORKLOAD_ID,
+  tenantId: TENANT_ID,
+  subjectKind: "analyst-workstation",
+  name: "w091-demo-analyst-workstation",
+  description: "The demo analyst's primary workstation — disk-encryption-capable, field-ops-scoped.",
+  revision: 1,
+  requirements: {
+    vectorVersion: 1,
+    values: Object.freeze({ compute: 0.7, memory: 0.6, storage: 0.5, security: 0.9 }),
+    confidence: 0.85,
+  },
+  constraints: Object.freeze({
+    requiredApplications: Object.freeze([
+      Object.freeze({ appId: "fleetos.console", minVersion: "1.0.0" }),
+    ]),
+    environments: Object.freeze(["windows"]),
+    classification: "internal",
+  }),
+  evidence: Object.freeze([
+    Object.freeze({
+      observationId: "obsw091demo0000010",
+      kind: "device.security",
+      note: "Disk-encryption posture observation (the CRITICAL finding's source).",
+    }),
+  ]),
+  workingHours: Object.freeze({ startHour: 9, endHour: 18 }),
+  createdAt: T0,
+  contentHash: "w091demo000000000000000000000000000000000000000000000000000001",
+  schemaVersion: 1,
+}) as WorkloadProfileFacets;
+
+/** The DEMO tenant's workload-planning runtime state (one profile, no ledger yet). */
+function demoWorkloadPlanningState(): WorkloadPlanningRuntimeState {
+  return {
+    profiles: {
+      list: (tenantId: TenantId) =>
+        tenantId === TENANT_ID ? [DEMO_WORKLOAD_PROFILE_FACETS] : [],
+    },
+    recommendations: {
+      ledger: (_tenantId: TenantId, _workloadId: WorkloadId) => undefined,
+    },
+    resources: {
+      links: () => [],
+      software: () => [],
+      connectivity: () => [],
+      maintenance: () => [],
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// W148 — the DEMO tenant's procurement state (the demo fleet has ONE
+// procurement demand: a laptop-replacement demand for the analyst's
+// workload; the procurement surface's Loading resolves to ready; the
+// seven-stage journey runs over REAL runtime state with honest
+// not_decided/not_requested stages where undecided).
+// ---------------------------------------------------------------------------
+
+const DEMO_DEMAND_FACETS: ProcurementDemandFacets = Object.freeze({
+  demandId: "dmd_w091demo000001",
+  tenantId: TENANT_ID,
+  workloadId: DEMO_WORKLOAD_ID as unknown as string,
+  description: "w091-demo laptop replacement for the analyst workstation (disk-encryption-capable, field-ops-scoped).",
+  quantity: 1,
+  createdAt: T2,
+  deadline: "2026-02-15T00:00:00Z",
+  deliveryArea: "hq",
+  budget: Object.freeze({ usd: 2200 }),
+  slaFloor: Object.freeze({ coverage: 0.95 }),
+  warrantyFloor: Object.freeze({ days: 365 }),
+  qualityFloor: Object.freeze({ score: 0.8 }),
+  availabilityFloor: Object.freeze({ ratio: 0.9 }),
+  allowedSubstitutions: Object.freeze(["lenovo-thinkpad-t14", "apple-macbook-air-m3"]),
+  rejectionEvidence: Object.freeze([]),
+  schemaVersion: 1,
+  modelVersion: 1,
+}) as ProcurementDemandFacets;
+
+/** The DEMO tenant's procurement runtime state (one demand, no matches/quotes/orders yet). */
+function demoProcurementState(): ProcurementRuntimeState {
+  return {
+    demands: {
+      list: (tenantId: TenantId) =>
+        tenantId === TENANT_ID ? [DEMO_DEMAND_FACETS] : [],
+    },
+    matches: { matches: () => [] },
+    quotes: { ledger: () => undefined },
+    orders: { orders: () => [] },
+    vendors: { list: () => [] },
   };
 }
 
@@ -765,31 +962,44 @@ export function composeLaneFeeds(
   const selectedDocumentRef = options.selectedDocumentRef ?? "doc://w091-demo-report";
   const freshWithinMs = 86_400_000;
   const staleAfterMs = 604_800_000;
+  // W148 — the session-scoped recovery-case source (the O5 case-creation
+  // affordance's binding). When supplied, the recovery cases feed
+  // composes over the session's cases; when absent, the honest empty
+  // state (the fresh-tenant / no-cases state — never fabricated data).
+  const recoveryState = options.recoveryCaseSource !== undefined
+    ? sessionRecoveryState(options.recoveryCaseSource)
+    : emptyRecoveryState();
 
   if (isDemoTenant(tenantId)) {
     // The demo tenant: the rich Security Doctor + Fleet Actions feeds;
-    // the other lanes compose the honest empty state.
+    // W148 — the Device Doctor binds to the demo fleet's REAL TwinStore
+    // (the doctor sees the demo tenant's own device `dev_w091demo000001`
+    // — the device-not-in-fleet blocker is GONE); the Workloads Planning
+    // + Commerce Procurement lanes compose the demo tenant's REAL
+    // workload profile + procurement demand (the Loading resolves to
+    // ready over REAL runtime state — the six-stage + seven-stage
+    // journeys run).
     const doctor = composeDeviceDoctorFeed(
       scope,
-      emptyDoctorState(),
+      demoDoctorState(),
       selectedDeviceId,
       { now },
     );
     const recoveryCases = composeRecoveryCasesFeed(
       scope,
-      emptyRecoveryState(),
+      recoveryState,
       REAL_CASE_TABLE,
       { now, ...(selectedCaseId !== undefined ? { selectedCaseId } : {}) },
     );
     const findMyDevice = composeFindMyDeviceFeed(
       scope,
-      emptyRecoveryState(),
+      recoveryState,
       selectedDeviceId,
       { at: now, freshWithinMs, staleAfterMs },
     );
     const destructiveActions = composeDestructiveActionsFeed(
       scope,
-      emptyRecoveryState(),
+      recoveryState,
       REAL_REQUEST_TABLE,
       REAL_CASE_TABLE,
       selectedDeviceId,
@@ -815,12 +1025,12 @@ export function composeLaneFeeds(
     );
     const workloadPlanning = composeWorkloadPlanningFeed(
       scope,
-      emptyWorkloadPlanningState(),
+      demoWorkloadPlanningState(),
       { now },
     );
     const procurementCases = composeProcurementCasesFeed(
       scope,
-      emptyProcurementState(),
+      demoProcurementState(),
       { now },
     );
     return {
@@ -851,19 +1061,19 @@ export function composeLaneFeeds(
   );
   const recoveryCases = composeRecoveryCasesFeed(
     scope,
-    emptyRecoveryState(),
+    recoveryState,
     REAL_CASE_TABLE,
     { now, ...(selectedCaseId !== undefined ? { selectedCaseId } : {}) },
   );
   const findMyDevice = composeFindMyDeviceFeed(
     scope,
-    emptyRecoveryState(),
+    recoveryState,
     selectedDeviceId,
     { at: now, freshWithinMs, staleAfterMs },
   );
   const destructiveActions = composeDestructiveActionsFeed(
     scope,
-    emptyRecoveryState(),
+    recoveryState,
     REAL_REQUEST_TABLE,
     REAL_CASE_TABLE,
     selectedDeviceId,

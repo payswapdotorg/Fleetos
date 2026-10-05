@@ -47,6 +47,7 @@ import {
   buildApprovalsQueueView,
   buildFindingsListView,
   presentGuardianDecision,
+  requiredApprovalConfirmationPhrase,
 } from "../src/index";
 import type {
   ApprovalsQueueView,
@@ -243,15 +244,33 @@ test("journey: remediate a finding — proposal -> Guardian gate -> owner approv
   let confirmed: [string, "approve" | "reject"] | null = null;
   function QueueShell(): React.JSX.Element {
     const [pending, setPending] = useState<{ planId: string; action: "approve" | "reject" } | null>(null);
+    const [acknowledged, setAcknowledged] = useState<boolean>(false);
+    const [phrase, setPhrase] = useState<string>("");
+    const dialog = pending === null ? null : {
+      pending,
+      acknowledged,
+      phrase,
+      refusal: null,
+      rejectionReason: "",
+    };
+    const requiredPhrase = pending === null ? "" : `CONFIRM ${pending.action.toUpperCase()} ${pending.planId}`;
     return (
       <ApprovalsQueueScreen
         phase={{ kind: "ready", view: journey.queueView }}
         actingApprover={{ userId: "usr_w090b_owner" }}
-        pendingDecision={pending}
-        onRequestDecision={(planId, action): void => setPending({ planId, action })}
+        decisionDialog={dialog}
+        onRequestDecision={(planId, action): void => {
+          setPending({ planId, action });
+          setAcknowledged(false);
+          setPhrase("");
+        }}
         onCancelDecision={(): void => setPending(null)}
-        onConfirmDecision={(planId, action): void => {
-          confirmed = [planId, action];
+        onAcknowledgeConsequences={(): void => setAcknowledged(true)}
+        onPhraseChange={(next): void => setPhrase(next)}
+        onRejectionReasonChange={(): void => undefined}
+        onConfirmDecision={(): void => {
+          if (!acknowledged || phrase !== requiredPhrase) return;
+          confirmed = [pending!.planId, pending!.action];
           setPending(null);
         }}
       />
@@ -261,7 +280,20 @@ test("journey: remediate a finding — proposal -> Guardian gate -> owner approv
   await user.click(screen.getByRole("button", { name: /Approve the parked plan w090b-journey-remediation/ }));
   const confirmDialog = await screen.findByRole("alertdialog", { name: /Approve parked plan/ });
   expect(within(confirmDialog).getByText("human_decision")).toBeDefined();
-  await user.click(within(confirmDialog).getByRole("button", { name: "Confirm approve" }));
+  // W148 — the typed-phrase gate: the operator MUST acknowledge the
+  // consequences AND type the exact confirmation phrase. The Confirm
+  // button is DISABLED until both hold (never one-click).
+  const confirmButton = within(confirmDialog).getByRole("button", { name: "Confirm approve" }) as HTMLButtonElement;
+  expect(confirmButton.disabled).toBe(true);
+  await user.click(within(confirmDialog).getByTestId("confirm-acknowledged"));
+  await user.type(within(confirmDialog).getByTestId("confirm-phrase"), requiredApprovalConfirmationPhrase({
+    tenantId: "" as never,
+    planId: journey.queueView.items[0]!.planId,
+    action: "approve",
+    by: "" as never,
+    correlationId: "" as never,
+  }));
+  await user.click(confirmButton);
   expect(confirmed).toEqual([journey.queueView.items[0]?.planId, "approve"]);
   // The queue REFUSES the approved plan (fail-closed — no longer PARKED).
   const queueItem = journey.queueView.items[0];

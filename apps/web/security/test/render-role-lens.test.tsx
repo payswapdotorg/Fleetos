@@ -268,9 +268,12 @@ test("the approve/reject buttons' disabled state is IDENTICAL for every lens (au
       <ApprovalsQueueScreen
         phase={queueView}
         actingApprover={null}
-        pendingDecision={null}
+        decisionDialog={null}
         onRequestDecision={() => undefined}
         onCancelDecision={() => undefined}
+        onAcknowledgeConsequences={() => undefined}
+        onPhraseChange={() => undefined}
+        onRejectionReasonChange={() => undefined}
         onConfirmDecision={() => undefined}
         roleLens={lensFor(role)}
         explanations={explanation !== null ? { [explanation.planId]: explanation } : null}
@@ -308,9 +311,12 @@ test("a DECIDING authority enables the buttons in EVERY lens (the role never mat
       <ApprovalsQueueScreen
         phase={queueView}
         actingApprover={{ userId: "usr_w100bsec01" }}
-        pendingDecision={null}
+        decisionDialog={null}
         onRequestDecision={() => undefined}
         onCancelDecision={() => undefined}
+        onAcknowledgeConsequences={() => undefined}
+        onPhraseChange={() => undefined}
+        onRejectionReasonChange={() => undefined}
         onConfirmDecision={() => undefined}
         roleLens={lensFor(role, decider)}
       />,

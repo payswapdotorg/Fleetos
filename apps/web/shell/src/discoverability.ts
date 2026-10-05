@@ -59,9 +59,19 @@ export function bestMatch(entry: ShellRecordSummary, query: string): MatchKind |
   if (q.length === 0) return null;
   const title = entry.title.trim().toLowerCase();
   if (title === q) return "title_exact";
+  // W148 — record ids are matchable terms (querying `pln_fb564c1e` finds
+  // the plan that `encryption` finds). The id is normalized the same way
+  // as the query (trim + lowercase) so a verbatim id matches
+  // `record_id_exact`. The id is treated as a keyword (the same rank as
+  // a keyword exact match — the id IS the keyword the operator typed).
+  const recordId = entry.recordId.trim().toLowerCase();
+  if (recordId.length > 0 && recordId === q) return "keyword_exact";
   if (entry.keywords.some((k) => k.toLowerCase() === q)) return "keyword_exact";
   if (title.startsWith(q)) return "title_prefix";
   if (entry.keywords.some((k) => k.toLowerCase().startsWith(q))) return "keyword_prefix";
+  // The record id also supports prefix + token matching (a partial id
+  // like `pln_fb5` finds the plan). The id is treated as a keyword.
+  if (recordId.length > 0 && recordId.startsWith(q)) return "keyword_prefix";
   const qTokens = new Set(tokenize(q));
   const titleTokens = new Set(tokenize(title));
   for (const token of qTokens) {
@@ -71,6 +81,13 @@ export function bestMatch(entry: ShellRecordSummary, query: string): MatchKind |
     const keywordTokens = new Set(tokenize(keyword));
     for (const token of qTokens) {
       if (keywordTokens.has(token)) return "keyword_token";
+    }
+  }
+  // The record id's tokens (split on `_` for the `pln_xxx_yyy` shape).
+  if (recordId.length > 0) {
+    const idTokens = new Set(tokenize(recordId.replace(/_/g, " ")));
+    for (const token of qTokens) {
+      if (idTokens.has(token)) return "keyword_token";
     }
   }
   return null;

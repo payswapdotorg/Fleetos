@@ -48,6 +48,15 @@ import { decisionConsoleStatus } from "../ui/status";
 import { RoleLensSection } from "./role-lens-section";
 import { ParkedExplanationSection } from "./parked-explanation-section";
 
+// W148 — the executed-decision contract surface (the typed-phrase gate's
+// required phrase + the machine-stable refusal shape). The screen renders
+// the gate's PROMPT; the runtime performs the dispatch (the screen never
+// executes anything itself).
+import {
+  requiredApprovalConfirmationPhrase,
+} from "../approvals-execution";
+import type { ApprovalRefusal } from "../approvals-execution";
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -60,6 +69,35 @@ export interface PendingApprovalDecision {
   readonly action: "approve" | "reject";
 }
 
+/**
+ * W148 — the executed-decision dialog state (fully controlled by the
+ * runtime). The screen renders the gate's prompt; the runtime performs
+ * the dispatch. The dialog NEVER executes anything itself — every
+ * field is a controlled view of the W142 approval-decision-runtime's
+ * state (the runtime owns the typed-phrase gate, the RBAC gate, and
+ * the dispatch).
+ */
+export interface ApprovalDecisionDialogState {
+  /** The pending decision (the parked plan + the action). */
+  readonly pending: PendingApprovalDecision;
+  /** Whether the operator acknowledged the consequences (explicit step 1). */
+  readonly acknowledged: boolean;
+  /** The typed confirmation phrase so far (explicit step 2). */
+  readonly phrase: string;
+  /**
+   * The machine-stable refusal, when the runtime's gate refused (the
+   * `authorization_required` denial, the `already_decided` duplicate
+   * guard, or the `explicit_confirmation_required` gate). The screen
+   * renders the refusal visibly — NEVER a silent no-op.
+   */
+  readonly refusal: ApprovalRefusal | null;
+  /**
+   * The rejection reason text (REJECT only). Recorded by the boundary
+   * on a successful REJECT — the plan does NOT execute.
+   */
+  readonly rejectionReason: string;
+}
+
 /** The acting approver (the owner context the binding site supplies). */
 export interface ActingApprover {
   readonly userId: string;
@@ -70,14 +108,47 @@ export interface ApprovalsQueueScreenProps {
   readonly phase: ScreenPhase<ApprovalsQueueView>;
   /** The acting approver, when the session may decide (owner-only). */
   readonly actingApprover: ActingApprover | null;
-  /** The confirmation in flight (controlled; null = no dialog). */
-  readonly pendingDecision: PendingApprovalDecision | null;
+  /**
+   * W148 — the executed-decision dialog state (controlled; null = no
+   * dialog open). The screen renders the typed-phrase gate's PROMPT;
+   * the runtime owns the gate (the typed-phrase check, the RBAC check,
+   * the dispatch through the gated boundary).
+   */
+  readonly decisionDialog: ApprovalDecisionDialogState | null;
   /** Request the confirmation dialog for a transition (never executes). */
   readonly onRequestDecision: (planId: string, action: "approve" | "reject") => void;
-  /** Cancel the confirmation (closes the dialog). */
+  /** Cancel the confirmation (closes the dialog; writes NO audit entry). */
   readonly onCancelDecision: () => void;
-  /** Confirm the gated transition (routes the intent; the binding site invokes the W041 step). */
-  readonly onConfirmDecision: (planId: string, action: "approve" | "reject") => void;
+  /**
+   * W148 — the operator acknowledged the consequences (explicit step 1).
+   * The runtime's `acknowledgeDecision` records the transition; the
+   * screen's controlled checkbox reflects the runtime's state.
+   */
+  readonly onAcknowledgeConsequences: () => void;
+  /**
+   * W148 — the operator typed (or retyped) the confirmation phrase
+   * (explicit step 2). The runtime's `enterConfirmationPhrase` records
+   * the transition; the screen's controlled input reflects the runtime's
+   * state.
+   */
+  readonly onPhraseChange: (phrase: string) => void;
+  /**
+   * W148 — the operator typed (or retyped) the rejection reason (REJECT
+   * only). Recorded by the boundary on a successful REJECT — the plan
+   * does NOT execute.
+   */
+  readonly onRejectionReasonChange: (reason: string) => void;
+  /**
+   * W148 — confirm the gated transition. Routes the explicit
+   * confirmation (acknowledged + typed phrase) through the runtime's
+   * `markConfirmed` -> `dispatchDecision` chain; the boundary
+   * transitions the plan out of PARKED, the audit sink records the
+   * decision, and the badge count drops. A refusal (the
+   * `explicit_confirmation_required` gate, the `authorization_required`
+   * denial, the `already_decided` duplicate guard) returns the
+   * machine-stable reason — visible, never silent.
+   */
+  readonly onConfirmDecision: () => void;
   /**
    * W100B: the active role lens (optional — absent renders exactly the
    * W090B screen). Shapes ONLY the banner emphasis.
@@ -97,7 +168,7 @@ export interface ApprovalsQueueScreenProps {
 function QueueItemCard(props: {
   readonly item: ParkedApprovalItemView;
   readonly canDecide: boolean;
-  readonly pending: PendingApprovalDecision | null;
+  readonly dialog: ApprovalDecisionDialogState | null;
   readonly onRequestDecision: (planId: string, action: "approve" | "reject") => void;
 }): JSX.Element {
   const { item } = props;
@@ -169,9 +240,9 @@ function QueueItemCard(props: {
           ? "Both transitions are gated on a human decision and require confirmation — they are never one-click."
           : "Approvals are owner-only: this session may review the decision context but not decide."}
       </p>
-      {props.pending !== null && props.pending.planId === item.planId && (
+      {props.dialog !== null && props.dialog.pending.planId === item.planId && (
         <p className="fos-meta" style={{ margin: "0.5rem 0 0", fontWeight: 600 }}>
-          A {props.pending.action} confirmation is open for this plan.
+          A {props.dialog.pending.action} confirmation is open for this plan.
         </p>
       )}
     </Card>
@@ -179,16 +250,45 @@ function QueueItemCard(props: {
 }
 
 // ---------------------------------------------------------------------------
-// The confirmation dialog (fully controlled)
+// The confirmation dialog (fully controlled — the W142 typed-phrase gate)
 // ---------------------------------------------------------------------------
 
+/**
+ * The W142 executed-decision confirmation dialog: the operator MUST
+ * (a) acknowledge the consequences AND (b) type the exact confirmation
+ * phrase derived from the action + plan (`CONFIRM APPROVE <planId>` /
+ * `CONFIRM REJECT <planId>`). The Confirm button is DISABLED until both
+ * hold. The dialog NEVER executes anything itself — every field is a
+ * controlled view of the runtime's state; the `onConfirmDecision`
+ * callback routes the explicit confirmation through the runtime's
+ * `markConfirmed` -> `dispatchDecision` chain.
+ *
+ * A machine-stable refusal (the `authorization_required` RBAC denial,
+ * the `already_decided` duplicate guard, the
+ * `explicit_confirmation_required` gate) renders VISIBLE — never a
+ * silent no-op. A restricted role sees the FROZEN denial explanation
+ * with the escalation path.
+ */
 function ConfirmDialog(props: {
   readonly item: ParkedApprovalItemView;
-  readonly pending: PendingApprovalDecision;
+  readonly dialog: ApprovalDecisionDialogState;
   readonly onCancel: () => void;
-  readonly onConfirm: (planId: string, action: "approve" | "reject") => void;
+  readonly onAcknowledgeConsequences: () => void;
+  readonly onPhraseChange: (phrase: string) => void;
+  readonly onRejectionReasonChange: (reason: string) => void;
+  readonly onConfirm: () => void;
 }): JSX.Element {
-  const { item, pending } = props;
+  const { item, dialog } = props;
+  const pending = dialog.pending;
+  const requiredPhrase = requiredApprovalConfirmationPhrase({
+    tenantId: "" as never,
+    planId: item.planId,
+    action: pending.action,
+    by: "" as never,
+    correlationId: "" as never,
+  });
+  const phraseMatches = dialog.phrase === requiredPhrase;
+  const canConfirm = dialog.acknowledged && phraseMatches;
   return (
     <div className="fos-scrim fos-scrim--center">
       <div
@@ -215,7 +315,7 @@ function ConfirmDialog(props: {
         <p style={{ margin: 0, fontSize: "0.875rem" }}>
           {pending.action === "approve"
             ? `Approving "${item.name}" releases the plan for downstream dispatch. This transition is gated on a human decision and is audited.`
-            : `Rejecting "${item.name}" ends the plan as REJECTED. This transition is gated on a human decision and is audited.`}
+            : `Rejecting "${item.name}" ends the plan as REJECTED — the plan does NOT execute. This transition is gated on a human decision and is audited.`}
         </p>
         <DefinitionList
           entries={[
@@ -223,13 +323,71 @@ function ConfirmDialog(props: {
             { term: "Capability", value: <span className="fos-mono">{item.capability}</span> },
             { term: "Targets", value: `${item.targetCount} device(s)` },
             { term: "Gate", value: "human_decision" },
-            { term: "Confirmation", value: "required (never one-click)" },
+            { term: "Confirmation", value: "typed phrase required (never one-click)" },
           ]}
         />
+        <div className="fos-stack" style={{ gap: "0.5rem" }}>
+          <label className="fos-row" style={{ gap: "0.5rem", alignItems: "center", fontSize: "0.875rem" }}>
+            <input
+              type="checkbox"
+              checked={dialog.acknowledged}
+              onChange={(): void => props.onAcknowledgeConsequences()}
+              data-testid="confirm-acknowledged"
+            />
+            <span>
+              I acknowledge the consequences of this {pending.action} decision. The boundary will
+              record an audit entry; the plan&apos;s state will change.
+            </span>
+          </label>
+          <label className="fos-stack" style={{ gap: "0.25rem", fontSize: "0.875rem" }}>
+            <span>
+              Type the exact confirmation phrase to unlock the dispatch:{" "}
+              <span className="fos-mono">{requiredPhrase}</span>
+            </span>
+            <input
+              type="text"
+              value={dialog.phrase}
+              onChange={(event: React.ChangeEvent<HTMLInputElement>): void => props.onPhraseChange(event.target.value)}
+              data-testid="confirm-phrase"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          {pending.action === "reject" && (
+            <label className="fos-stack" style={{ gap: "0.25rem", fontSize: "0.875rem" }}>
+              <span>Rejection reason (recorded by the boundary; the plan does NOT execute):</span>
+              <textarea
+                value={dialog.rejectionReason}
+                onChange={(event: React.ChangeEvent<HTMLTextAreaElement>): void => props.onRejectionReasonChange(event.target.value)}
+                data-testid="confirm-rejection-reason"
+                rows={2}
+              />
+            </label>
+          )}
+          {dialog.refusal !== null && (
+            <div
+              role="alert"
+              data-testid="confirm-refusal"
+              style={{
+                margin: 0,
+                padding: "0.5rem 0.75rem",
+                borderRadius: "0.25rem",
+                background: "var(--fos-color-danger-bg, #fef2f2)",
+                border: "1px solid var(--fos-color-danger-border, #fecaca)",
+                fontSize: "0.8125rem",
+              }}
+            >
+              <span className="fos-mono" style={{ fontWeight: 600 }}>{dialog.refusal.reason}</span>
+              {" — "}
+              <span>{dialog.refusal.explanation}</span>
+            </div>
+          )}
+        </div>
         <div className="fos-row">
           <Button
             variant={pending.action === "approve" ? "primary" : "danger"}
-            onClick={(): void => props.onConfirm(item.planId, pending.action)}
+            disabled={!canConfirm}
+            onClick={(): void => props.onConfirm()}
             testId={`confirm-${pending.action}`}
           >
             Confirm {pending.action}
@@ -253,9 +411,10 @@ function ConfirmDialog(props: {
  * screen NEVER auto-promotes or auto-executes anything.
  */
 export function ApprovalsQueueScreen(props: ApprovalsQueueScreenProps): JSX.Element {
+  const dialogPlanId = props.decisionDialog?.pending.planId ?? null;
   const pendingItem =
-    props.phase.kind === "ready" && props.pendingDecision !== null
-      ? props.phase.view.items.find((item) => item.planId === props.pendingDecision?.planId)
+    props.phase.kind === "ready" && dialogPlanId !== null
+      ? props.phase.view.items.find((item) => item.planId === dialogPlanId)
       : undefined;
   return (
     <div className="fos-scope fos-screen">
@@ -299,7 +458,7 @@ export function ApprovalsQueueScreen(props: ApprovalsQueueScreenProps): JSX.Elem
                 <QueueItemCard
                   item={item}
                   canDecide={props.actingApprover !== null}
-                  pending={props.pendingDecision}
+                  dialog={props.decisionDialog}
                   onRequestDecision={props.onRequestDecision}
                 />
                 {props.explanations !== null &&
@@ -314,11 +473,14 @@ export function ApprovalsQueueScreen(props: ApprovalsQueueScreenProps): JSX.Elem
       ) : (
         <PhasePresentation phase={props.phase} loadingLabel="Loading the approvals queue" />
       )}
-      {pendingItem !== undefined && props.pendingDecision !== null && (
+      {pendingItem !== undefined && props.decisionDialog !== null && (
         <ConfirmDialog
           item={pendingItem}
-          pending={props.pendingDecision}
+          dialog={props.decisionDialog}
           onCancel={props.onCancelDecision}
+          onAcknowledgeConsequences={props.onAcknowledgeConsequences}
+          onPhraseChange={props.onPhraseChange}
+          onRejectionReasonChange={props.onRejectionReasonChange}
           onConfirm={props.onConfirmDecision}
         />
       )}
