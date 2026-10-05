@@ -83,6 +83,8 @@ import {
   serverSignIn,
   serverCreateWorkspace,
   serverSignOut,
+  serverIssueInvitation,
+  serverJoinWorkspace,
 } from "./runtime/composition-root";
 import type { ServerSessionProjection } from "./runtime/composition-root";
 import { experienceRoleFromAssignment } from "@fleetos/web-product";
@@ -631,9 +633,44 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
       readonly email: string;
       readonly role: ProductExperienceRole;
     }) => {
-      // W110: the chosen member role flows into the REAL seam — the
-      // identity service creates the starting role assignment (the
-      // seam's authority; this gate never widens it).
+      // W147 — the DEPLOYED tier routes the join through the REAL server
+      // boundary (POST /api/enrollment/redeem with a join code). The
+      // server resolves the inviting tenant from the invitation, creates
+      // the membership + role assignment, opens a session for the joiner
+      // (httpOnly cookie), and returns the session projection — the joiner
+      // lands signed-in in the INVITING workspace with the assigned role.
+      // The demo/development tier keeps the LOCAL runtime's joinWorkspace
+      // (the browser-tier identity seam — unchanged).
+      if (serverTier) {
+        void (async (): Promise<void> => {
+          const result = await serverJoinWorkspace(window.fetch.bind(window), {
+            code: input.code,
+            displayName: input.displayName,
+            email: input.email,
+            role: input.role,
+          });
+          if (result.ok) {
+            setServerSession(sessionFromServerProjection(result, false));
+            setRefusal(null);
+            rememberServerWorkspace({
+              tenantId: result.tenantId,
+              name: result.workspaceName,
+              createdAt: new Date().toISOString(),
+            });
+            setServerDirectory(loadServerDirectory());
+          } else {
+            // The server's refusal vocabulary mirrors the LOCAL runtime's
+            // ProductAuthRefusal (unknown_code / expired_code / already_used);
+            // the frozen explanations render verbatim — never a silent empty alert.
+            setRefusal({
+              reason: result.reason as ProductAuthRefusal,
+              message: result.message,
+            });
+          }
+        })();
+        resetInvite();
+        return;
+      }
       apply(
         runtime.joinWorkspace({
           code: input.code,
@@ -644,7 +681,7 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
       );
       resetInvite();
     },
-    [apply, runtime, resetInvite],
+    [apply, runtime, resetInvite, serverTier],
   );
 
   const onSignIn = useCallback(
@@ -740,6 +777,40 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
   // -- W110: the invite-member surface over the REAL seam -------------
 
   const onInviteIssue = useCallback((): void => {
+    // W147 — the DEPLOYED tier routes the invite through the REAL server
+    // boundary (POST /api/workspace/invitations). The server-tier session
+    // (the httpOnly cookie the product-gate already holds from
+    // GET /api/session) is the inviter's authority — NEVER the stale
+    // W121-era localStorage `fleetos.w121.session` key (the J3 residual
+    // blocker's root cause). The raw code is returned exactly once for
+    // display (the display-once law; the client holds it only until the
+    // hide confirm).
+    if (serverTier) {
+      if (serverSession === null) {
+        // Fail-visible: no server session — the honest refusal renders
+        // (never a silent no-op). The `unknown_session` refusal is the
+        // frozen vocabulary the LOCAL runtime uses for the same condition.
+        setInvite({
+          kind: "refused",
+          reason: "unknown_session",
+          message: "The session could not be found. Sign in again to continue.",
+        });
+        return;
+      }
+      void (async (): Promise<void> => {
+        const result = await serverIssueInvitation(window.fetch.bind(window));
+        if (result.ok) {
+          setInvite({ kind: "issued", rawCode: result.code });
+        } else {
+          setInvite({
+            kind: "refused",
+            reason: result.reason as ProductAuthRefusal,
+            message: result.message,
+          });
+        }
+      })();
+      return;
+    }
     const issued = runtime.issueInvitation();
     if (issued.ok) {
       // The raw code enters the view EXACTLY ONCE, held only until the
@@ -751,7 +822,7 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
       // silent no-op (e.g. the seam's unknown_session refusal).
       setInvite({ kind: "refused", reason: issued.reason, message: issued.message });
     }
-  }, [runtime]);
+  }, [runtime, serverTier, serverSession]);
 
   const onInviteCopy = useCallback((code: string): void => {
     // The SHELL performs the copy (the product package stays I/O-free —
@@ -803,9 +874,24 @@ export function ConsoleApp({ initialRoute }: ConsoleAppProps): JSX.Element {
       : state;
 
   if (effectiveState.phase === "signed-out") {
+    // W147 gate fix #3 — the dead-button defect: on a page load whose
+    // workspace directory populates AFTER mount, the sign-in form's
+    // `<select>` visually shows the first workspace but the component's
+    // `tenantId` state initialized to `""` (its default evaluates while
+    // the directory state is still empty) — the "Sign in" button stays
+    // DISABLED until the user re-picks. The fix: a `key` that transitions
+    // from "ws-empty" to "ws-populated" when the directory first
+    // populates, forcing a REMOUNT so the `tenantId` state initializer
+    // re-evaluates against the now-populated picker (the first entry
+    // becomes the initial value). The key transitions exactly once
+    // (empty -> populated); subsequent directory additions keep the same
+    // key (no form-state loss on later directory changes).
+    const pickerWorkspaces = serverTier ? serverDirectory : directory;
+    const pickerKey = pickerWorkspaces.length > 0 ? "ws-populated" : "ws-empty";
     return (
       <WorkspaceChoiceScreen
-        workspaces={serverTier ? serverDirectory : directory}
+        key={pickerKey}
+        workspaces={pickerWorkspaces}
         environmentLabel={environmentLabel()}
         onCreate={onCreate}
         onJoin={onJoin}
