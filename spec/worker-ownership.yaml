@@ -47,6 +47,7 @@ owners:
       - packages/maintenance/
       - packages/integrations/aurum/
       - packages/integrations/apify/
+      - packages/world-context/
       - apps/web/workloads/
       - apps/web/commerce/
 

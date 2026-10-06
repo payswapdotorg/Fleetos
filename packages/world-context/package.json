@@ -1,0 +1,24 @@
+{
+  "name": "@fleetos/world-context",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@fleetos/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@fleetos/audit": "workspace:*",
+    "@fleetos/world-model": "workspace:*",
+    "@fleetos/learning": "workspace:*",
+    "@fleetos/workloads": "workspace:*",
+    "@fleetos/procurement": "workspace:*",
+    "@fleetos/identity": "workspace:*",
+    "@fleetos/predictive": "workspace:*",
+    "@fleetos/device-model": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  }
+}
