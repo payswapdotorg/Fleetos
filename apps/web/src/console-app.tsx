@@ -135,6 +135,7 @@ import { environmentLabel } from "./runtime/env";
 // W144 — the lane composition feeds (the six lanes' deep views bound
 // into the console runtime OVER the W141/W142/W143 compositions).
 import { composeLaneFeeds } from "./runtime/lane-feeds";
+import { mapProcurementJourneyToRail } from "./runtime/procurement-journey-rail";
 import type { LaneFeeds, LaneFeedOptions } from "./runtime/lane-feeds";
 
 // W144 — the approval decision runtime (the EXECUTED decision path —
@@ -222,11 +223,19 @@ import {
   ConnectivityScreen,
   CommunicationScreen,
 } from "@fleetos/web-commerce";
-import type { ProcurementScreenData } from "@fleetos/web-commerce";
+import type {
+  ProcurementScreenData,
+  ProcurementSurfaceEvent,
+  ProcurementSurfaceState,
+} from "@fleetos/web-commerce";
 // W149 — the procurement verification view-model's honest empty-state
 // builder (the P0 crash fix: compose the real `OrderVerificationView`,
 // never the blind cast the W148 binding shipped).
-import { buildOrderVerificationView } from "@fleetos/web-commerce";
+import {
+  buildOrderVerificationView,
+  INITIAL_PROCUREMENT_SURFACE_STATE,
+  reduceProcurementSurfaceState,
+} from "@fleetos/web-commerce";
 import type { OrderVerificationView } from "@fleetos/web-commerce";
 // W149 — the executed-decision state derivation (the propagation's
 // pure projection over the approval runtime's audit log).
@@ -622,6 +631,26 @@ export function ConsoleSessionApp({
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
+  // W151 — the procurement surface state (the lane's OWN surface state
+  // machine: demands -> demand -> matching -> quote, with back/reset).
+  // The W148/W149 binding shipped `surface={{view:"demands"} as never}`
+  // + `onSurfaceEvent={() => undefined}` — a stub that discarded the
+  // screen's `open_demand` event, so the per-demand case journey never
+  // rendered. The W151 fix holds the lane's typed surface state in the
+  // session; the `open_demand`/`back`/`reset` events drive it through
+  // the lane's declared `reduceProcurementSurfaceState` reducer.
+  const [procurementSurface, setProcurementSurface] =
+    useState<ProcurementSurfaceState>(() => INITIAL_PROCUREMENT_SURFACE_STATE);
+  const handleProcurementSurfaceEvent = useCallback(
+    (event: ProcurementSurfaceEvent): void => {
+      setProcurementSurface((prev) => {
+        const result = reduceProcurementSurfaceState(prev, event);
+        return result.ok ? result.state : prev;
+      });
+    },
+    [],
+  );
+
   // W144 — the approval decision runtime (the EXECUTED decision path).
   // The runtime manages the Approve/Reject decision lifecycle (the
   // confirmation gates, the boundary dispatch, the audit trail). The
@@ -704,6 +733,15 @@ export function ConsoleSessionApp({
       ...(selectedRecoveryCaseId !== undefined ? { selectedRecoveryCaseId } : {}),
       ...(selectedFindingId !== null ? { selectedFindingId } : {}),
       ...(selectedPlanId !== null ? { selectedPlanId } : {}),
+      // W151 — the procurement surface's selected demand (the detail
+      // Sheet's subject). Derived from the lane's surface state: when
+      // the surface is in the `demands` view, no demand is selected;
+      // otherwise the surface's `demandId` is the feed's subject. The
+      // feed composes the selected demand's detail + its seven-stage
+      // case journey over the REAL W143 state — never fabricated.
+      ...(procurementSurface.view !== "demands"
+        ? { selectedDemandId: procurementSurface.demandId }
+        : {}),
       // W148 — the session-scoped recovery-case source (the O5
       // case-creation affordance's binding). The recovery cases feed
       // composes over the session's cases; the destructive gate's
@@ -717,7 +755,7 @@ export function ConsoleSessionApp({
       // audit log; nothing is fabricated.
       executedDecisions,
     }),
-    [selectedRecoveryCaseId, selectedFindingId, selectedPlanId, sessionRecoveryStore, recoveryCaseVersion, executedDecisions],
+    [selectedRecoveryCaseId, selectedFindingId, selectedPlanId, sessionRecoveryStore, recoveryCaseVersion, executedDecisions, procurementSurface],
   );
   const laneFeedsResult = useMemo(
     () => composeLaneFeeds(session.tenantId, laneFeedOptions),
@@ -876,6 +914,12 @@ export function ConsoleSessionApp({
         setSelectedRecoveryCaseId,
         setSelectedFindingId,
         setSelectedPlanId,
+        // W151 — the procurement surface state + event handler (the
+        // per-demand engagement's binding). The surface state flows
+        // through the lane's own typed machine; the handler reduces
+        // events via the lane's declared reducer.
+        procurementSurface,
+        onProcurementSurfaceEvent: handleProcurementSurfaceEvent,
         executedDecisions,
         sessionAssignedRoles: session.assignedRoles,
         // W145 deploy convergence — the declared-import journey + the
@@ -1057,6 +1101,13 @@ interface RenderInput {
   readonly setSelectedRecoveryCaseId: (id: string | undefined) => void;
   readonly setSelectedFindingId: (id: string | null) => void;
   readonly setSelectedPlanId: (id: string | null) => void;
+  // W151 — the procurement surface state + event handler. The surface
+  // state is the lane's OWN typed machine state (demands/demand/
+  // matching/quote); the handler reduces events via the lane's
+  // declared `reduceProcurementSurfaceState` reducer. The binding
+  // passes these straight through — no `as never`, no blind cast.
+  readonly procurementSurface: ProcurementSurfaceState;
+  readonly onProcurementSurfaceEvent: (event: ProcurementSurfaceEvent) => void;
   // W149 — the executed decision state (the propagation overlay). The
   // demo's Security Doctor + the Approvals queue card + the Evidence &
   // Audit index compose over this state — REAL runtime state, never
@@ -1850,14 +1901,24 @@ function renderRoute(input: RenderInput): JSX.Element {
             : feed.phase.kind === "loading"
               ? { kind: "loading" as const }
               : { kind: "loading" as const };
+      // W151 — the journey-rail adapter: map the lane's declared
+      // `ProcurementCaseJourney` (the seven-stage walk) to the screen's
+      // `CommerceJourneyRailStage[]`. The rail renders iff the journey
+      // is composed (i.e., a demand is selected and in the acting
+      // tenant's partition). PURE — composes through the lane's
+      // declared public exports, never internals.
+      const journeyRail =
+        feed.journey !== undefined
+          ? mapProcurementJourneyToRail(feed.journey)
+          : null;
       return (
         <ProcurementScreen
           phase={screenPhase}
-          surface={{ view: "demands" } as never}
-          onSurfaceEvent={() => undefined}
+          surface={input.procurementSurface}
+          onSurfaceEvent={input.onProcurementSurfaceEvent}
           tab="matching"
           onTabChange={() => undefined}
-          journey={null}
+          journey={journeyRail}
         />
       );
     }

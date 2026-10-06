@@ -249,6 +249,8 @@ export interface LaneFeedOptions {
   readonly selectedPlanId?: string;
   /** The selected document ref (the Print Distribution's subject). */
   readonly selectedDocumentRef?: string;
+  /** The selected procurement demand id (the Procurement surface's subject). */
+  readonly selectedDemandId?: string;
   /**
    * W148 — the session-scoped recovery-case source (the O5 case-creation
    * affordance's binding). When supplied, the recovery cases feed
@@ -1044,6 +1046,7 @@ export function composeLaneFeeds(
   const selectedFindingId = options.selectedFindingId ?? DEMO_FINDING_ID;
   const selectedPlanId = options.selectedPlanId ?? DEMO_PARKED_PLAN_ID;
   const selectedDocumentRef = options.selectedDocumentRef ?? "doc://w091-demo-report";
+  const selectedDemandId = options.selectedDemandId;
   const freshWithinMs = 86_400_000;
   const staleAfterMs = 604_800_000;
   // W148 — the session-scoped recovery-case source (the O5 case-creation
@@ -1131,7 +1134,7 @@ export function composeLaneFeeds(
     const procurementCases = composeProcurementCasesFeed(
       scope,
       demoProcurementState(),
-      { now },
+      { now, ...(selectedDemandId !== undefined ? { selectedDemandId } : {}) },
     );
     return {
       ok: true,
@@ -1205,7 +1208,7 @@ export function composeLaneFeeds(
   const procurementCases = composeProcurementCasesFeed(
     scope,
     emptyProcurementState(),
-    { now },
+    { now, ...(selectedDemandId !== undefined ? { selectedDemandId } : {}) },
   );
   return {
     ok: true,
