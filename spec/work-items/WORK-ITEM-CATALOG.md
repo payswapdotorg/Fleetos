@@ -165,16 +165,18 @@ Wave 13 acceptance rule: no item is accepted on worker-reported tests alone — 
 
 Operator directive: add a model-neutral predictive representation around the canonical Fleet Device Twin. The predictive layer NEVER replaces authoritative observations/events/twin truth and NEVER becomes policy authority.
 
-W150 - Predictive feature/provenance feed
+GATE STATUS: OPEN. Wave 13 / SIM-C ACCEPTED by the operator 2026-10-06 at the final verdict 0 SWITCH-ONLY / 0 MAIN-INTERFACE / 20 COMPLEMENT / 85 RETAIN (acceptance record: issue #2 comment 6019361236; R3/R4 stand as permanent demo-tier disclosures, not implementation blockers). Per the operator's renumbering directive of the same date, the Wave-14 lanes are UNAMBIGUOUSLY renumbered W153–W156 — the original W150–W153 numbers were consumed by the Wave-13 SIM-C fix waves (W150 report amendment, W151 R1 closure, W152 residual closure). Mirrored on issue #3 and in spec/PROJECT-STATE.md. Dispatch order (operator directive): W153 first; W154/W155 parallelized only where the dependency graph permits (W154 hard-depends on W153's frozen feature surface; W155's context lane may run parallel to W154 but its evaluation bridge consumes W153+W154 frozen surfaces — the TL confirms actual parallelism after W153 lands); W156 reserved for TL convergence.
+
+W153 - Predictive feature/provenance feed (renumbered from the planned W150)
 Worker A. Build the device-history feature/provenance boundary needed by predictive representations: privacy/purpose filtering, temporal windows, observation/evidence references, deterministic reference feature projection, and fail-closed handling for missing/insufficient history. No ML provider dependency.
 
-W151 - Predictive Twin engine + model adapter seam
+W154 - Predictive Twin engine + model adapter seam (renumbered from the planned W151)
 Worker B. Implement the model-neutral Predictive Twin runtime boundary from ADR-0002, including deterministic reference behavior, representation/prediction/counterfactual/uncertainty/provenance records, capability-versioning, unavailable-model fail-closed behavior, and an adapter boundary suitable for JEPA-family or other predictive world-model implementations. No model is authorized to mutate business truth or bypass Guardian.
 
-W152 - Workload/project context + learning/evaluation bridge
+W155 - Workload/project context + learning/evaluation bridge (renumbered from the planned W152)
 Worker C. Project workload/project context into the predictive boundary where lawful, preserve tenant isolation and provenance, and connect predictive cases to the existing Learning/Arena evaluation/adoption seams. Predictions remain advisory until an explicit versioned capability adoption.
 
-W153 - Predictive Twin runtime/UI convergence
-TL. Bind W150/W151/W152 into the product without changing the canonical Device Twin semantics; expose observed vs predicted vs hypothetical state clearly; add one end-to-end Device Doctor/Control Tower advisory journey; prove Guardian authorization remains authoritative; integrate model health/provenance/uncertainty; deployment configuration remains optional-GPU/provider neutral.
+W156 - Predictive Twin runtime/UI convergence (renumbered from the planned W153)
+TL. Bind W153/W154/W155 into the product without changing the canonical Device Twin semantics; expose observed vs predicted vs hypothetical state clearly; add one end-to-end Device Doctor/Control Tower advisory journey; prove Guardian authorization remains authoritative; integrate model health/provenance/uncertainty; deployment configuration remains optional-GPU/provider neutral.
 
 Wave 14 acceptance rule: ADR-0002 invariants must be machine-tested. A deterministic reference path must work with no model provider. Predictive outputs must carry version, evidence, horizon, uncertainty and provenance. Counterfactuals must be visibly distinct from observed facts. A missing/unavailable predictive capability must degrade honestly. No predictive output may authorize, execute or mutate business truth. At least one live journey must use a predictive output as advisory context, and the UI must distinguish observed/predicted/hypothetical state.
