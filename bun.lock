@@ -493,6 +493,19 @@
         "@fleetos/identity": "workspace:*",
       },
     },
+    "packages/world-model": {
+      "name": "@fleetos/world-model",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+        "@fleetos/predictive": "workspace:*",
+      },
+      "devDependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/device-model": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+      },
+    },
   },
   "packages": {
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
@@ -570,6 +583,8 @@
     "@fleetos/web-workloads": ["@fleetos/web-workloads@workspace:apps/web/workloads"],
 
     "@fleetos/workloads": ["@fleetos/workloads@workspace:packages/workloads"],
+
+    "@fleetos/world-model": ["@fleetos/world-model@workspace:packages/world-model"],
 
     "@img/colour": ["@img/colour@1.1.0", "", {}, "sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ=="],
 
