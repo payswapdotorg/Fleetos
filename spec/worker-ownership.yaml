@@ -31,6 +31,7 @@ owners:
       - packages/policy/
       - packages/actions/
       - packages/learning/
+      - packages/world-model/
       - packages/integrations/arena/
       - apps/web/security/
       - apps/web/actions/
