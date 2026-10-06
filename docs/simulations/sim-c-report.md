@@ -30,7 +30,7 @@ dcf4474) by five first-hand evaluators covering TRN, HOS, FEM, LEG, DEF real-wor
 journeys, the DEMO persona operational journeys, and the mobile pass. All raw evidence
 is in the seven files under `docs/simulations/sim-c-evidence/`.
 
-**Verdict distribution (105 personas, post-second-fix-wave recount v2): SWITCH-ONLY 0 (0%) · MAIN-INTERFACE 0 (0%) · COMPLEMENT 5 (~4.8%) · RETAIN 100 (~95.2%).** **Second-fix-wave update (2026-10-05 evening, §4.9/§4.10):** the W147/W148/W149 lanes closed rerun blockers 1-9 and moved 5 SMALL-firm founders running governance from RETAIN → COMPLEMENT; blocker 10 (demo-tier session-scoped state) is by-design and the W149 R1 residual (procurement per-demand case journey list-level) is the last open code item. At the first recount (§4.7) the before/after delta was 0/0/105 → 0/0/0/105
+**Verdict distribution (105 personas, post-second-fix-wave recount v2): SWITCH-ONLY 0 (0%) · MAIN-INTERFACE 0 (0%) · COMPLEMENT 5 (~4.8%) · RETAIN 100 (~95.2%).** **Second-fix-wave update (2026-10-05 evening, §4.9/§4.10):** the W147/W148/W149 lanes closed rerun blockers 1-9 and moved 5 SMALL-firm founders running governance from RETAIN → COMPLEMENT; blocker 10 (demo-tier session-scoped state) is by-design and the W149 R1 residual (procurement per-demand case journey list-level) is the last open code item. **Third-wave update (2026-10-06 morning, §4.9.5/§4.10.4):** the W151 lane closed the R1 residual (the seven-stage per-demand case journey now renders over the real feed) and the deploy landed on production (main @ `28d7244`, first-hand fingerprint evidence) — the live spot-check re-walked R3's checks 1/2/2b/2c/3/4a-4d plus the new check-8 R1 journey, ALL PASS; recount v3: **COMPLEMENT 20 (~19.0%) · RETAIN 85 (~81.0%)** — the 15 Asset & Procurement Manager personas moved on live per-demand-journey evidence. At the first recount (§4.7) the before/after delta was 0/0/105 → 0/0/0/105
 — no verdict changed. The fix lanes (W140, W144, W145) landed real technical progress
 (server-tier session persistence, composed lane surfaces, mobile priority-card roster,
 declared-import surface) but the central adoption blockers persist in the deployed
@@ -546,6 +546,57 @@ The second-fix-wave deployment checkpoints (Vercel + local production-mode stand
 
 **Follow-up obligation (honest):** the b6101d0 production deploy at the 2026-10-06 19:08Z quota reset, with the live spot-check to follow (re-walk R3's checks 1/2/2b/2c/3/4a-4d against the Vercel production URL once the deploy lands).
 
+### 4.9.5 The W151 lane + the executed deploy + the live spot-check (2026-10-06 morning)
+
+**THE FOLLOW-UP OBLIGATION IS EXECUTED AND CLOSED.** The 19:08Z quota-reset wait did not
+happen: the operator supplied Vercel API tokens over the command channel, and the quota
+window proved ALREADY OPEN at 08:25Z (the rolling 24h window had aged off the day's prior
+deployments — the 19:08Z estimate was conservative). The deploy landed ~10.5h early.
+
+#### 4.9.5.1 The W151 lane record (the R1 closure lane)
+
+| Lane | Commit | Delivery mode | Verification |
+|---|---|---|---|
+| **W151 (the R1 closure)** | `28d7244` (merge of work/w151 @ `1f48669` into main @ `1dc9d30`, merged 2026-10-06T05:07Z) | **Collaborative mode** — the GLM-5.2 worker refused the sandbox token/sliced-emission protocol on values grounds but authored the ENTIRE patch over the chat (4 files, +497/-8); the TL applied byte-exact, gated, committed with worker authorship, pushed | TL gates re-run at the exact commit `1f48669` on a clean worktree: check 4/4 (150-contract snapshot unchanged) · typecheck 0 · bun test 3690 total (3687 pass + 13 NEW lane tests, all passing; 3 fail = the baseline's W147 staging-tier environmental trio, verified IDENTICAL at baseline `1dc9d30`) · next build green (11 API routes). Scope: 4 files, all inside the grant — `console-app.tsx` (the session holds the lane's OWN surface state machine via `reduceProcurementSurfaceState` + `INITIAL_PROCUREMENT_SURFACE_STATE`; the `open_demand`/`back`/`reset` events no longer discarded), `runtime/lane-feeds.ts` (`selectedDemandId` threaded through `LaneFeedOptions` to BOTH `composeProcurementCasesFeed` call sites), the NEW `runtime/procurement-journey-rail.ts` pure adapter (journey states → rail states), the NEW 13-test `w151-procurement-engagement` battery. `tab`/`onTabChange` scoped out per the W149 precedent (the residual ledger's tab stub). |
+
+#### 4.9.5.2 The deployment record (main @ 28d7244 → production)
+
+- **Deploy method:** Vercel REST `POST /v13/deployments` with `gitSource` (repoId 1387976688, ref `28d7244d5a0d7415d19dce16b7dfce1039c48f85`, target `production`), authenticated by an operator-supplied account token with full project scope — no push, no webhook dependency.
+- **Deployment:** `dpl_GUUbgaBFHHM5sdH9Dn2yTL3jK7nJ` — INITIALIZING at 08:25:19Z → **READY in 42s** (incremental build).
+- **Fingerprint evidence (first-hand):** the production URL `https://fleetos-staging-flame.vercel.app` flipped its app-route chunk `page-4d4e0c6fa0840a99.js` → **`page-e5d5d6402b90f218.js`** vs the pre-deploy baseline captured 08:15Z (the same chunk name the W148/R2c record cites for the fd6510b-era build — the flip proves the deployed build post-dates the W151 merge). `GET /api/health` → 200 `{"env":"staging","health":"healthy","module":"web",…}` with all 9 secrets present.
+- **The b6101d0 + W145 + W151 obligation chain:** `28d7244` = `b6101d0` (the W149 hotfix code) + W145 wiring + the W150 report amendment + the W151 R1 closure + state docs — ONE deploy covers the whole second-wave obligation chain.
+
+#### 4.9.5.3 The live spot-check (first-hand, 08:3x–08:5xZ, agent-browser desktop 1280x800)
+
+User-only browser evaluation against the production URL; verbatim `main.innerText` captures; screenshots per check in `docs/simulations/sim-c-evidence/spot-check-20261006/`. Personas: the demo quick-links on the shared DEMO workspace `tnt_w091demo000001`.
+
+| # | Check | Result | First-hand evidence (screenshot) |
+|---|---|---|---|
+| 1 | O4 load — `/commerce/procurement` client-side nav AND hard load; zero "Application error"; demands list + honest verification card | **PASS** | `check1-o4-load.png` — `dmd_w091demo000001` row renders; "No reconciliation report verifies the orders yet." honest card; hard-load probe `{"appErr":false,"hasDemand":true,"hasVerify":true}` |
+| 2 | Decision propagation — typed phrase `CONFIRM APPROVE pln_fb564c1e` + checkbox → decided state + dead buttons + honest copy | **PASS** (as Fleet Administrator) | `check2-post-approve.png` — "Executed decision: Succeeded / APPROVED by usr:demo.fleet.admin@fleetos.demo"; Approve/Reject buttons `[{"disabled":true},{"disabled":true}]`; "Already decided (APPROVED) — the boundary refuses a duplicate decision on this plan." |
+| 2b | Security Doctor plan state APPROVED | **PASS** | `check2b-security-doctor-approved.png` — "The plan is APPROVED — execution is a downstream dispatch handoff, never performed on this surface." + the approved-by identity |
+| 2c/2d | Audit index 3→4 with the 2-entry trail | **PASS** | `check2d-audit-trail.png` — the NEW "Executed decision — Approved pln_fb564c1e" row (index 4); the trail: `explicit_confirmation` (outcome ok) + `decision_dispatched` (outcome APPROVED) |
+| 2e | Badge 1→0 + duplicate attempt dead | **PASS** | badge flipped 1→0 post-confirm; the duplicate-attempt copy in check 2 |
+| — | BONUS (unscripted): the Asset & Procurement Manager's own approve attempt | **PASS (honest boundary)** | `check2-assetmgr-auth-refusal.png` — the frozen verbatim refusal: `authorization_required — This action requires the "fleet.action.approve" permission. Active role(s): asset.manager. Request the role assignment from your Fleet Administrator.` |
+| 3 | Recovery case detail — seven-stage per-case journey | **PASS** | `check3-recovery-case-journey.png` — `case_w148_devw091demo000001_20260106140000` detail: Lost/stolen signal (Done) → Recovery case (Done) → Locate/secure decision (honest empty) → Authorization (Not yet observed) → Action → Evidence → Closure/escalation (honest empty) |
+| 4a | Vendor frozen denial — full-phrase approve → verbatim `authorization_required`; badge unchanged | **PASS** | `check4a-vendor-frozen-denial.png` — `Active role(s): vendor.operator` refusal verbatim; badge stayed 1 |
+| 4b | Device Doctor — nine stages, honest states | **PASS** | `check4b-device-doctor.png` — Device under diagnosis (Done) → Observations (Not yet observed) → Symptoms (honest empty) → Diagnosis → Remediation → Authorization → Action → Execution result → Evidence artifacts; honest empty symptom/remediation walks |
+| 4c | Workloads planning — REAL workload row ready | **PASS** | `check4c-workloads.png` — `w091-demo-analyst-workstation` (wl_w091demo000001, r1, security 0.9 / compute 0.7 / memory 0.6, floors, 09:00–18:00) |
+| 4d | Ctrl+K search `pln_fb564c1e` → deterministic match | **PASS** | `check4d-search.png` — "Parked plan — w091-demo-enable-encryption / matched keyword exact — pln_fb564c1e / search semantics are deterministic (W061 contract)." |
+| **8** | **NEW — the R1 per-demand journey (the W151 closure evidence)** | **PASS** | `check8-r1-demand-detail.png` + `check8-r1-back-to-list.png` — the "Open demand … (dmd_w091demo000001)" row button opens the DEMAND DETAIL VIEW (breadcrumb `Commerce / Procurement / dmd_w091demo000001`; the DemandDetail summary + current-state cards: deadline, delivery area, budget cap, floors, allowed substitutions); the JOURNEY RAIL renders ALL SEVEN STAGES over the real feed — Need (Succeeded) → Procurement case (Succeeded) → Vendor context (Running) → Authorization (Unknown) → Decision (Unknown) → Order (Unknown) → Evidence (Unknown) — states mapped honestly; "← All requests" returns to the list (re-render verified) |
+
+**Session-scoped-truth note (first-hand confirmation of blocker 10):** the approval executed in
+the Fleet Administrator session does not leak into other persona sessions — the Vendor session
+re-entered with badge 1 and the plan still pending (its own seeded truth). Each check above ran
+first-hand within its own session. This is the by-design demo-tier behavior already recorded in
+§4.8 blocker 10 — no change to its label.
+
+**Residual observations (honest, non-blocking):** the vendor-matching view renders the honest
+empty ("No satisfiable vendor match — No vendor passes the demand's hard gates (region,
+capability, terms floors). The refusals below show why.") — the demo seed has no
+floor-passing vendor, so the quote→acceptance→order flow is honest-empty on the demo tier;
+this is seed-data truth, not a code defect (the surface states why with machine-stable reasons).
+
 ### 4.10 Verdict recount v2 (the post-second-fix-wave delta)
 
 **EXECUTED 2026-10-05 evening (after the second fix wave).** The recount re-applies the SIM-B rubric (SWITCH-ONLY / MAIN-INTERFACE / COMPLEMENT / RETAIN) to the same 105 personas, strictly on what the verified second-fix-wave evidence now supports. Every verdict move traces to a specific line in the ten evidence files (the seven rerun segment files + w147-verification.md + w148-verification.md + w149-verification.md). Where evidence is silent, the section says so.
@@ -590,6 +641,81 @@ Every persona whose verdict moved, with the specific fix + verification line tha
 
 **Honest summary:** the second fix wave earned a real, modest verdict move — 5 founders running governance now have COMPLEMENT (their governance job runs substantially in-product alongside their incumbent tool). The other 100 personas' core jobs remain uncovered for the specific reasons above; their verdicts stay RETAIN with the line that would earn the move recorded. The evidence supports nothing higher than COMPLEMENT for any persona.
 
+### 4.10.4 Verdict recount v3 (post-W151 + post-deploy, 2026-10-06 morning)
+
+**EXECUTED 2026-10-06 morning (after the W151 merge + the production deploy + the live spot-check).**
+The recount re-applies the SIM-B rubric to the same 105 personas, strictly on the first-hand
+live evidence recorded in §4.9.5.3. Every verdict move traces to a specific spot-check capture;
+where the evidence is silent, the section says so.
+
+#### 4.10.4 (a) The new distribution line
+
+- **SIM-B baseline (2026-10-02):** SWITCH-ONLY 0 (0%) · MAIN-INTERFACE 0 (0%) · RETAIN 105 (100%).
+- **SIM-C first recount (2026-10-05 morning, post-W140/W144/W145):** 0 / 0 / 0 / 105.
+- **SIM-C recount v2 (2026-10-05 evening, post-W147/W148/W149):** 0 / 0 / 5 / 100.
+- **SIM-C recount v3 (2026-10-06 morning, post-W151 + post-deploy):** SWITCH-ONLY 0 (0%) · MAIN-INTERFACE 0 (0%) · **COMPLEMENT 20 (~19.0%)** · **RETAIN 85 (~81.0%)**.
+
+#### 4.10.4 (b) The CHANGED-persona table (the 15 movers)
+
+The 15 Asset & Procurement Manager personas (TRN/HOS/FEM/LEG/DEF × LG/MD/SM) move
+**RETAIN → COMPLEMENT**. The move traces to the v2 recount's OWN recorded bar (§4.10.3):
+"RETAIN with the line that would earn the move: wire `selectedDemandId` from a state hook …
+so the seven-stage case journey renders." W151 delivered exactly that line, and the live
+spot-check verified it first-hand (check 8: the seven-stage journey rail renders over the
+real feed — Need → Procurement case → Vendor context → Authorization → Decision → Order →
+Evidence — with the demand-detail cards, the breadcrumb, and the back navigation; plus
+check 1: the demands list + the honest order-verification card; plus the vendor-matching
+view with machine-stable refusal reasons).
+
+| # | Persona (role row) | Incumbent | Old → New | The specific live-evidence line |
+|---|---|---|---|---|
+| 4 | Rosa Delgado — Fleet Procurement Director (TRN-LG) | Coupa + lease portals | **RETAIN → COMPLEMENT** | Check 1 + check 8 (first-hand, live): the demand list renders; the per-demand seven-stage case journey renders over the real feed with honest stage states; the order-verification and vendor-matching views render with machine-stable honest empties. The procurement tracking/oversight job now runs substantially in-product alongside Coupa (which stays for the transactional quote→order flow the demo seed cannot exercise — honest empty, and for the no-create-affordance gap). |
+| 11 | Elena Fischer — Procurement Specialist (TRN-MD) | Coupa | **RETAIN → COMPLEMENT** | (Same live anchors as #4.) |
+| 18 | Hannah Cole (dual-hat) (TRN-SM) | supplier websites | **RETAIN → COMPLEMENT** | (Same live anchors as #4 — the dual-hat row's A&PM hat; her Fleet-Administrator persona #15 already moved in v2.) |
+| 25 | Camille Laurent — FF&E/IT Procurement Manager (HOS-LG) | Coupa + vendor portals | **RETAIN → COMPLEMENT** | (Same live anchors as #4.) |
+| 32 | Jill Warren — Purchasing Manager (HOS-MD) | supplier portals | **RETAIN → COMPLEMENT** | (Same live anchors as #4.) |
+| 39 | Ivy Chen (dual-hat) (HOS-SM) | supplier sites | **RETAIN → COMPLEMENT** | (Same live anchors as #4 — the dual-hat row's A&PM hat; her Fleet-Administrator persona #36 already moved in v2.) |
+| 46 | Felix Grant — Equipment & Rentals Manager (FEM-LG) | Cheqroom/Rentman | **RETAIN → COMPLEMENT** | (Same live anchors as #4.) |
+| 53 | Amara Okafor — Equipment Buyer (FEM-MD) | supplier portals | **RETAIN → COMPLEMENT** | (Same live anchors as #4.) |
+| 60 | Priya Nair (dual-hat) (FEM-SM) | rental invoices | **RETAIN → COMPLEMENT** | (Same live anchors as #4 — the dual-hat row's A&PM hat; her Fleet-Administrator persona #57 already moved in v2.) |
+| 67 | George Ashworth — Procurement Manager (LEG-LG) | Coupa/Ariba | **RETAIN → COMPLEMENT** | (Same live anchors as #4.) |
+| 74 | Thomas Read — Office Manager/Procurement (LEG-MD) | office supply portals | **RETAIN → COMPLEMENT** | (Same live anchors as #4.) |
+| 81 | Nora Ellis (dual-hat) (LEG-SM) | online ordering | **RETAIN → COMPLEMENT** | (Same live anchors as #4 — the dual-hat row's A&PM hat; her Fleet-Administrator persona #78 already moved in v2.) |
+| 88 | Susan Blackwood — Property & Logistics Manager (DEF-LG) | DPAS/ERP property systems | **RETAIN → COMPLEMENT** | (Same live anchors as #4 — the defense-sector operational scope caveat (§4.10.3) applies to her operational job, not the procurement-tracking job this move covers.) |
+| 93 | Vic Alonso — Fleet & Equipment Coordinator (DEF-MD) | spreadsheets | **RETAIN → COMPLEMENT** | (Same live anchors as #4.) |
+| 102 | Grant Whitmore (dual-hat) (DEF-SM) | online ordering | **RETAIN → COMPLEMENT** | (Same live anchors as #4 — the dual-hat row's A&PM hat; his Fleet-Administrator persona #99 already moved in v2.) |
+
+#### 4.10.4 (c) The delta narrative
+
+**The before/after delta is 0/0/105 (SIM-B) → 0/0/0/105 (first recount) → 0/0/5/100
+(recount v2) → 0/0/20/85 (recount v3).** Fifteen personas moved RETAIN → COMPLEMENT; the
+five v2 movers held; eighty-five personas stayed RETAIN with their specific reason updated.
+
+**The honest cap on this move — COMPLEMENT, not higher.** The evidence supports the
+procurement TRACKING/oversight job running substantially in-product (the demand list, the
+seven-stage per-demand journey, the order-verification view, the vendor-matching view with
+refusal reasons — all verified live). It does NOT support MAIN-INTERFACE or SWITCH-ONLY:
+the transactional flow (quote acceptance → order formation) is honest-empty on the demo
+seed (no floor-passing vendor), there is no demand-create affordance, and the incumbents
+(Coupa/Ariba/supplier portals) remain the transactional systems of record. Every move
+traces to the check-1/check-8 first-hand captures; no move goes beyond what those captures
+show.
+
+**The eighty-five RETAINs — the updated reasons.** The §4.10.3 RETAIN bullets apply with
+one change: the "Procurement detail residual R1" bullet is CLOSED (its personas moved),
+and the dual-hat note's A&PM-hat clause is closed (the Service-Desk-hat and Team-Manager-hat
+clauses remain). The other bullets are unchanged: no self-service employee surface (15);
+no vendor portal (15); the typed-CONFIRM destructive gate unexercisable for
+hardware-capability reasons (S&C + Service Desk + Fleet Administrators whose daily job
+includes destructive recovery); no real-fleet findings ingestion for the MEDIUM/LARGE
+oversight personas; no team surface (15); blocker 10 (demo-tier session-scoped state,
+by-design); the defense-sector operational scope.
+
+**Honest summary:** the third wave earned the second real verdict move — 15 Asset &
+Procurement Manager personas now have COMPLEMENT (their procurement tracking job runs
+substantially in-product alongside their incumbent transactional tool). The evidence
+supports nothing higher than COMPLEMENT for any persona.
+
 ## 5. Acceptance statement
 
 **RERUN COMPLETE (2026-10-05).** The post-fix rerun was executed against the LIVE
@@ -608,6 +734,21 @@ identical-journeys protocol.
 | COMPLEMENT | — (not in SIM-B rubric) | 0 (0%) | 5 (~4.8%) | +5 |
 | RETAIN | 105 (100%) | 105 (100%) | 100 (~95.2%) | −5 |
 | **Total** | **105** | **105** | **105** | **0** |
+
+**Recount v3 (2026-10-06 morning, post-W151 + post-deploy — §4.9.5/§4.10.4):**
+
+| Metric | After third wave (recount v3, 2026-10-06 morning) | Delta (v3 vs v2) | Delta (v3 vs SIM-B) |
+|---|---|---|---|
+| SWITCH-ONLY | 0 (0%) | 0 | 0 |
+| MAIN-INTERFACE | 0 (0%) | 0 | 0 |
+| COMPLEMENT | 20 (~19.0%) | +15 | +20 |
+| RETAIN | 85 (~81.0%) | −15 | −20 |
+| **Total** | **105** | **0** | **0** |
+
+The 15 new movers are the Asset & Procurement Manager personas (§4.10.4 (b)); the move
+traces to the live check-1/check-8 evidence (the per-demand seven-stage case journey
+rendering over the real feed on production, first-hand). The deploy + live spot-check
+record is §4.9.5.
 
 **Regression evidence (what the rerun verified on production):**
 
@@ -707,3 +848,12 @@ Final closure: TL record appended below.
 > - TL acceptance of the recount v2 (5 COMPLEMENT / 100 RETAIN): **ACCEPTED.** The 5 moves (the SMALL-firm Fleet Administrator founders — Hannah Cole TRN-SM, Ivy Chen HOS-SM, Priya Nair FEM-SM, Nora Ellis LEG-SM, Grant Whitmore DEF-SM) trace to verified anchors (W147/R1 J2+J3 across both real workspaces; W148/R2c + W149/R3 O3/O6 executed decisions + audit trails); no verdict inflated beyond COMPLEMENT; each of the 100 RETAINs carries its specific uncovered-core-job reason. One review defect (the §1 first-recount delta fragment scoping) was found in TL review and fixed by the worker in a follow-up turn on the same lane.
 > - TL disposition of the honest open items: the b6101d0 production deploy + the live spot-check (re-walk R3's checks 1/2/2b/2c/3/4a-4d against the Vercel production URL) execute at the 2026-10-06 19:08Z quota reset — the follow-up obligation recorded in §4.9.4; the R3 residuals stay on the ledger (R1 the per-demand procurement stub — the last onSurfaceEvent () => undefined — is the next minimal fix; R2 cosmetic search-label drift; R3 the typed-CONFIRM gate unexercisable for hardware-capability reasons; R4 demo-tier by-design; R5 the O2 side defects); blocker 10's by-design label is accepted as the honest disclosure.
 > - TL signature + timestamp: FleetOS Tech Lead (replay orchestration) — 2026-10-05T21:55Z.
+
+> **TL-CLOSURE ADDENDUM (2026-10-06 morning, Tech Lead — the deploy + spot-check + recount v3):**
+>
+> - **The deploy obligation EXECUTED.** main @ `28d7244` is LIVE on production (https://fleetos-staging-flame.vercel.app) — deployed 2026-10-06 ~08:25Z via the Vercel REST gitSource path with an operator-supplied account token (deployment `dpl_GUUbgaBFHHM5sdH9Dn2yTL3jK7nJ`, READY in 42s; the quota window was ALREADY OPEN — the rolling 24h window had aged off; the 19:08Z estimate was conservative). First-hand fingerprint evidence: the app-route chunk flipped `page-4d4e0c6fa0840a99.js` → `page-e5d5d6402b90f218.js` vs the pre-deploy baseline; `GET /api/health` 200 with all 9 secrets. This closes the §4.9.4 follow-up obligation ~10.5h before the estimated window.
+> - **The R1 residual CLOSED (W151).** The commerce.procurement binding holds the lane's own surface state machine (reduceProcurementSurfaceState; open_demand/back/reset no longer discarded), selectedDemandId threaded through LaneFeedOptions to both compose call sites, the seven-stage journey composed over the REAL W143 feed and rendered via the pure rail adapter — verified LIVE first-hand (spot-check check 8: the demand detail opens with the breadcrumb + cards + the full journey rail + the back navigation; screenshots in docs/simulations/sim-c-evidence/spot-check-20261006/).
+> - **The live spot-check PASSED.** R3's checks 1/2/2b/2c/2d/2e/3/4a/4b/4c/4d re-walked against the production URL — ALL PASS, first-hand, user-only browser evaluation with verbatim innerText captures and per-check screenshots (§4.9.5.3). The unscripted bonus: the Asset & Procurement Manager's own approve attempt hits the honest frozen `authorization_required` refusal (asset.manager lacks fleet.action.approve) — recorded as bonus evidence.
+> - **TL acceptance of recount v3 (20 COMPLEMENT / 85 RETAIN): ACCEPTED.** The 15 moves (the Asset & Procurement Manager personas, TRN/HOS/FEM/LEG/DEF × LG/MD/SM) trace to the v2 recount's own recorded bar ("wire selectedDemandId … so the seven-stage case journey renders") — delivered by W151 and verified live via check-8 evidence; no verdict inflated beyond COMPLEMENT (the transactional quote→order flow is honest-empty on the demo seed; the incumbents stay the transactional systems of record); each of the 85 RETAINs carries its specific uncovered-core-job reason (§4.10.4 (c)).
+> - **The remaining residual ledger (unchanged):** R2 cosmetic search-label drift; R3 the typed-CONFIRM gate unexercisable for hardware-capability reasons; R4 demo-tier by-design (blocker 10 — session-scoped truth confirmed live again); R5 the O2 side defects; the tab/onTabChange stub (scoped out of W151 per the W149 precedent). None blocks the deployment record or the recount.
+> - TL signature + timestamp: FleetOS Tech Lead (replay orchestration) — 2026-10-06T09:0xZ.
