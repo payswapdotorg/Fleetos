@@ -246,6 +246,14 @@ import type {
   ExecutedDecisionState,
   ExecutedDecisionRecord,
 } from "./runtime/executed-decision-state";
+// W152 Fix 1 (R2 residual) — the search-index overlay: maps the
+// executed-decision state onto the search records' titles + keywords
+// so Ctrl+K surfaces the overlaid label (the seeded `Parked plan — `
+// becomes `Decided plan (APPROVED|REJECTED) — ` after a decision).
+// PURE + DETERMINISTIC; never fabricates a decision.
+import {
+  overlaySearchRecordsWithExecutedDecisions,
+} from "./runtime/search-decision-overlay";
 
 // ---------------------------------------------------------------------------
 // Route <-> path mapping (the final route vocabulary's URL form)
@@ -721,6 +729,25 @@ export function ConsoleSessionApp({
   );
   const areas: ConsoleAreaComposition | null = areasResult.ok ? areasResult.view : null;
 
+  // W152 Fix 1 (R2 residual) — the search-index overlay: the AppShell's
+  // global search (Ctrl+K) reads `areas.searchRecords`. The seeded record
+  // for `pln_fb564c1e` carries the title `Parked plan — w091-demo-enable-
+  // encryption` (the demo fleet's parked-plan record). After an approve
+  // execution, the queue card / Security Doctor / Evidence & Audit index
+  // all overlay the executed-decision state (the W149 propagation); the
+  // search index did NOT — the residual R2. This memo applies the pure
+  // overlay: records whose `area === "actions"` AND whose `recordId` is
+  // in `executedDecisions.recordsByPlan` get the overlaid title
+  // `Decided plan (APPROVED|REJECTED) — <name>` + extended keywords.
+  // Memoized consistently with the adjacent memos (`executedDecisions`
+  // is already in the deps of `areasResult` + `laneFeedOptions`).
+  const searchRecords = useMemo(
+    () => areas === null
+      ? ([] as readonly ShellRecordSummary[])
+      : overlaySearchRecordsWithExecutedDecisions(areas.searchRecords, executedDecisions),
+    [areas, executedDecisions],
+  );
+
   // W144 — the six lanes' composition feeds (the deep views bound into
   // the console runtime OVER the W141/W142/W143 compositions). Every
   // lane's journey is reachable and running on REAL runtime state; the
@@ -942,7 +969,7 @@ export function ConsoleSessionApp({
       role={operatorRoleFor(session.activeRole ?? "employee")}
       tenantLabel={session.workspaceName}
       environmentLabel={environmentLabel()}
-      records={areas === null ? [] : areas.searchRecords}
+      records={searchRecords}
       onSearchLanding={onSearchLanding}
       chrome={
         <>
