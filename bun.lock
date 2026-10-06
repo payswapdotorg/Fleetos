@@ -493,6 +493,23 @@
         "@fleetos/identity": "workspace:*",
       },
     },
+    "packages/world-context": {
+      "name": "@fleetos/world-context",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/device-model": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+        "@fleetos/learning": "workspace:*",
+        "@fleetos/predictive": "workspace:*",
+        "@fleetos/procurement": "workspace:*",
+        "@fleetos/workloads": "workspace:*",
+        "@fleetos/world-model": "workspace:*",
+      },
+    },
     "packages/world-model": {
       "name": "@fleetos/world-model",
       "version": "0.1.0",
@@ -583,6 +600,8 @@
     "@fleetos/web-workloads": ["@fleetos/web-workloads@workspace:apps/web/workloads"],
 
     "@fleetos/workloads": ["@fleetos/workloads@workspace:packages/workloads"],
+
+    "@fleetos/world-context": ["@fleetos/world-context@workspace:packages/world-context"],
 
     "@fleetos/world-model": ["@fleetos/world-model@workspace:packages/world-model"],
 
