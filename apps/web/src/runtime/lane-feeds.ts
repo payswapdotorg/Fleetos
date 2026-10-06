@@ -575,7 +575,7 @@ function demoWorkloadPlanningState(): WorkloadPlanningRuntimeState {
 // not_decided/not_requested stages where undecided).
 // ---------------------------------------------------------------------------
 
-const DEMO_DEMAND_FACETS: ProcurementDemandFacets = Object.freeze({
+export const DEMO_DEMAND_FACETS: ProcurementDemandFacets = Object.freeze({
   demandId: "dmd_w091demo000001",
   tenantId: TENANT_ID,
   workloadId: DEMO_WORKLOAD_ID as unknown as string,

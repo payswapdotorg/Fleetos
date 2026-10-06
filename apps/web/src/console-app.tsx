@@ -117,6 +117,7 @@ import type {
 } from "@fleetos/web-learning";
 import {
   composeConsoleAreas,
+  demoGuardianDecision,
   demoTwinStore,
   isDemoTenant,
 } from "./runtime/demo-fleet";
@@ -142,9 +143,26 @@ import { environmentLabel } from "./runtime/env";
 
 // W144 — the lane composition feeds (the six lanes' deep views bound
 // into the console runtime OVER the W141/W142/W143 compositions).
-import { composeLaneFeeds } from "./runtime/lane-feeds";
+import { composeLaneFeeds, DEMO_DEMAND_FACETS } from "./runtime/lane-feeds";
 import { mapProcurementJourneyToRail } from "./runtime/procurement-journey-rail";
 import type { LaneFeeds, LaneFeedOptions } from "./runtime/lane-feeds";
+
+// W156 (TL convergence) — the Predictive Twin advisory binding: the
+// W153/W154/W155 packages bound into the product through their PUBLIC
+// APIs (the extractor + the context projection + the evaluation bridge
+// directly; the engine through the WorldModelAdapter INTERFACE ONLY —
+// the adapter-interface-only law). The deterministic REFERENCE adapter
+// is what the product binds: no GPU, no model provider, no network.
+import {
+  buildPredictiveAdvisory,
+  buildEvaluationAdvisoryNote,
+  deriveProcurementStageFacets,
+} from "./runtime/predictive-advisory";
+import type {
+  PredictiveAdvisoryView,
+  EvaluationAdvisoryNote,
+} from "./runtime/predictive-advisory";
+import { createReferenceAdapter } from "@fleetos/world-model";
 
 // W144 — the approval decision runtime (the EXECUTED decision path —
 // the inbox-to-decision-to-evidence journey; the badge count tracks
@@ -391,6 +409,120 @@ function useMobileRoster(): boolean {
     return () => mq.removeEventListener("change", onChange);
   }, []);
   return narrow;
+}
+
+// ---------------------------------------------------------------------------
+// W156 (TL convergence) — the PREDICTIVE TWIN ADVISORY PANEL
+//
+// The end-to-end advisory journey's surface (ADR-0002 § "Acceptance":
+// "at least one real FleetOS journey demonstrates predictive output
+// being used as advisory context" + "live product UI clearly
+// distinguishes observed, predicted and hypothetical state"). Rendered
+// on the device.lifecycle route below the canonical DeviceLifecycleScreen:
+// Control Tower -> Devices (the REAL roster) -> device detail/lifecycle
+// -> the Predictive Twin advisory panel.
+//
+// The three state kinds render as DISTINCT sections with distinct
+// labels: OBSERVED (sourced from the canonical Device Twin ONLY — the
+// twin remains authoritative), PREDICTED (an ADVISORY estimate —
+// machine-marked, uncertainty surfaced), HYPOTHETICAL (the
+// counterfactual conditioned on a candidate action — the W154
+// machine-carried marker rendered as "HYPOTHETICAL — never observed").
+// The model-health + provenance sections keep the capability version,
+// the evidence-ref counts and the digests visible; the Arena note
+// surfaces the W155 bridge's proposal disposition under the FROZEN
+// Guardian decision (the advisory NEVER bypasses Guardian — the note
+// is PARKED under REQUIRE_APPROVAL in the demo tier).
+// ---------------------------------------------------------------------------
+
+function PredictiveTwinPanel(props: {
+  readonly advisory: PredictiveAdvisoryView;
+  readonly note: EvaluationAdvisoryNote | null;
+}): JSX.Element {
+  const { advisory, note } = props;
+  if (advisory.kind === "degraded") {
+    // The honest degraded state (ADR-0002 invariant 6) — rendered as
+    // such, NEVER as fabricated confidence: the reason + detail are
+    // the propagated W153 feed / adapter states, verbatim.
+    return (
+      <section className="fos-card" aria-label="Predictive Twin advisory (degraded)">
+        <div className="fos-row">
+          <span className="fos-card-title">Predictive Twin</span>
+          <Badge status="informational">ADVISORY — never business truth</Badge>
+        </div>
+        <p className="fos-card-subtitle">
+          The predictive capability degraded honestly: {advisory.reason} ({advisory.detail}).
+          The observed twin state below remains the authoritative record.
+        </p>
+        <p className="fos-meta">
+          OBSERVED — {advisory.observed.observationCount} admitted observation(s)
+          {advisory.observed.lastObservedAt !== null ? `, last at ${advisory.observed.lastObservedAt}` : ""}
+          &nbsp;· MODEL — {advisory.model.capabilityName} v{advisory.model.capabilityVersion}
+          {advisory.model.available ? " (available)" : ` (unavailable: ${advisory.model.unavailableReason ?? "unknown"})`}
+        </p>
+      </section>
+    );
+  }
+  const predicted = advisory.predicted;
+  const hypothetical = advisory.hypothetical;
+  return (
+    <section className="fos-card" aria-label="Predictive Twin advisory">
+      <div className="fos-row">
+        <span className="fos-card-title">Predictive Twin</span>
+        <Badge status="informational">ADVISORY — never business truth</Badge>
+      </div>
+      <p className="fos-card-subtitle">
+        The deterministic reference world model&apos;s advisory interpretation of this
+        device&apos;s history. The Device Twin remains the authoritative record; no
+        predictive output authorizes, executes or mutates business truth.
+      </p>
+      <div className="fos-stack">
+        <p className="fos-meta">
+          <strong>OBSERVED</strong> (the Device Twin record): {advisory.observed.observationCount} admitted
+          observation(s){advisory.observed.lastObservedAt !== null ? `, last at ${advisory.observed.lastObservedAt}` : ""}
+          {" "}· {advisory.observed.windowObservationCount} in the advisory window
+          [{advisory.observed.windowFrom} → {advisory.observed.windowTo})
+        </p>
+        <p className="fos-meta">
+          <strong>PREDICTED</strong> (advisory estimate — {predicted.estimateKind}):{" "}
+          {predicted.estimate.toFixed(3)} · uncertainty [{predicted.uncertainty.lower.toFixed(3)},{" "}
+          {predicted.uncertainty.upper.toFixed(3)}] · confidence {predicted.uncertainty.confidence.toFixed(2)}{" "}
+          · horizon {(predicted.horizonMs / 3_600_000).toFixed(0)}h · {predicted.capability.name} v{predicted.capability.version}
+        </p>
+        {hypothetical !== null && (
+          <p className="fos-meta">
+            <strong>HYPOTHETICAL</strong> — never observed (counterfactual on{" "}
+            {hypothetical.candidateAction.description}): {hypothetical.estimate.toFixed(3)} · uncertainty
+            [{" "}
+            {hypothetical.uncertainty.lower.toFixed(3)}, {hypothetical.uncertainty.upper.toFixed(3)}] ·
+            confidence {hypothetical.uncertainty.confidence.toFixed(2)} ·{" "}
+            <span className="fos-mono">hypothetical: true</span>
+          </p>
+        )}
+        <p className="fos-meta">
+          <strong>MODEL</strong> — {advisory.model.capabilityName} v{advisory.model.capabilityVersion}
+          {advisory.model.available ? " (available — the deterministic reference; no model provider)" : ""}
+        </p>
+        <p className="fos-meta fos-mono" style={{ fontSize: "0.75rem", wordBreak: "break-all" }}>
+          PROVENANCE — feature-set digest {advisory.provenance.featureSetInputDigest.slice(0, 16)}… · context
+          digest {advisory.provenance.contextDigest.slice(0, 16)}… · chain{" "}
+          {advisory.provenance.provenanceChainDigest.slice(0, 16)}… · {advisory.provenance.evidenceRefCount} evidence
+          refs · {advisory.provenance.inputObservationRefCount} observation refs · context:{" "}
+          {advisory.context.workloadAssignmentCount} workload assignment(s) +{" "}
+          {advisory.context.procurementStageCount} procurement stage(s)
+        </p>
+        {note !== null && (
+          <p className="fos-meta">
+            <strong>ARENA INTAKE</strong> (the Learning/Arena bridge — Guardian-gated, never
+            auto-submitted): evaluation proposal {note.disposition}{" "}
+            <span className="fos-mono">{note.proposalId.slice(0, 16)}…</span>
+            {note.hypothetical ? " (from a hypothetical counterfactual)" : ""} · adoption requires the
+            explicit versioned adoption path
+          </p>
+        )}
+      </div>
+    </section>
+  );
 }
 
 export function ConsoleSessionApp({
@@ -1848,14 +1980,74 @@ function renderRoute(input: RenderInput): JSX.Element {
         deviceId,
         { now: "2026-01-06T14:00:00Z", freshWithinMs: 86_400_000, staleAfterMs: 604_800_000 },
       );
+      // W156 (TL convergence) — the PREDICTIVE TWIN ADVISORY BINDING: the
+      // end-to-end advisory journey over the REAL session twin store. The
+      // W153 extractor consumes the twin's telemetry window; the W155
+      // context projection consumes the demo tier's REAL procurement
+      // demand (the deployed tier's thin context degrades honestly); the
+      // W154 engine runs through the deterministic REFERENCE adapter (the
+      // adapter-interface-only law — no GPU, no model provider, no
+      // network). The window/asOf use the lane feeds' own frozen
+      // reference instant (the W152 header binding's `now` value). The
+      // candidate action is the demo counterfactual the panel renders as
+      // HYPOTHETICAL — never observed, never executed.
+      const twinRecord = input.sessionTwinStore.get(scope.tenantId, deviceId);
+      let advisoryView: PredictiveAdvisoryView | null = null;
+      let arenaNote: EvaluationAdvisoryNote | null = null;
+      if (twinRecord !== undefined) {
+        const advisory = buildPredictiveAdvisory({
+          scope,
+          deviceId,
+          twin: {
+            deviceId: twinRecord.deviceId,
+            telemetry: {
+              lastObservedAt: twinRecord.telemetry.lastObservedAt,
+              observationCount: twinRecord.telemetry.observationCount,
+              latest: twinRecord.telemetry.latest,
+            },
+          },
+          adapter: createReferenceAdapter(),
+          workloadAssignments: [],
+          procurementStages: isDemo
+            ? deriveProcurementStageFacets([DEMO_DEMAND_FACETS])
+            : [],
+          window: { from: "2026-01-06T00:00:00Z", to: "2026-01-06T14:00:00Z" },
+          asOf: "2026-01-06T14:00:00Z",
+          horizonMs: 86_400_000,
+          candidateAction: {
+            ref: "act_w091_demo_replace_battery",
+            description: "Replace the battery (the demo counterfactual)",
+          },
+        });
+        if (advisory.ok) {
+          advisoryView = advisory.advisory;
+          if (advisory.advisory.kind === "ready" && isDemo) {
+            // The Arena intake note under the demo tier's REAL Guardian
+            // decision (REQUIRE_APPROVAL -> the proposal lands PARKED —
+            // Guardian remains the sole policy authority; the bridge
+            // NEVER submits).
+            const noteBuild = buildEvaluationAdvisoryNote(
+              scope,
+              advisory.advisory.sourcePrediction,
+              demoGuardianDecision(),
+            );
+            if (noteBuild.ok) {
+              arenaNote = noteBuild.note;
+            }
+          }
+        }
+      }
       return (
-        <DeviceLifecycleScreen
-          phase={{ kind: "ready", view: header }}
-          deviceId={deviceId}
-          transitionAuthorization={{}}
-          onRequestTransition={() => undefined}
-          onOpenDoctor={() => navigate({ area: "device", view: "doctor" })}
-        />
+        <div className="fos-stack">
+          <DeviceLifecycleScreen
+            phase={{ kind: "ready", view: header }}
+            deviceId={deviceId}
+            transitionAuthorization={{}}
+            onRequestTransition={() => undefined}
+            onOpenDoctor={() => navigate({ area: "device", view: "doctor" })}
+          />
+          {advisoryView !== null && <PredictiveTwinPanel advisory={advisoryView} note={arenaNote} />}
+        </div>
       );
     }
     case "recovery.cases": {
