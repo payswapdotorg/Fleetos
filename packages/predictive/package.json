@@ -1,0 +1,20 @@
+{
+  "name": "@fleetos/predictive",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "description": "FleetOS predictive layer lane A (W153): the deterministic, provenance-carrying device-history feature feed (ADR-0002).",
+  "dependencies": {
+    "@fleetos/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@fleetos/audit": "workspace:*",
+    "@fleetos/device-model": "workspace:*",
+    "@fleetos/identity": "workspace:*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  }
+}
