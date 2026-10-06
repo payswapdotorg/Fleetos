@@ -397,7 +397,18 @@ export function buildDeviceDoctorJourney(
               { label: "Lifecycle", value: input.twin.identity.lifecycleState },
               { label: "Adapter family", value: input.twin.identity.enrollment.adapterFamily },
               {
-                label: "Observation count",
+                // W152 Fix 3 (R5b residual) — the stage-1 row label
+                // USED to be `Observation count` (ambiguous: stage 2
+                // reported `Observations: None recorded yet` from a
+                // DIFFERENT store). The R5b residual (sim-c-report.md
+                // §4.9.3): two stores, two truths, ambiguous labels
+                // on one screen — stage 1 reports the TWIN's telemetry
+                // count (the TwinStore's `observationCount`); stage 2
+                // reports the diagnosis store's records. The fix
+                // (the report's sanctioned option): label them as
+                // DISTINCT counts on the surface. Stage 1's row is
+                // the TWIN record's telemetry count.
+                label: "Telemetry observations (twin record)",
                 value: String(input.twin.telemetry.observationCount),
               },
             ]),
@@ -408,9 +419,30 @@ export function buildDeviceDoctorJourney(
       headline: DOCTOR_JOURNEY_HEADLINES.observations,
       rows:
         input.observations.length === 0
-          ? frozenArray([{ label: "Observations", value: "None recorded yet" }])
+          ? frozenArray([{
+              // W152 Fix 3 (R5b residual) — the stage-2 empty-state
+              // row USED to be `{ label: "Observations", value:
+              // "None recorded yet" }` — ambiguous (the user could
+              // not tell WHICH store was empty). The fix: label this
+              // row as the DIAGNOSIS observations store's empty
+              // state, with the value carrying the honest
+              // explanation that twin telemetry observations are
+              // ingested into diagnosis separately (so the user
+              // understands WHY stage 1 shows a count while stage 2
+              // shows none — two stores, two truths, honestly named).
+              label: "Diagnosis observations",
+              value: "None recorded yet — twin telemetry observations are ingested into diagnosis separately",
+            }])
           : frozenArray([
-              { label: "Count", value: String(input.observations.length) },
+              {
+                // W152 Fix 3 (R5b residual) — the stage-2 non-empty
+                // branch's `Count` label becomes `Diagnosis
+                // observations` (the same distinct-name fix — the
+                // count is the diagnosis store's record count, NOT
+                // the twin's telemetry count).
+                label: "Diagnosis observations",
+                value: String(input.observations.length),
+              },
               {
                 label: "Latest observed at",
                 value: [...input.observations].sort((a, b) =>

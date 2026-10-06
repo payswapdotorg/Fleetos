@@ -42,6 +42,11 @@ import type {
   ShellSearchResult,
 } from "@fleetos/web-shell";
 import { DeviceFleetScreen, DeclaredImportScreen } from "@fleetos/web-device";
+// W152 Fix 2 (R5a residual) — the device lifecycle screen + the pure
+// `buildDeviceDetailHeader` (the lifecycle route's view-model builder
+// over the REAL session twin store). Both exported from the
+// @fleetos/web-device barrel (apps/web/device/src/index.ts L54 + L97).
+import { DeviceLifecycleScreen, buildDeviceDetailHeader } from "@fleetos/web-device";
 import {
   initialDeclaredImportJourney,
   updateDeclaredDeviceDraft,
@@ -122,6 +127,9 @@ import {
   DECLARE_OWNERSHIP_TYPE_OPTIONS,
   newDeclaredImportCorrelationId,
 } from "./runtime/declared-import-binding";
+// W152 Fix 2 (R5a residual) — the session's twin store type (the source
+// for `buildDeviceDetailHeader` at the device.lifecycle route binding).
+import type { TwinStore } from "@fleetos/device-model";
 // W148 — the session-scoped recovery-case store + the REAL W040 record
 // factory (the O5 case-creation affordance's binding).
 import {
@@ -227,6 +235,13 @@ import type {
   ProcurementScreenData,
   ProcurementSurfaceEvent,
   ProcurementSurfaceState,
+  // W152 Fix 4 — the procurement demand-detail tab engagement: the
+  // screen's `tab`/`onTabChange` props are FULLY CONTROLLED but the
+  // W151 binding pinned `tab="matching"` with `onTabChange={() =>
+  // undefined}` (a dead control on a surface whose own copy tells
+  // the user to "Open the demand's Quotes tab"). The W152 fix holds
+  // the tab in the console session (the W149/W151 precedent).
+  ProcurementTab,
 } from "@fleetos/web-commerce";
 // W149 — the procurement verification view-model's honest empty-state
 // builder (the P0 crash fix: compose the real `OrderVerificationView`,
@@ -246,6 +261,14 @@ import type {
   ExecutedDecisionState,
   ExecutedDecisionRecord,
 } from "./runtime/executed-decision-state";
+// W152 Fix 1 (R2 residual) — the search-index overlay: maps the
+// executed-decision state onto the search records' titles + keywords
+// so Ctrl+K surfaces the overlaid label (the seeded `Parked plan — `
+// becomes `Decided plan (APPROVED|REJECTED) — ` after a decision).
+// PURE + DETERMINISTIC; never fabricates a decision.
+import {
+  overlaySearchRecordsWithExecutedDecisions,
+} from "./runtime/search-decision-overlay";
 
 // ---------------------------------------------------------------------------
 // Route <-> path mapping (the final route vocabulary's URL form)
@@ -631,6 +654,23 @@ export function ConsoleSessionApp({
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
+  // W152 Fix 2 (R5a residual) — the session-held selected device id (the
+  // device lifecycle screen's subject). The W149 `selectedRecoveryCaseId`
+  // precedent: `useState<string | undefined>` defaulting to `undefined`,
+  // set when the operator clicks "Open device detail" from the doctor
+  // (L1640) OR the roster (L1167). The lifecycle route falls back to
+  // the doctor's current device selection when `selectedDeviceId` is
+  // `undefined` (the demo tier's `dev_w091demo000001` / the fresh
+  // workspace's `dev_freshworkspace01` — the same default the doctor
+  // binding uses). The R5a residual: the doctor's "Open device detail"
+  // button navigated to `{area:"device",view:"doctor"}` — the SAME
+  // route it already sat on (a dead button); the roster's `onOpenDevice`
+  // discarded the deviceId. The fix: both buttons set `selectedDeviceId`
+  // then navigate to `{area:"device",view:"lifecycle"}` (the in-vocab
+  // route the console's switch NEVER bound — falls through to the
+  // "This route does not exist" refusal). Two defects in one.
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>(undefined);
+
   // W151 — the procurement surface state (the lane's OWN surface state
   // machine: demands -> demand -> matching -> quote, with back/reset).
   // The W148/W149 binding shipped `surface={{view:"demands"} as never}`
@@ -641,14 +681,54 @@ export function ConsoleSessionApp({
   // the lane's declared `reduceProcurementSurfaceState` reducer.
   const [procurementSurface, setProcurementSurface] =
     useState<ProcurementSurfaceState>(() => INITIAL_PROCUREMENT_SURFACE_STATE);
+  // W152 Fix 4 — the procurement demand-detail tab engagement: the
+  // screen's `tab`/`onTabChange` props are FULLY CONTROLLED but the
+  // W151 binding pinned `tab="matching"` with `onTabChange={() =>
+  // undefined}` (a dead control on a surface whose own copy tells
+  // the user to "Open the demand's Quotes tab" — the screen's L742
+  // empty-state hint). The W151 lane scoped tab state out deliberately;
+  // this lane closes it. The tab is held in the console session (the
+  // W149 `selectedRecoveryCaseId` / W151 `procurementSurface`
+  // precedent), defaulting to "matching" (the screen's own default).
+  const [procurementTab, setProcurementTab] = useState<ProcurementTab>(() => "matching");
+  // The handler reduces the surface event via the lane's declared
+  // reducer AND keeps the tab coherent with the surface state:
+  //   - `open_demand` (a demand switch) resets the tab to "matching"
+  //     (a fresh demand opens at the matching tab);
+  //   - `back` from the demand view (-> demands list) resets the tab
+  //     to "matching" (no demand selected — the tab resets for the
+  //     next demand open);
+  //   - `reset` resets the tab to "matching" (the surface returns to
+  //     the demands list);
+  //   - `open_matching` sets the tab to "matching" (the user is
+  //     explicitly opening the matching view);
+  //   - `open_quote` sets the tab to "quotes" (the user is explicitly
+  //     opening a quote);
+  //   - `back` from matching/quote (-> demand) keeps the current tab
+  //     (the user is returning to the demand detail).
   const handleProcurementSurfaceEvent = useCallback(
     (event: ProcurementSurfaceEvent): void => {
-      setProcurementSurface((prev) => {
-        const result = reduceProcurementSurfaceState(prev, event);
-        return result.ok ? result.state : prev;
-      });
+      const result = reduceProcurementSurfaceState(procurementSurface, event);
+      if (!result.ok) return;
+      const nextSurface = result.state;
+      setProcurementSurface(nextSurface);
+      // Reset the tab to "matching" on open_demand (a demand switch),
+      // reset (always returns to demands), or back from the demand
+      // view (returns to demands list).
+      if (
+        event.type === "open_demand" ||
+        event.type === "reset" ||
+        (event.type === "back" && procurementSurface.view === "demand")
+      ) {
+        setProcurementTab("matching");
+      } else if (event.type === "open_matching") {
+        setProcurementTab("matching");
+      } else if (event.type === "open_quote") {
+        setProcurementTab("quotes");
+      }
+      // else: back from matching/quote -> demand: keep the current tab.
     },
-    [],
+    [procurementSurface],
   );
 
   // W144 — the approval decision runtime (the EXECUTED decision path).
@@ -720,6 +800,25 @@ export function ConsoleSessionApp({
     [session.tenantId, session.activeRole, sessionTwinStore, declaredVersion, executedDecisions],
   );
   const areas: ConsoleAreaComposition | null = areasResult.ok ? areasResult.view : null;
+
+  // W152 Fix 1 (R2 residual) — the search-index overlay: the AppShell's
+  // global search (Ctrl+K) reads `areas.searchRecords`. The seeded record
+  // for `pln_fb564c1e` carries the title `Parked plan — w091-demo-enable-
+  // encryption` (the demo fleet's parked-plan record). After an approve
+  // execution, the queue card / Security Doctor / Evidence & Audit index
+  // all overlay the executed-decision state (the W149 propagation); the
+  // search index did NOT — the residual R2. This memo applies the pure
+  // overlay: records whose `area === "actions"` AND whose `recordId` is
+  // in `executedDecisions.recordsByPlan` get the overlaid title
+  // `Decided plan (APPROVED|REJECTED) — <name>` + extended keywords.
+  // Memoized consistently with the adjacent memos (`executedDecisions`
+  // is already in the deps of `areasResult` + `laneFeedOptions`).
+  const searchRecords = useMemo(
+    () => areas === null
+      ? ([] as readonly ShellRecordSummary[])
+      : overlaySearchRecordsWithExecutedDecisions(areas.searchRecords, executedDecisions),
+    [areas, executedDecisions],
+  );
 
   // W144 — the six lanes' composition feeds (the deep views bound into
   // the console runtime OVER the W141/W142/W143 compositions). Every
@@ -914,12 +1013,23 @@ export function ConsoleSessionApp({
         setSelectedRecoveryCaseId,
         setSelectedFindingId,
         setSelectedPlanId,
+        // W152 Fix 2 (R5a residual) — the session-held selected device
+        // id + the session's twin store (the lifecycle route's source).
+        selectedDeviceId,
+        setSelectedDeviceId,
+        sessionTwinStore,
         // W151 — the procurement surface state + event handler (the
         // per-demand engagement's binding). The surface state flows
         // through the lane's own typed machine; the handler reduces
         // events via the lane's declared reducer.
         procurementSurface,
         onProcurementSurfaceEvent: handleProcurementSurfaceEvent,
+        // W152 Fix 4 — the procurement demand-detail tab engagement
+        // (the session-held tab + setter). The tab flows to the
+        // screen's `tab` prop; the setter flows to the screen's
+        // `onTabChange` prop (no longer a dead control).
+        procurementTab,
+        setProcurementTab,
         executedDecisions,
         sessionAssignedRoles: session.assignedRoles,
         // W145 deploy convergence — the declared-import journey + the
@@ -942,7 +1052,7 @@ export function ConsoleSessionApp({
       role={operatorRoleFor(session.activeRole ?? "employee")}
       tenantLabel={session.workspaceName}
       environmentLabel={environmentLabel()}
-      records={areas === null ? [] : areas.searchRecords}
+      records={searchRecords}
       onSearchLanding={onSearchLanding}
       chrome={
         <>
@@ -1101,6 +1211,18 @@ interface RenderInput {
   readonly setSelectedRecoveryCaseId: (id: string | undefined) => void;
   readonly setSelectedFindingId: (id: string | null) => void;
   readonly setSelectedPlanId: (id: string | null) => void;
+  // W152 Fix 2 (R5a residual) — the session-held selected device id (the
+  // device lifecycle screen's subject) + the session's twin store (the
+  // source for `buildDeviceDetailHeader`). The doctor's "Open device
+  // detail" button + the roster's `onOpenDevice` set the selected id
+  // then navigate to `{area:"device",view:"lifecycle"}`. The lifecycle
+  // route composes the `DeviceDetailHeader` over the REAL session twin
+  // store (the same store the roster + the declared-import journey
+  // read); the honest empty `undefined` view-model renders the screen's
+  // own "Device not found in your fleet" state — never fabricated data.
+  readonly selectedDeviceId: string | undefined;
+  readonly setSelectedDeviceId: (id: string | undefined) => void;
+  readonly sessionTwinStore: TwinStore;
   // W151 — the procurement surface state + event handler. The surface
   // state is the lane's OWN typed machine state (demands/demand/
   // matching/quote); the handler reduces events via the lane's
@@ -1108,6 +1230,18 @@ interface RenderInput {
   // passes these straight through — no `as never`, no blind cast.
   readonly procurementSurface: ProcurementSurfaceState;
   readonly onProcurementSurfaceEvent: (event: ProcurementSurfaceEvent) => void;
+  // W152 Fix 4 — the procurement demand-detail tab engagement: the
+  // session-held `procurementTab` (the demand-detail panel's selected
+  // tab — "matching" or "quotes") + the `setProcurementTab` handler.
+  // The W151 binding pinned `tab="matching"` with `onTabChange={() =>
+  // undefined}` (a dead control); the W152 fix holds the tab in the
+  // console session and binds `tab={input.procurementTab}`
+  // `onTabChange={input.setProcurementTab}` at the commerce.procurement
+  // case. The handler keeps the tab coherent with the surface state
+  // (reset to "matching" on open_demand/back-from-demand/reset; set to
+  // "matching" on open_matching; set to "quotes" on open_quote).
+  readonly procurementTab: ProcurementTab;
+  readonly setProcurementTab: (tab: ProcurementTab) => void;
   // W149 — the executed decision state (the propagation overlay). The
   // demo's Security Doctor + the Approvals queue card + the Evidence &
   // Audit index compose over this state — REAL runtime state, never
@@ -1164,7 +1298,16 @@ function renderRoute(input: RenderInput): JSX.Element {
           onToggleDevice={() => undefined}
           onSelectVisible={() => undefined}
           onClearSelection={() => input.setFleetSelection({ kind: "none" })}
-          onOpenDevice={() => navigate({ area: "device", view: "doctor" })}
+          onOpenDevice={(deviceId) => {
+            // W152 Fix 2 (R5a residual) — the roster's `onOpenDevice`
+            // USED to discard the deviceId and navigate to the doctor
+            // (a dead navigation — the operator's row click was a
+            // no-op for the row's device). The fix: set the session-
+            // held selectedDeviceId, then navigate to the device.lifecycle
+            // route (the in-vocab route the console's switch now binds).
+            input.setSelectedDeviceId(deviceId as string);
+            navigate({ area: "device", view: "lifecycle" });
+          }}
           onEnroll={() => navigate({ area: "device", view: "enrollment" })}
           onDeclare={() => navigate({ area: "device", view: "declare" })}
           mobileRoster={input.mobileRoster}
@@ -1637,12 +1780,81 @@ function renderRoute(input: RenderInput): JSX.Element {
           panel={input.doctorPanel}
           onPanelChange={(panel: DoctorPanel) => input.setDoctorPanel(openDoctorPanel(input.doctorPanel, panel))}
           onPanelBack={() => input.setDoctorPanel(doctorPanelBack(input.doctorPanel))}
-          onOpenDevice={(deviceId) => navigate({ area: "device", view: "doctor" })}
+          // W152 Fix 2 (R5a residual) — the doctor's "Open device detail"
+          // button USED to navigate to {area:"device",view:"doctor"} —
+          // the SAME route it already sat on (a dead button). The fix:
+          // set the session-held selectedDeviceId, then navigate to the
+          // device.lifecycle route (the in-vocab route the console's
+          // switch never bound — the second defect this fix closes).
+          onOpenDevice={(deviceId) => {
+            input.setSelectedDeviceId(deviceId as string);
+            navigate({ area: "device", view: "lifecycle" });
+          }}
           onAcceptTreatment={() => undefined}
           onDismissTreatment={() => undefined}
           treatmentGating={feed.treatmentGating}
           treatmentDisposition={feed.treatmentDisposition}
           journey={feed.journey}
+        />
+      );
+    }
+    case "device.lifecycle": {
+      // W152 Fix 2 (R5a residual) — the device lifecycle route binding
+      // (the in-vocab route the console's switch NEVER bound — falls
+      // through to the "This route does not exist" refusal). The screen
+      // is fully controlled and renders the device detail header + the
+      // frozen lifecycle machine + provenance, with the legal next
+      // transitions rendered as REQUEST affordances whose AUTHORIZATION
+      // STATUS is visible on every consequential action.
+      //
+      // The phase's view-model is composed over the REAL session twin
+      // store (the same store the roster + the declared-import journey
+      // read) via `buildDeviceDetailHeader(scope, source, deviceId,
+      // options)`. The scope is the acting tenant; the source is the
+      // session's twin store (structurally satisfies DeviceTwinSource);
+      // the deviceId is the session-held `selectedDeviceId` (the W149
+      // `selectedRecoveryCaseId` precedent), defaulting to the doctor's
+      // current device selection when entering from the doctor (the
+      // demo tier's `dev_w091demo000001` / the fresh workspace's
+      // `dev_freshworkspace01` — the same default the doctor binding
+      // uses). The honest empty `undefined` view-model renders the
+      // screen's own "Device not found in your fleet" state — never
+      // fabricated data.
+      //
+      // The `transitionAuthorization` map is HONESTLY EMPTY (the demo
+      // tier wires no transition-authorization boundary — the doctor's
+      // `treatmentGating` is the structural precedent: an empty map
+      // means "no boundary, click is a no-op"). The `onRequestTransition`
+      // handler is the honest refusal the current authorization model
+      // warrants: a no-op (no transition-authorization boundary is
+      // exposed in this session — the doctor's `onAcceptTreatment`
+      // precedent). `onOpenDoctor` navigates back to the doctor.
+      const isDemo = input.laneFeeds !== null && input.laneFeeds.isDemo;
+      const defaultDeviceId = isDemo
+        ? (asDeviceId("dev_w091demo000001") as DeviceId)
+        : (asDeviceId("dev_freshworkspace01") as DeviceId);
+      const deviceIdRaw = input.selectedDeviceId !== undefined
+        ? input.selectedDeviceId
+        : (defaultDeviceId as string);
+      const deviceId = asDeviceId(deviceIdRaw) as DeviceId;
+      const scope = { tenantId: asTenantId(input.sessionTenantId) };
+      // The staleness reference + bands (the lane feeds' own values:
+      // `now` = 2026-01-06T14:00:00Z, freshWithinMs = 1 day,
+      // staleAfterMs = 7 days — the demo fleet's frozen reference
+      // instant + the device-list composition's own bands).
+      const header = buildDeviceDetailHeader(
+        scope,
+        input.sessionTwinStore,
+        deviceId,
+        { now: "2026-01-06T14:00:00Z", freshWithinMs: 86_400_000, staleAfterMs: 604_800_000 },
+      );
+      return (
+        <DeviceLifecycleScreen
+          phase={{ kind: "ready", view: header }}
+          deviceId={deviceId}
+          transitionAuthorization={{}}
+          onRequestTransition={() => undefined}
+          onOpenDoctor={() => navigate({ area: "device", view: "doctor" })}
         />
       );
     }
@@ -1916,8 +2128,18 @@ function renderRoute(input: RenderInput): JSX.Element {
           phase={screenPhase}
           surface={input.procurementSurface}
           onSurfaceEvent={input.onProcurementSurfaceEvent}
-          tab="matching"
-          onTabChange={() => undefined}
+          // W152 Fix 4 — the demand-detail tab engagement: the W151
+          // binding pinned `tab="matching"` with `onTabChange={() =>
+          // undefined}` (a dead control on a surface whose own copy
+          // tells the user to "Open the demand's Quotes tab"). The
+          // W152 fix holds the tab in the console session (the
+          // W149/W151 precedent) and binds the REAL session-held tab
+          // + setter — no longer a dead control. The handler keeps
+          // the tab coherent with the surface state (reset on
+          // open_demand/back-from-demand/reset; set on
+          // open_matching/open_quote).
+          tab={input.procurementTab}
+          onTabChange={input.setProcurementTab}
           journey={journeyRail}
         />
       );

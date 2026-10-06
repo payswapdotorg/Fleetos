@@ -389,7 +389,16 @@ test("the honest not-yet-observed observations state: a twin with no observation
   if (journey === undefined) throw new Error("unreachable");
   const byId = new Map(journey.stages.map((stage) => [stage.id, stage]));
   expect(byId.get("observations")?.state).toBe("not_yet_observed");
-  expect(byId.get("observations")?.rows.some((row) => row.value === "None recorded yet")).toBe(true);
+  // W152 Fix 3 (R5b residual) — the stage-2 empty-state row's value
+  // USED to be exactly `None recorded yet` (ambiguous: stage 1
+  // reported `Observation count: 1` from a DIFFERENT store). The fix
+  // relabels the row as the DIAGNOSIS observations store's empty
+  // state, with the value carrying the honest explanation that twin
+  // telemetry observations are ingested into diagnosis separately.
+  // The new value still CONTAINS the `None recorded yet` prefix; the
+  // assertion is loosened to a substring match.
+  expect(byId.get("observations")?.rows.some((row) => row.value.includes("None recorded yet"))).toBe(true);
+  expect(byId.get("observations")?.rows.some((row) => row.label === "Diagnosis observations")).toBe(true);
   expect(byId.get("symptoms")?.state).toBe("empty");
   expect(journey.symptoms.state).toBe("no_anomalies_detected");
   expect(journey.symptoms.steps).toHaveLength(0);
