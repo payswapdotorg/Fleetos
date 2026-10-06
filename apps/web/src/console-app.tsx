@@ -235,6 +235,13 @@ import type {
   ProcurementScreenData,
   ProcurementSurfaceEvent,
   ProcurementSurfaceState,
+  // W152 Fix 4 — the procurement demand-detail tab engagement: the
+  // screen's `tab`/`onTabChange` props are FULLY CONTROLLED but the
+  // W151 binding pinned `tab="matching"` with `onTabChange={() =>
+  // undefined}` (a dead control on a surface whose own copy tells
+  // the user to "Open the demand's Quotes tab"). The W152 fix holds
+  // the tab in the console session (the W149/W151 precedent).
+  ProcurementTab,
 } from "@fleetos/web-commerce";
 // W149 — the procurement verification view-model's honest empty-state
 // builder (the P0 crash fix: compose the real `OrderVerificationView`,
@@ -674,14 +681,54 @@ export function ConsoleSessionApp({
   // the lane's declared `reduceProcurementSurfaceState` reducer.
   const [procurementSurface, setProcurementSurface] =
     useState<ProcurementSurfaceState>(() => INITIAL_PROCUREMENT_SURFACE_STATE);
+  // W152 Fix 4 — the procurement demand-detail tab engagement: the
+  // screen's `tab`/`onTabChange` props are FULLY CONTROLLED but the
+  // W151 binding pinned `tab="matching"` with `onTabChange={() =>
+  // undefined}` (a dead control on a surface whose own copy tells
+  // the user to "Open the demand's Quotes tab" — the screen's L742
+  // empty-state hint). The W151 lane scoped tab state out deliberately;
+  // this lane closes it. The tab is held in the console session (the
+  // W149 `selectedRecoveryCaseId` / W151 `procurementSurface`
+  // precedent), defaulting to "matching" (the screen's own default).
+  const [procurementTab, setProcurementTab] = useState<ProcurementTab>(() => "matching");
+  // The handler reduces the surface event via the lane's declared
+  // reducer AND keeps the tab coherent with the surface state:
+  //   - `open_demand` (a demand switch) resets the tab to "matching"
+  //     (a fresh demand opens at the matching tab);
+  //   - `back` from the demand view (-> demands list) resets the tab
+  //     to "matching" (no demand selected — the tab resets for the
+  //     next demand open);
+  //   - `reset` resets the tab to "matching" (the surface returns to
+  //     the demands list);
+  //   - `open_matching` sets the tab to "matching" (the user is
+  //     explicitly opening the matching view);
+  //   - `open_quote` sets the tab to "quotes" (the user is explicitly
+  //     opening a quote);
+  //   - `back` from matching/quote (-> demand) keeps the current tab
+  //     (the user is returning to the demand detail).
   const handleProcurementSurfaceEvent = useCallback(
     (event: ProcurementSurfaceEvent): void => {
-      setProcurementSurface((prev) => {
-        const result = reduceProcurementSurfaceState(prev, event);
-        return result.ok ? result.state : prev;
-      });
+      const result = reduceProcurementSurfaceState(procurementSurface, event);
+      if (!result.ok) return;
+      const nextSurface = result.state;
+      setProcurementSurface(nextSurface);
+      // Reset the tab to "matching" on open_demand (a demand switch),
+      // reset (always returns to demands), or back from the demand
+      // view (returns to demands list).
+      if (
+        event.type === "open_demand" ||
+        event.type === "reset" ||
+        (event.type === "back" && procurementSurface.view === "demand")
+      ) {
+        setProcurementTab("matching");
+      } else if (event.type === "open_matching") {
+        setProcurementTab("matching");
+      } else if (event.type === "open_quote") {
+        setProcurementTab("quotes");
+      }
+      // else: back from matching/quote -> demand: keep the current tab.
     },
-    [],
+    [procurementSurface],
   );
 
   // W144 — the approval decision runtime (the EXECUTED decision path).
@@ -977,6 +1024,12 @@ export function ConsoleSessionApp({
         // events via the lane's declared reducer.
         procurementSurface,
         onProcurementSurfaceEvent: handleProcurementSurfaceEvent,
+        // W152 Fix 4 — the procurement demand-detail tab engagement
+        // (the session-held tab + setter). The tab flows to the
+        // screen's `tab` prop; the setter flows to the screen's
+        // `onTabChange` prop (no longer a dead control).
+        procurementTab,
+        setProcurementTab,
         executedDecisions,
         sessionAssignedRoles: session.assignedRoles,
         // W145 deploy convergence — the declared-import journey + the
@@ -1177,6 +1230,18 @@ interface RenderInput {
   // passes these straight through — no `as never`, no blind cast.
   readonly procurementSurface: ProcurementSurfaceState;
   readonly onProcurementSurfaceEvent: (event: ProcurementSurfaceEvent) => void;
+  // W152 Fix 4 — the procurement demand-detail tab engagement: the
+  // session-held `procurementTab` (the demand-detail panel's selected
+  // tab — "matching" or "quotes") + the `setProcurementTab` handler.
+  // The W151 binding pinned `tab="matching"` with `onTabChange={() =>
+  // undefined}` (a dead control); the W152 fix holds the tab in the
+  // console session and binds `tab={input.procurementTab}`
+  // `onTabChange={input.setProcurementTab}` at the commerce.procurement
+  // case. The handler keeps the tab coherent with the surface state
+  // (reset to "matching" on open_demand/back-from-demand/reset; set to
+  // "matching" on open_matching; set to "quotes" on open_quote).
+  readonly procurementTab: ProcurementTab;
+  readonly setProcurementTab: (tab: ProcurementTab) => void;
   // W149 — the executed decision state (the propagation overlay). The
   // demo's Security Doctor + the Approvals queue card + the Evidence &
   // Audit index compose over this state — REAL runtime state, never
@@ -2063,8 +2128,18 @@ function renderRoute(input: RenderInput): JSX.Element {
           phase={screenPhase}
           surface={input.procurementSurface}
           onSurfaceEvent={input.onProcurementSurfaceEvent}
-          tab="matching"
-          onTabChange={() => undefined}
+          // W152 Fix 4 — the demand-detail tab engagement: the W151
+          // binding pinned `tab="matching"` with `onTabChange={() =>
+          // undefined}` (a dead control on a surface whose own copy
+          // tells the user to "Open the demand's Quotes tab"). The
+          // W152 fix holds the tab in the console session (the
+          // W149/W151 precedent) and binds the REAL session-held tab
+          // + setter — no longer a dead control. The handler keeps
+          // the tab coherent with the surface state (reset on
+          // open_demand/back-from-demand/reset; set on
+          // open_matching/open_quote).
+          tab={input.procurementTab}
+          onTabChange={input.setProcurementTab}
           journey={journeyRail}
         />
       );
