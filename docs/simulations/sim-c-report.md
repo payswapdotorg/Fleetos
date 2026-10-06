@@ -30,7 +30,7 @@ dcf4474) by five first-hand evaluators covering TRN, HOS, FEM, LEG, DEF real-wor
 journeys, the DEMO persona operational journeys, and the mobile pass. All raw evidence
 is in the seven files under `docs/simulations/sim-c-evidence/`.
 
-**Verdict distribution (105 personas, post-second-fix-wave recount v2): SWITCH-ONLY 0 (0%) · MAIN-INTERFACE 0 (0%) · COMPLEMENT 5 (~4.8%) · RETAIN 100 (~95.2%).** **Second-fix-wave update (2026-10-05 evening, §4.9/§4.10):** the W147/W148/W149 lanes closed rerun blockers 1-9 and moved 5 SMALL-firm founders running governance from RETAIN → COMPLEMENT; blocker 10 (demo-tier session-scoped state) is by-design and the W149 R1 residual (procurement per-demand case journey list-level) is the last open code item. **Third-wave update (2026-10-06 morning, §4.9.5/§4.10.4):** the W151 lane closed the R1 residual (the seven-stage per-demand case journey now renders over the real feed) and the deploy landed on production (main @ `28d7244`, first-hand fingerprint evidence) — the live spot-check re-walked R3's checks 1/2/2b/2c/3/4a-4d plus the new check-8 R1 journey, ALL PASS; recount v3: **COMPLEMENT 20 (~19.0%) · RETAIN 85 (~81.0%)** — the 15 Asset & Procurement Manager personas moved on live per-demand-journey evidence. At the first recount (§4.7) the before/after delta was 0/0/105 → 0/0/0/105
+**Verdict distribution (105 personas, post-second-fix-wave recount v2): SWITCH-ONLY 0 (0%) · MAIN-INTERFACE 0 (0%) · COMPLEMENT 5 (~4.8%) · RETAIN 100 (~95.2%).** **Second-fix-wave update (2026-10-05 evening, §4.9/§4.10):** the W147/W148/W149 lanes closed rerun blockers 1-9 and moved 5 SMALL-firm founders running governance from RETAIN → COMPLEMENT; blocker 10 (demo-tier session-scoped state) is by-design and the W149 R1 residual (procurement per-demand case journey list-level) is the last open code item. **Third-wave update (2026-10-06 morning, §4.9.5/§4.10.4):** the W151 lane closed the R1 residual (the seven-stage per-demand case journey now renders over the real feed) and the deploy landed on production (main @ `28d7244`, first-hand fingerprint evidence) — the live spot-check re-walked R3's checks 1/2/2b/2c/3/4a-4d plus the new check-8 R1 journey, ALL PASS; recount v3: **COMPLEMENT 20 (~19.0%) · RETAIN 85 (~81.0%)** — the 15 Asset & Procurement Manager personas moved on live per-demand-journey evidence. **Residual-closure update (2026-10-06 afternoon, §4.9.6):** the W152 lane closed the last four fixable ledger items (R2 search-label overlay, R5a the device.detail navigation + the `device.lifecycle` route binding, R5b the two-stores distinct labeling, the demand-detail tab engagement) — merged `0040656`, deployed, live-verified; no verdict moves (polish items), the ledger's permanent floor is R3 (hardware-capability) + R4 (by-design). At the first recount (§4.7) the before/after delta was 0/0/105 → 0/0/0/105
 — no verdict changed. The fix lanes (W140, W144, W145) landed real technical progress
 (server-tier session persistence, composed lane surfaces, mobile priority-card roster,
 declared-import surface) but the central adoption blockers persist in the deployed
@@ -597,6 +597,77 @@ capability, terms floors). The refusals below show why.") — the demo seed has 
 floor-passing vendor, so the quote→acceptance→order flow is honest-empty on the demo tier;
 this is seed-data truth, not a code defect (the surface states why with machine-stable reasons).
 
+### 4.9.6 The W152 residual-closure polish lane (2026-10-06 afternoon)
+
+After the third wave closed the R1 residual and the recount v3 stood, the fixable items left
+on the residual ledger were exactly four: R2 (the cosmetic search-label drift), R5a/R5b (the
+O2 side defects), and the tab/onTabChange stub scoped out of W151. The W152 lane closed all
+four in one surgical pass.
+
+#### 4.9.6.1 The lane record
+
+Worker lane W152 (GLM-5.2, dispatched 13:04Z, delivered by direct push `work/w152 @ b9ab73b`,
+ls-remote verified): four independent commits, scope 8 files +1656/−14, exactly inside the
+grant (apps/web/src/console-app.tsx +242; the NEW apps/web/src/runtime/search-decision-overlay.ts
++194 — the pure overlay; apps/web/device/src/doctor-journey.ts +38; the composition-doctor
+label expectations +11; four NEW w152 test batteries +1185). TL gates at the exact commit on a
+clean worktree: check 4/4 (150-contract snapshot unchanged) / typecheck 0 / bun test 3727 total
+(3724 pass + 3 fail = the W147 staging-tier environmental trio, verified identical at baseline
+222e470; +37 new lane tests, all passing) / next build green (11 API routes). Merged --no-ff
+`0040656` into main; the merged tree is byte-identical to the gated tree.
+
+- **R2 closed — the search-decision overlay.** The global search (Ctrl+K) now reflects the
+  executed decision: after an approve execution the record's title overlays to
+  `Decided plan (APPROVED) — <name>` (pure in-session mapping over the W149
+  `recordsByPlan` derivation; unrecognized titles get a ` (decided: APPROVED)` suffix — never
+  mangled; undecided records pass through unchanged).
+- **R5a closed — the device detail navigation.** The route vocabulary's `device.lifecycle`
+  ("Lifecycle") is NOW BOUND in the console's route switch (it previously fell through to the
+  "This route does not exist" refusal — an unbound in-vocabulary route): the REAL W090A
+  `DeviceLifecycleScreen` over `buildDeviceDetailHeader` composed on the session's REAL twin
+  store, with the session-held `selectedDeviceId` (the W149 precedent). BOTH dead buttons are
+  wired: the Device Doctor's "Open device detail" (previously navigated to the route it
+  already sat on) and the roster's row button (previously discarded the deviceId) set the
+  selection and navigate to `/device/lifecycle`.
+- **R5b closed — the two-stores labeling.** The Device Doctor's stage 1 row is now
+  `Telemetry observations (twin record)` (the TwinStore's count) and stage 2's rows are
+  `Diagnosis observations` with the honest empty-state explanation ("None recorded yet — twin
+  telemetry observations are ingested into diagnosis separately"). Two stores, two truths,
+  distinctly named — no data merged, no counts fabricated.
+- **The tab stub closed — the procurement demand-detail tab engagement.** The W151 surface's
+  panel tabs ("Vendor matching" / "Quotes") are live: the tab is held in the console session
+  (`procurementTab`, the W149/W151 precedent), switches on click, and resets coherently on
+  demand-switch/back/reset. The surface's own hint ("Open the demand's Quotes tab…") no longer
+  points at a dead control.
+
+#### 4.9.6.2 The deployment record (main @ 0040656 → production)
+
+main @ `0040656` deployed via the Vercel git integration on push (commit status
+`Vercel:success` at ~13:5xZ; the page-route chunk fingerprint flipped
+`page-e5d5d6402b90f218.js` → `page-41d1638ef3e753d8.js`; `GET /api/health` 200 with all 9
+secrets).
+
+#### 4.9.6.3 The live verification (first-hand, ~14:0xZ, agent-browser desktop 1280x800, user-only)
+
+| Check | Evidence | Verdict |
+|---|---|---|
+| R2 — approve `pln_fb564c1e` then Ctrl+K | The typed-phrase + checkbox approve executes ("Executed decision · Succeeded · APPROVED by usr:demo.fleet.admin@fleetos.demo" + the duplicate-refusal copy); the search dialog returns **`Decided plan (APPROVED) — w091-demo-enable-encryption`** (was "Parked plan — …") | PASS (screenshot `w152-verification/r2-search-decided-overlay.png`) |
+| R5a — the doctor's "Open device detail" | Click navigates `/device/doctor` → **`/device/lifecycle`**; the lifecycle screen renders the real device header for `dev_w091demo000001` (Current state + authorization statuses visible) | PASS (`r5a-device-lifecycle.png`) |
+| R5b — the two-stores labels | Stage 1 renders **`Telemetry observations (twin record)`**; stage 2 renders **`Diagnosis observations`** with the ingestion explanation | PASS (innerText verbatim) |
+| Tab — the demand-detail panels | On the demand detail, clicking **`Quotes (0)`** selects the tab and renders the honest empty state ("No quotes are issued for this demand yet — Vendors issue versioned quotes against the demand; acceptance (the operator approval) forms the contract.") | PASS (`fix4-quotes-tab-selected.png`) |
+| Console errors | Zero page/console errors across all four flows | PASS |
+
+#### 4.9.6.4 The residual ledger after W152
+
+CLOSED: R2 (search-label overlay — live-verified), R5a (device detail navigation —
+live-verified), R5b (two-stores labeling — live-verified), the tab/onTabChange stub
+(live-verified). REMAINING (permanent, honest): R3 — the typed-CONFIRM destructive gate is
+unexercisable on the demo tier for hardware-capability reasons (the demo device declares no
+lock/locate/wipe/reboot capability; not a code defect); R4 — demo-tier session-scoped state
+(blocker 10, by-design). No verdict moves: the four closures are polish items that do not
+change any persona's core-job coverage assessment (the transactional quote→order flow remains
+honest-empty on the demo seed); recount v3 stands at **0 / 0 / 20 / 85**.
+
 ### 4.10 Verdict recount v2 (the post-second-fix-wave delta)
 
 **EXECUTED 2026-10-05 evening (after the second fix wave).** The recount re-applies the SIM-B rubric (SWITCH-ONLY / MAIN-INTERFACE / COMPLEMENT / RETAIN) to the same 105 personas, strictly on what the verified second-fix-wave evidence now supports. Every verdict move traces to a specific line in the ten evidence files (the seven rerun segment files + w147-verification.md + w148-verification.md + w149-verification.md). Where evidence is silent, the section says so.
@@ -857,3 +928,11 @@ Final closure: TL record appended below.
 > - **TL acceptance of recount v3 (20 COMPLEMENT / 85 RETAIN): ACCEPTED.** The 15 moves (the Asset & Procurement Manager personas, TRN/HOS/FEM/LEG/DEF × LG/MD/SM) trace to the v2 recount's own recorded bar ("wire selectedDemandId … so the seven-stage case journey renders") — delivered by W151 and verified live via check-8 evidence; no verdict inflated beyond COMPLEMENT (the transactional quote→order flow is honest-empty on the demo seed; the incumbents stay the transactional systems of record); each of the 85 RETAINs carries its specific uncovered-core-job reason (§4.10.4 (c)).
 > - **The remaining residual ledger (unchanged):** R2 cosmetic search-label drift; R3 the typed-CONFIRM gate unexercisable for hardware-capability reasons; R4 demo-tier by-design (blocker 10 — session-scoped truth confirmed live again); R5 the O2 side defects; the tab/onTabChange stub (scoped out of W151 per the W149 precedent). None blocks the deployment record or the recount.
 > - TL signature + timestamp: FleetOS Tech Lead (replay orchestration) — 2026-10-06T09:0xZ.
+
+> **TL-CLOSURE ADDENDUM 2 (2026-10-06 afternoon, Tech Lead — the W152 residual-closure lane):**
+>
+> - **W152 ACCEPTED + MERGED + DEPLOYED + LIVE-VERIFIED.** The residual-closure polish lane (GLM-5.2 worker, direct-push delivery `work/w152 @ b9ab73b`) closed the last four fixable ledger items — R2 the search-decision overlay, R5a the device.lifecycle route binding + both dead navigation buttons, R5b the Device Doctor two-stores distinct labeling, and the procurement demand-detail tab engagement. TL gates at the exact commit (clean worktree): check 4/4 / typecheck 0 / bun test 3727 total (3724 pass + the same 3 environmental; +37 new lane tests all passing) / next build green (11 API routes). Merged --no-ff `0040656` into main; deployed via the Vercel git integration (`Vercel:success`; fingerprint `page-41d1638ef3e753d8.js`); all four fixes verified LIVE first-hand (§4.9.6.3 — the approve→search overlay, the lifecycle navigation, the two-stores labels, the Quotes tab engagement; zero console errors; screenshots in docs/simulations/sim-c-evidence/w152-verification/).
+> - **The residual ledger is now at its honest floor:** R3 (the typed-CONFIRM destructive gate unexercisable — hardware-capability, not a code defect) and R4 (demo-tier session-scoped state — blocker 10, by-design) remain as the permanent honest disclosures. Nothing fixable remains open.
+> - **No verdict moves (deliberate):** the four closures are polish/engagement items; no persona's core-job coverage assessment changes (the transactional quote→order flow remains honest-empty on the demo seed; the incumbents stay the transactional systems of record). Recount v3 stands: **SWITCH-ONLY 0 · MAIN-INTERFACE 0 · COMPLEMENT 20 (~19.0%) · RETAIN 85 (~81.0%).**
+> - **The acceptance package for the operator's SIM-C gate (issue #2):** SIM-B 0/0/105 (2026-10-02) → first recount 0/0/0/105 (2026-10-05 morning) → v2 0/0/5/100 (evening) → v3 0/0/20/85 (2026-10-06 morning) — every move on first-hand live evidence; production LIVE at main @ 0040656 with the full third-wave + residual-closure code; the honest cap is COMPLEMENT; the two permanent residuals are disclosed above. Final acceptance authority rests with the operator.
+> - TL signature + timestamp: FleetOS Tech Lead (replay orchestration) — 2026-10-06T14:1xZ.
