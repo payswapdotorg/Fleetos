@@ -42,6 +42,11 @@ import type {
   ShellSearchResult,
 } from "@fleetos/web-shell";
 import { DeviceFleetScreen, DeclaredImportScreen } from "@fleetos/web-device";
+// W152 Fix 2 (R5a residual) — the device lifecycle screen + the pure
+// `buildDeviceDetailHeader` (the lifecycle route's view-model builder
+// over the REAL session twin store). Both exported from the
+// @fleetos/web-device barrel (apps/web/device/src/index.ts L54 + L97).
+import { DeviceLifecycleScreen, buildDeviceDetailHeader } from "@fleetos/web-device";
 import {
   initialDeclaredImportJourney,
   updateDeclaredDeviceDraft,
@@ -122,6 +127,9 @@ import {
   DECLARE_OWNERSHIP_TYPE_OPTIONS,
   newDeclaredImportCorrelationId,
 } from "./runtime/declared-import-binding";
+// W152 Fix 2 (R5a residual) — the session's twin store type (the source
+// for `buildDeviceDetailHeader` at the device.lifecycle route binding).
+import type { TwinStore } from "@fleetos/device-model";
 // W148 — the session-scoped recovery-case store + the REAL W040 record
 // factory (the O5 case-creation affordance's binding).
 import {
@@ -639,6 +647,23 @@ export function ConsoleSessionApp({
   const [selectedFindingId, setSelectedFindingId] = useState<string | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
+  // W152 Fix 2 (R5a residual) — the session-held selected device id (the
+  // device lifecycle screen's subject). The W149 `selectedRecoveryCaseId`
+  // precedent: `useState<string | undefined>` defaulting to `undefined`,
+  // set when the operator clicks "Open device detail" from the doctor
+  // (L1640) OR the roster (L1167). The lifecycle route falls back to
+  // the doctor's current device selection when `selectedDeviceId` is
+  // `undefined` (the demo tier's `dev_w091demo000001` / the fresh
+  // workspace's `dev_freshworkspace01` — the same default the doctor
+  // binding uses). The R5a residual: the doctor's "Open device detail"
+  // button navigated to `{area:"device",view:"doctor"}` — the SAME
+  // route it already sat on (a dead button); the roster's `onOpenDevice`
+  // discarded the deviceId. The fix: both buttons set `selectedDeviceId`
+  // then navigate to `{area:"device",view:"lifecycle"}` (the in-vocab
+  // route the console's switch NEVER bound — falls through to the
+  // "This route does not exist" refusal). Two defects in one.
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>(undefined);
+
   // W151 — the procurement surface state (the lane's OWN surface state
   // machine: demands -> demand -> matching -> quote, with back/reset).
   // The W148/W149 binding shipped `surface={{view:"demands"} as never}`
@@ -941,6 +966,11 @@ export function ConsoleSessionApp({
         setSelectedRecoveryCaseId,
         setSelectedFindingId,
         setSelectedPlanId,
+        // W152 Fix 2 (R5a residual) — the session-held selected device
+        // id + the session's twin store (the lifecycle route's source).
+        selectedDeviceId,
+        setSelectedDeviceId,
+        sessionTwinStore,
         // W151 — the procurement surface state + event handler (the
         // per-demand engagement's binding). The surface state flows
         // through the lane's own typed machine; the handler reduces
@@ -1128,6 +1158,18 @@ interface RenderInput {
   readonly setSelectedRecoveryCaseId: (id: string | undefined) => void;
   readonly setSelectedFindingId: (id: string | null) => void;
   readonly setSelectedPlanId: (id: string | null) => void;
+  // W152 Fix 2 (R5a residual) — the session-held selected device id (the
+  // device lifecycle screen's subject) + the session's twin store (the
+  // source for `buildDeviceDetailHeader`). The doctor's "Open device
+  // detail" button + the roster's `onOpenDevice` set the selected id
+  // then navigate to `{area:"device",view:"lifecycle"}`. The lifecycle
+  // route composes the `DeviceDetailHeader` over the REAL session twin
+  // store (the same store the roster + the declared-import journey
+  // read); the honest empty `undefined` view-model renders the screen's
+  // own "Device not found in your fleet" state — never fabricated data.
+  readonly selectedDeviceId: string | undefined;
+  readonly setSelectedDeviceId: (id: string | undefined) => void;
+  readonly sessionTwinStore: TwinStore;
   // W151 — the procurement surface state + event handler. The surface
   // state is the lane's OWN typed machine state (demands/demand/
   // matching/quote); the handler reduces events via the lane's
@@ -1191,7 +1233,16 @@ function renderRoute(input: RenderInput): JSX.Element {
           onToggleDevice={() => undefined}
           onSelectVisible={() => undefined}
           onClearSelection={() => input.setFleetSelection({ kind: "none" })}
-          onOpenDevice={() => navigate({ area: "device", view: "doctor" })}
+          onOpenDevice={(deviceId) => {
+            // W152 Fix 2 (R5a residual) — the roster's `onOpenDevice`
+            // USED to discard the deviceId and navigate to the doctor
+            // (a dead navigation — the operator's row click was a
+            // no-op for the row's device). The fix: set the session-
+            // held selectedDeviceId, then navigate to the device.lifecycle
+            // route (the in-vocab route the console's switch now binds).
+            input.setSelectedDeviceId(deviceId as string);
+            navigate({ area: "device", view: "lifecycle" });
+          }}
           onEnroll={() => navigate({ area: "device", view: "enrollment" })}
           onDeclare={() => navigate({ area: "device", view: "declare" })}
           mobileRoster={input.mobileRoster}
@@ -1664,12 +1715,81 @@ function renderRoute(input: RenderInput): JSX.Element {
           panel={input.doctorPanel}
           onPanelChange={(panel: DoctorPanel) => input.setDoctorPanel(openDoctorPanel(input.doctorPanel, panel))}
           onPanelBack={() => input.setDoctorPanel(doctorPanelBack(input.doctorPanel))}
-          onOpenDevice={(deviceId) => navigate({ area: "device", view: "doctor" })}
+          // W152 Fix 2 (R5a residual) — the doctor's "Open device detail"
+          // button USED to navigate to {area:"device",view:"doctor"} —
+          // the SAME route it already sat on (a dead button). The fix:
+          // set the session-held selectedDeviceId, then navigate to the
+          // device.lifecycle route (the in-vocab route the console's
+          // switch never bound — the second defect this fix closes).
+          onOpenDevice={(deviceId) => {
+            input.setSelectedDeviceId(deviceId as string);
+            navigate({ area: "device", view: "lifecycle" });
+          }}
           onAcceptTreatment={() => undefined}
           onDismissTreatment={() => undefined}
           treatmentGating={feed.treatmentGating}
           treatmentDisposition={feed.treatmentDisposition}
           journey={feed.journey}
+        />
+      );
+    }
+    case "device.lifecycle": {
+      // W152 Fix 2 (R5a residual) — the device lifecycle route binding
+      // (the in-vocab route the console's switch NEVER bound — falls
+      // through to the "This route does not exist" refusal). The screen
+      // is fully controlled and renders the device detail header + the
+      // frozen lifecycle machine + provenance, with the legal next
+      // transitions rendered as REQUEST affordances whose AUTHORIZATION
+      // STATUS is visible on every consequential action.
+      //
+      // The phase's view-model is composed over the REAL session twin
+      // store (the same store the roster + the declared-import journey
+      // read) via `buildDeviceDetailHeader(scope, source, deviceId,
+      // options)`. The scope is the acting tenant; the source is the
+      // session's twin store (structurally satisfies DeviceTwinSource);
+      // the deviceId is the session-held `selectedDeviceId` (the W149
+      // `selectedRecoveryCaseId` precedent), defaulting to the doctor's
+      // current device selection when entering from the doctor (the
+      // demo tier's `dev_w091demo000001` / the fresh workspace's
+      // `dev_freshworkspace01` — the same default the doctor binding
+      // uses). The honest empty `undefined` view-model renders the
+      // screen's own "Device not found in your fleet" state — never
+      // fabricated data.
+      //
+      // The `transitionAuthorization` map is HONESTLY EMPTY (the demo
+      // tier wires no transition-authorization boundary — the doctor's
+      // `treatmentGating` is the structural precedent: an empty map
+      // means "no boundary, click is a no-op"). The `onRequestTransition`
+      // handler is the honest refusal the current authorization model
+      // warrants: a no-op (no transition-authorization boundary is
+      // exposed in this session — the doctor's `onAcceptTreatment`
+      // precedent). `onOpenDoctor` navigates back to the doctor.
+      const isDemo = input.laneFeeds !== null && input.laneFeeds.isDemo;
+      const defaultDeviceId = isDemo
+        ? (asDeviceId("dev_w091demo000001") as DeviceId)
+        : (asDeviceId("dev_freshworkspace01") as DeviceId);
+      const deviceIdRaw = input.selectedDeviceId !== undefined
+        ? input.selectedDeviceId
+        : (defaultDeviceId as string);
+      const deviceId = asDeviceId(deviceIdRaw) as DeviceId;
+      const scope = { tenantId: asTenantId(input.sessionTenantId) };
+      // The staleness reference + bands (the lane feeds' own values:
+      // `now` = 2026-01-06T14:00:00Z, freshWithinMs = 1 day,
+      // staleAfterMs = 7 days — the demo fleet's frozen reference
+      // instant + the device-list composition's own bands).
+      const header = buildDeviceDetailHeader(
+        scope,
+        input.sessionTwinStore,
+        deviceId,
+        { now: "2026-01-06T14:00:00Z", freshWithinMs: 86_400_000, staleAfterMs: 604_800_000 },
+      );
+      return (
+        <DeviceLifecycleScreen
+          phase={{ kind: "ready", view: header }}
+          deviceId={deviceId}
+          transitionAuthorization={{}}
+          onRequestTransition={() => undefined}
+          onOpenDoctor={() => navigate({ area: "device", view: "doctor" })}
         />
       );
     }
