@@ -36,7 +36,7 @@ import {
   isValidTenantId,
   makeGuardianDecision,
 } from "@fleetos/contracts";
-import type { CorrelationId, DeviceId, TenantId, UserId } from "@fleetos/contracts";
+import type { CorrelationId, DeviceId, GuardianDecision, TenantId, UserId } from "@fleetos/contracts";
 import {
   createInMemoryTwinStore,
   createTwin,
@@ -271,6 +271,69 @@ function enrollDeviceInto(
   store.put(observed.twin);
 }
 
+// W156 (TL convergence) — the demo device 1's TELEMETRY CHECK-IN
+// HISTORY: five device.telemetry check-ins across the demo's frozen
+// morning (after the 09:00 enrollment, before the 14:00 NOW
+// reference), giving the Predictive Twin advisory journey an honest
+// multi-observation admitted stream (the W153 extractor's minimum is
+// 2 observations; the twin's telemetry window keeps the latest 10).
+// The payloads carry numeric fields (battery health / disk free /
+// thermals) the W153 numeric-field-summary feature consumes; the
+// declining battery-health trend is what the W154 reference engine
+// extrapolates into the health-trajectory estimate. Additive demo
+// data ONLY — the canonical Device Twin semantics are unchanged.
+function recordDemoTelemetryCheckIns(store: TwinStore): void {
+  const twin = store.get(TENANT_ID, DEV_1);
+  if (twin === undefined) {
+    throw new Error("demo seed requires device 1 enrolled before the telemetry check-in history");
+  }
+  const checkIns = [
+    {
+      id: asObservationId("obsw091demo0000021"),
+      kind: "device.telemetry",
+      observedAt: "2026-01-06T09:30:00Z",
+      schemaVersion: 1,
+      payload: { batteryHealthPct: 92, diskFreePct: 44, thermalC: 48 },
+    },
+    {
+      id: asObservationId("obsw091demo0000022"),
+      kind: "device.telemetry",
+      observedAt: "2026-01-06T10:20:00Z",
+      schemaVersion: 1,
+      payload: { batteryHealthPct: 91, diskFreePct: 43, thermalC: 49 },
+    },
+    {
+      id: asObservationId("obsw091demo0000023"),
+      kind: "device.telemetry",
+      observedAt: "2026-01-06T11:05:00Z",
+      schemaVersion: 1,
+      payload: { batteryHealthPct: 90, diskFreePct: 43, thermalC: 50 },
+    },
+    {
+      id: asObservationId("obsw091demo0000024"),
+      kind: "device.telemetry",
+      observedAt: "2026-01-06T12:10:00Z",
+      schemaVersion: 1,
+      payload: { batteryHealthPct: 89, diskFreePct: 42, thermalC: 51 },
+    },
+    {
+      id: asObservationId("obsw091demo0000025"),
+      kind: "device.telemetry",
+      observedAt: "2026-01-06T12:45:00Z",
+      schemaVersion: 1,
+      payload: { batteryHealthPct: 89, diskFreePct: 42, thermalC: 50 },
+    },
+  ];
+  const observed = recordTwinObservations(twin, checkIns, {
+    at: "2026-01-06T12:45:00Z",
+    correlationId: CORR_1,
+  });
+  if (!observed.ok) {
+    throw new Error(`telemetry check-in history failed: ${observed.error.message}`);
+  }
+  store.put(observed.twin);
+}
+
 function composeDemoFleet(): DemoComposition {
   // 1. The REAL device fleet (three enrolled devices; device 1 carries
   //    the disk-encryption-off observation that yields the CRITICAL finding).
@@ -302,6 +365,19 @@ function composeDemoFleet(): DemoComposition {
     ownerType: "LEASED",
     assignedTeam: "field-ops",
   }, { diskEncryption: true });
+
+  // 1b. W156 (TL convergence) — the demo device 1's TELEMETRY CHECK-IN
+  // HISTORY: five device.telemetry check-ins across the demo's frozen
+  // morning (after the 09:00 enrollment, before the 14:00 NOW
+  // reference), giving the Predictive Twin advisory journey an honest
+  // multi-observation admitted stream (the W153 extractor's minimum is
+  // 2 observations; the twin's telemetry window keeps the latest 10).
+  // The payloads carry numeric fields (battery health / disk free /
+  // thermals) the W153 numeric-field-summary feature consumes; the
+  // declining battery-health trend is what the W154 reference engine
+  // extrapolates into the health-trajectory estimate. Additive demo
+  // data ONLY — the canonical Device Twin semantics are unchanged.
+  recordDemoTelemetryCheckIns(store);
 
   // 2. The REAL security posture assessment on device 1.
   const assessed = assessSecurityPosture({
@@ -719,6 +795,37 @@ export function isDemoTenant(tenantId: string): boolean {
  */
 export function demoTwinStore(): TwinStore {
   return DEMO.store;
+}
+
+/**
+ * W156 (TL convergence) — the demo tier's REAL Guardian decision for the
+ * predictive advisory's Arena note: the SAME REQUIRE_APPROVAL evaluation
+ * the approvals queue composes (the rule `w091-demo-require-approval`
+ * firing on `fleet.action.execute`), recomposed deterministically the
+ * way `approvalsQueueView` recomposes it. The Predictive Twin advisory
+ * surfaces this FROZEN decision through the W155 bridge — the proposal
+ * disposition lands PARKED (REQUIRE_APPROVAL), proving in the product
+ * UI that Contract Guardian remains the sole policy authority: the
+ * advisory NEVER bypasses it (ADR-0002 invariant 5 / the W070
+ * PROPOSAL-GATED law).
+ */
+export function demoGuardianDecision(): GuardianDecision {
+  const rule = defineGuardianRule(TENANT_ID, {
+    name: "w091-demo-require-approval",
+    condition: { kind: "action", actions: { in: ["fleet.action.execute"] } },
+    effect: "REQUIRE_APPROVAL",
+    at: T0,
+  });
+  if (!rule.ok) throw new Error("guardian decision re-composition failed (rule)");
+  const compiled = compileGuardianRuleSet(TENANT_ID, { rules: [rule.rule], version: 1, at: T0 });
+  if (!compiled.ok) throw new Error("guardian decision re-composition failed (compile)");
+  const evaluation = evaluateGuardianRequest(
+    compiled.ruleSet,
+    { tenantId: TENANT_ID, action: { action: "fleet.action.execute" } },
+    { at: T1, correlationId: CORR_2 },
+  );
+  if (!evaluation.ok) throw new Error("guardian decision re-composition failed (evaluate)");
+  return evaluation.evaluation.decision;
 }
 
 // ---------------------------------------------------------------------------
