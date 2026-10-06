@@ -414,6 +414,18 @@
         "@fleetos/contracts": "workspace:*",
       },
     },
+    "packages/predictive": {
+      "name": "@fleetos/predictive",
+      "version": "0.1.0",
+      "dependencies": {
+        "@fleetos/contracts": "workspace:*",
+      },
+      "devDependencies": {
+        "@fleetos/audit": "workspace:*",
+        "@fleetos/device-model": "workspace:*",
+        "@fleetos/identity": "workspace:*",
+      },
+    },
     "packages/procurement": {
       "name": "@fleetos/procurement",
       "version": "0.1.0",
@@ -524,6 +536,8 @@
     "@fleetos/ops": ["@fleetos/ops@workspace:packages/ops"],
 
     "@fleetos/policy": ["@fleetos/policy@workspace:packages/policy"],
+
+    "@fleetos/predictive": ["@fleetos/predictive@workspace:packages/predictive"],
 
     "@fleetos/procurement": ["@fleetos/procurement@workspace:packages/procurement"],
 

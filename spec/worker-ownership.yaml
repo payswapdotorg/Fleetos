@@ -20,6 +20,7 @@ owners:
       - packages/device-adapters/
       - packages/recovery/
       - packages/integrations/adcos/
+      - packages/predictive/
       - apps/web/device/
       - apps/web/recovery/
   worker-b:
